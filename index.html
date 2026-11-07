@@ -1,487 +1,577 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>gamefor ffun</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>gamefor ffun | Games & More</title>
 <style>
-:root{--bg:#101014;--panel:#1b1b21;--line:#34343b;--gold:#f4c542;--muted:#a8a8b1}
+:root{
+  --bg:#101013;--panel:#1c1c21;--border:#34343b;
+  --yellow:#f5c542;--text:#f4f4f5;--muted:#a1a1ab
+}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:white;font:14px Arial,Helvetica,sans-serif}
+body{margin:0;background:var(--bg);color:var(--text);font:14px Arial,Helvetica,sans-serif}
 button,input{font:inherit}
 button{cursor:pointer}
-header{height:64px;background:#19191e;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:28px;padding:0 28px}
-.logo{font-size:22px;font-weight:900;white-space:nowrap}
-.logo span{color:var(--gold)}
-nav{display:flex;gap:10px}
-nav button{border:0;background:transparent;color:#bbb;padding:12px;border-radius:6px}
-nav button:hover,.active{background:#2a261c!important;color:var(--gold)!important}
-.topsearch{margin-left:auto;background:#26262d;border:1px solid #444;border-radius:8px;color:white;padding:12px;width:min(320px,35vw)}
-main{max-width:1200px;margin:auto;padding:35px 25px}
-.hero{text-align:center;padding:40px 0 46px}
-.hero h1{font-size:clamp(30px,5vw,54px);letter-spacing:-2px;margin:0 0 12px}
-.hero h1 span{color:var(--gold)}
-.hero p{color:var(--muted);font-size:15px}
-.head{display:flex;align-items:center;justify-content:space-between;margin:15px 0}
+button:focus-visible,input:focus-visible{outline:2px solid var(--yellow);outline-offset:2px}
+header{background:#19191d;border-bottom:1px solid var(--border);padding:16px max(20px,calc((100% - 1160px)/2));display:flex;gap:26px;align-items:center;flex-wrap:wrap}
+.logo{font-size:21px;font-weight:800;letter-spacing:-1px;white-space:nowrap}
+.logo span{color:var(--yellow)}
+nav{display:flex;gap:5px;flex-wrap:wrap}
+nav button{background:none;border:0;color:#bebec7;padding:11px 14px;border-radius:7px}
+nav button:hover,nav button.active{background:#302a1c;color:var(--yellow)}
+.container{max-width:1160px;margin:auto;padding:25px 20px}
+.hero{text-align:center;padding:48px 0 42px}
+.hero h1{font-size:clamp(34px,5vw,55px);letter-spacing:-2px;margin:0 0 12px}
+.hero h1 span{color:var(--yellow)}
+.hero p{color:var(--muted);font-size:16px}
+.searchbox{max-width:650px;margin:27px auto 0;display:flex;gap:9px}
+input{background:#242429;color:white;border:1px solid #494950;border-radius:8px;padding:14px;width:100%;min-width:0}
+input:focus{border-color:var(--yellow);outline:none}
+.primary{background:var(--yellow);color:#201b0e;border:0;padding:12px 17px;border-radius:7px;font-weight:bold}
+.secondary{background:#2b2b32;color:white;border:1px solid #484850;padding:11px 16px;border-radius:7px}
+.sectionhead{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:20px 0}
 h2{font-size:21px}
-.count{color:var(--muted)}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:17px}
-.card{background:var(--panel);border:1px solid var(--line);padding:0;border-radius:10px;color:white;overflow:hidden;text-align:left}
-.card:hover{border-color:var(--gold);transform:translateY(-2px)}
-.cover{height:135px;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
-.art{font-weight:900;font-size:58px;letter-spacing:-4px;position:relative;z-index:1}
-.cover:before{content:"";position:absolute;width:180px;height:180px;border:22px solid #ffffff13;border-radius:30px;transform:rotate(35deg);right:-65px;top:-55px}
-.cardinfo{padding:14px}
-.cardinfo b{display:block;font-size:16px}
-.cardinfo small{color:var(--muted);display:block;margin-top:7px}
-.green{background:linear-gradient(135deg,#264b38,#152b28);color:#a9e59e}
-.blue{background:linear-gradient(135deg,#2b4775,#17253d);color:#a8caff}
-.purple{background:linear-gradient(135deg,#53366c,#29203b);color:#dbbbff}
-.orange{background:linear-gradient(135deg,#654128,#33241d);color:#ffd49b}
-.red{background:linear-gradient(135deg,#632e41,#341d2c);color:#ffadca}
-.teal{background:linear-gradient(135deg,#205f61,#18353a);color:#9fe3db}
-#player{display:none}
-#player.show{display:block}
-.playhead{display:flex;align-items:center;gap:12px;justify-content:space-between;margin-bottom:20px}
-.control{background:var(--gold);color:#211d10;border:0;padding:11px 17px;border-radius:7px;font-weight:bold}
-.secondary{background:#303038;color:white}
-.screen{background:#19191e;border:1px solid var(--line);border-radius:12px;max-width:850px;margin:auto;padding:25px;text-align:center;min-height:380px}
-canvas{width:100%;max-width:640px;background:#10151b;border-radius:9px;touch-action:none}
+.muted{color:var(--muted)}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px}
+.filters button{background:#222228;color:#ccc;border:1px solid #414149;border-radius:6px;padding:9px 15px}
+.filters button.selected{background:var(--yellow);color:#211d10;border-color:var(--yellow)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:17px}
+.card{display:block;width:100%;padding:0;background:var(--panel);color:white;border:1px solid var(--border);border-radius:10px;overflow:hidden;text-align:left;transition:border-color .15s,transform .15s}
+.card:hover{border-color:var(--yellow);transform:translateY(-2px)}
+.cover{height:145px;display:grid;place-items:center;overflow:hidden;position:relative}
+.cover:after{content:"";position:absolute;width:130px;height:130px;border:19px solid #ffffff12;border-radius:26px;transform:rotate(30deg);right:-55px;top:-45px}
+.symbol{font-size:56px;font-weight:900;letter-spacing:-3px}
+.green{background:linear-gradient(135deg,#386445,#172b22);color:#b7f2b8}
+.blue{background:linear-gradient(135deg,#3d6594,#1c2943);color:#c1d8ff}
+.orange{background:linear-gradient(135deg,#986040,#3a261e);color:#ffdcac}
+.purple{background:linear-gradient(135deg,#6b4783,#291c3c);color:#e3c3ff}
+.red{background:linear-gradient(135deg,#9b4657,#3c202c);color:#ffb9c9}
+.teal{background:linear-gradient(135deg,#397b77,#173b3c);color:#a8f3e5}
+.cardbody{padding:14px}
+.cardbody strong{font-size:15px;display:block}
+.cardbody small{display:block;color:#a9a9b3;margin-top:7px}
+#player,#youtube,#about{display:none}
+.playerbar{display:flex;align-items:center;justify-content:space-between;gap:15px;flex-wrap:wrap;margin-bottom:16px}
+.screen{background:#18181d;border:1px solid var(--border);border-radius:11px;padding:24px;text-align:center;max-width:950px;margin:auto}
 #gameArea{margin:20px auto}
-.gamegrid{display:grid;gap:7px;margin:auto;width:min(100%,380px)}
-.tile{aspect-ratio:1;border:0;border-radius:8px;background:#2c2b34;color:white;font-size:27px;font-weight:bold}
-.tile[data-v="2"]{background:#eee4da;color:#594b43}
-.tile[data-v="4"]{background:#ede0c8;color:#594b43}
-.tile[data-v="8"]{background:#f2b179}
-.tile[data-v="16"]{background:#f59563}
-.tile[data-v="32"]{background:#f67c5f}
-.tile[data-v="64"]{background:#f65e3b}
-.tile[data-v="128"],.tile[data-v="256"],.tile[data-v="512"],.tile[data-v="1024"],.tile[data-v="2048"]{background:#e4bc38;color:#292000}
-.actions{display:flex;gap:9px;justify-content:center;flex-wrap:wrap;margin-top:15px}
-#message{color:var(--gold);min-height:20px}
-#settings{display:none;max-width:650px;margin:40px auto}
-footer{color:#777;text-align:center;padding:55px 15px}
+canvas{display:block;width:100%;max-width:720px;margin:auto;background:#111820;border:1px solid #45454d;border-radius:8px;touch-action:none}
+.board{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;width:min(100%,400px);margin:auto}
+.tile{aspect-ratio:1;background:#31313b;border:0;border-radius:8px;font-size:27px;font-weight:800;color:#fff}
+.tile[data-value="2"]{background:#eee4da;color:#66564c}
+.tile[data-value="4"]{background:#ede0c8;color:#66564c}
+.tile[data-value="8"]{background:#f2b179}
+.tile[data-value="16"]{background:#f59563}
+.tile[data-value="32"]{background:#f67c5f}
+.tile[data-value="64"]{background:#f65e3b}
+.tile[data-value="128"],.tile[data-value="256"],.tile[data-value="512"],.tile[data-value="1024"],.tile[data-value="2048"]{background:#e7ba3d;color:#32280c}
+.controls{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:17px}
+#message{color:var(--yellow);min-height:22px;font-weight:bold}
+iframe{width:100%;height:min(65vh,600px);border:0;background:black;border-radius:9px}
+.panel{background:var(--panel);border:1px solid var(--border);padding:23px;border-radius:11px;max-width:850px;margin:20px auto}
+.panel p{line-height:1.8;color:#bbb}
+footer{text-align:center;border-top:1px solid var(--border);margin-top:65px;padding:25px;color:#8c8c95}
 [hidden]{display:none!important}
-@media(max-width:650px){
-header{padding:10px 15px;height:auto;flex-wrap:wrap;gap:8px}
-nav{order:3;width:100%;justify-content:center}
-.topsearch{width:100%;margin-left:0}
-main{padding:20px 15px}
-.hero{padding:30px 0}
+@media(max-width:600px){
+header{padding:14px;gap:10px}
+nav{width:100%;justify-content:space-around}
+.hero{padding:25px 0 32px}
 .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.cover{height:105px}
-.art{font-size:44px}
+.cover{height:115px}
+.symbol{font-size:43px}
+.cardbody{padding:10px}
+.cardbody strong{font-size:13px}
 .screen{padding:12px}
+.searchbox{flex-direction:column}
 }
 </style>
 </head>
 <body>
+
 <header>
 <div class="logo">gamefor <span>ffun</span></div>
 <nav>
-<button class="active" id="homeBtn">Home</button>
-<button id="browseBtn">Browse</button>
-<button id="settingsBtn">Settings</button>
+<button id="navHome" onclick="showPage('home')">Home</button>
+<button id="navGames" onclick="showPage('home')">Games</button>
+<button id="navYouTube" onclick="showPage('youtube')">YouTube</button>
+<button id="navAbout" onclick="showPage('about')">Settings</button>
 </nav>
-<input id="search" class="topsearch" placeholder="Search games..." aria-label="Search games">
 </header>
 
-<main>
-<section id="library">
+<main class="container">
+
+<section id="home">
 <div class="hero">
 <h1>Unlimited <span>Games.</span></h1>
-<p>Your games, all in one place.</p>
+<p>Play, explore, and discover.</p>
+<div class="searchbox">
+<input id="search" type="search" placeholder="Search your games..." autocomplete="off">
+<button class="primary" onclick="renderGames()">Search</button>
 </div>
-<div class="head">
+</div>
+
+<div class="sectionhead">
 <h2>Browse games</h2>
-<span class="count" id="count"></span>
+<span class="muted" id="count"></span>
 </div>
-<div class="grid" id="cards"></div>
-<p id="empty" hidden>No games found.</p>
+
+<div class="filters" id="filters">
+<button class="selected" data-filter="All">All</button>
+<button data-filter="Arcade">Arcade</button>
+<button data-filter="Puzzle">Puzzle</button>
+<button data-filter="Sports">Sports</button>
+<button data-filter="Skill">Skill</button>
+</div>
+
+<div class="grid" id="gamesGrid"></div>
+<p id="empty" class="muted" hidden>No matching games found.</p>
 </section>
 
 <section id="player">
-<div class="playhead">
-<h2 id="gameName">Game</h2>
-<button class="control" id="back">← Back</button>
+<div class="playerbar">
+<h2 id="gameTitle">Game</h2>
+<button class="primary" onclick="showPage('home')">← Back to Games</button>
 </div>
 <div class="screen">
 <p id="message"></p>
 <div id="gameArea"></div>
-<div class="actions">
-<button class="control" id="restart">Restart</button>
-<button class="control secondary" id="fullscreen">Fullscreen</button>
+<div class="controls" id="gameControls"></div>
+<p class="muted" id="instructions"></p>
+<div class="controls">
+<button class="primary" onclick="restartGame()">Restart</button>
+<button class="secondary" onclick="fullscreen()">Fullscreen</button>
 </div>
-<p style="color:#aaa" id="instructions"></p>
 </div>
 </section>
 
-<section id="settings">
-<h2>Settings & About</h2>
-<p style="color:#aaa;line-height:1.8">
-Welcome to gamefor ffun. These games run directly in this website.
-Your search looks through the local game collection, without sending
-you to a separate game website.
-</p>
-<button class="control" onclick="showHome()">Return home</button>
+<section id="youtube">
+<div class="sectionhead"><h2>YouTube Player</h2></div>
+<div class="panel">
+<p>Paste a YouTube video link to watch it here, if the video allows embedding.</p>
+<div class="searchbox">
+<input id="youtubeUrl" placeholder="Paste a YouTube video link">
+<button class="primary" onclick="loadYouTube()">Play</button>
+</div>
+<p id="youtubeMessage"></p>
+<div id="videoArea"></div>
+</div>
 </section>
+
+<section id="about">
+<div class="panel">
+<h2>Settings & About</h2>
+<p>Welcome to gamefor ffun.</p>
+<p>Search looks through the included game collection. Games open within the website and don't redirect to another gaming site.</p>
+<p>The included games work offline. YouTube requires an internet connection and videos that permit embedding.</p>
+<button class="primary" onclick="showPage('home')">Back Home</button>
+</div>
+</section>
+
 </main>
-<footer>gamefor ffun · Built for fun</footer>
+
+<footer>gamefor ffun · Your arcade, your space.</footer>
 
 <script>
+const $=id=>document.getElementById(id);
+
 const games=[
- {name:"2048",art:"2048",color:"orange",type:"Puzzle"},
- {name:"Snake",art:"S",color:"green",type:"Arcade"},
- {name:"Pong",art:"P",color:"blue",type:"Arcade"},
- {name:"Three in a Row",art:"X O",color:"purple",type:"Strategy"},
- {name:"Memory Match",art:"?",color:"teal",type:"Puzzle"},
- {name:"Reaction Test",art:"GO",color:"red",type:"Skill"}
+{name:"2048",type:"Puzzle",symbol:"2048",color:"orange"},
+{name:"Snake",type:"Arcade",symbol:"S",color:"green"},
+{name:"Pong",type:"Sports",symbol:"P",color:"blue"},
+{name:"Breakout",type:"Arcade",symbol:"B",color:"red"},
+{name:"Three in a Row",type:"Puzzle",symbol:"X O",color:"purple"},
+{name:"Reaction Test",type:"Skill",symbol:"GO",color:"teal"}
 ];
 
-const $=id=>document.getElementById(id);
-let current=-1,timer=null,keys={},board=[],score=0;
-let snake,food,direction,nextDirection,ball,paddle,matched;
-const area=$("gameArea");
-const cards=$("cards");
+let filter="All",current=-1,timer=null,keys={};
+let board=[],score=0,snake=[],food=[],direction=[],nextDirection=[];
+let ball,paddle,bricks=[],ctx,canvas;
 
-games.forEach((g,i)=>{
- const card=document.createElement("button");
- card.className="card";
- card.innerHTML=`
- <div class="cover ${g.color}"><span class="art">${g.art}</span></div>
- <div class="cardinfo"><b>${g.name}</b><small>${g.type} · Play here</small></div>`;
- card.onclick=()=>openGame(i);
- cards.appendChild(card);
-});
+function stop(){
+ if(timer!==null)clearInterval(timer);
+ timer=null;
+ keys={};
+}
 
-function filterGames(){
+function showPage(id){
+ stop();
+ current=-1;
+ ["home","player","youtube","about"].forEach(x=>$(x).style.display=x===id?"block":"none");
+ if(id!=="youtube")$("videoArea").replaceChildren();
+ document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));
+ const nav={home:"navHome",youtube:"navYouTube",about:"navAbout"};
+ if(nav[id])$(nav[id]).classList.add("active");
+ window.scrollTo(0,0);
+}
+
+function renderGames(){
  const q=$("search").value.toLowerCase().trim();
+ const grid=$("gamesGrid");
+ grid.replaceChildren();
  let count=0;
- [...cards.children].forEach((card,i)=>{
-  const visible=games[i].name.toLowerCase().includes(q)
-   || games[i].type.toLowerCase().includes(q);
-  card.hidden=!visible;
-  if(visible)count++;
+ games.forEach((g,i)=>{
+  if(filter!=="All"&&g.type!==filter)return;
+  if(!g.name.toLowerCase().includes(q)&&!g.type.toLowerCase().includes(q))return;
+  count++;
+  const card=document.createElement("button");
+  card.className="card";
+  card.innerHTML=`<div class="cover ${g.color}"><span class="symbol">${g.symbol}</span></div><div class="cardbody"><strong>${g.name}</strong><small>${g.type} · Play here</small></div>`;
+  card.onclick=()=>openGame(i);
+  grid.appendChild(card);
  });
  $("count").textContent=count+" games";
  $("empty").hidden=count!==0;
 }
-$("search").addEventListener("input",()=>{
- showHome(false);
- filterGames();
-});
-filterGames();
 
-function stop(){
- if(timer!==null){clearInterval(timer);clearTimeout(timer)}
- timer=null;
- keys={};
-}
-function showHome(clear=true){
- stop();current=-1;
- $("library").hidden=false;
- $("player").classList.remove("show");
- $("settings").style.display="none";
- if(clear)$("search").value="";
- filterGames();
- window.scrollTo(0,0);
-}
-function showSettings(){
- showHome();
- $("library").hidden=true;
- $("settings").style.display="block";
-}
-$("homeBtn").onclick=()=>showHome();
-$("browseBtn").onclick=()=>{showHome();$("cards").scrollIntoView()};
-$("settingsBtn").onclick=showSettings;
-$("back").onclick=()=>showHome();
-$("restart").onclick=()=>startGame();
-$("fullscreen").onclick=()=>{
- const screen=document.querySelector(".screen");
- if(screen.requestFullscreen)screen.requestFullscreen().catch(()=>{});
-};
+$("filters").addEventListener("click",e=>{
+ const b=e.target.closest("[data-filter]");
+ if(!b)return;
+ filter=b.dataset.filter;
+ document.querySelectorAll("[data-filter]").forEach(x=>x.classList.toggle("selected",x===b));
+ renderGames();
+});
+
+$("search").addEventListener("input",renderGames);
+
+function say(text){$("message").textContent=text}
 
 function openGame(i){
- stop();current=i;
- $("library").hidden=true;
- $("settings").style.display="none";
- $("player").classList.add("show");
- $("gameName").textContent=games[i].name;
- startGame();
- window.scrollTo(0,0);
+ showPage("player");
+ current=i;
+ $("gameTitle").textContent=games[i].name;
+ restartGame();
 }
-function say(s){$("message").textContent=s}
-function gameButton(t,fn){
- const b=document.createElement("button");
- b.className="tile";b.textContent=t;b.onclick=fn;return b;
-}
-function makeGrid(n){
- const d=document.createElement("div");
- d.className="gamegrid";
- d.style.gridTemplateColumns=`repeat(${n},1fr)`;
- area.appendChild(d);
- return d;
-}
-function startGame(){
- stop();area.replaceChildren();score=0;say("");
+
+function restartGame(){
+ if(current<0)return;
+ stop();
+ $("gameArea").replaceChildren();
+ $("gameControls").replaceChildren();
+ score=0;
+ say("");
  if(current===0)start2048();
  if(current===1)startSnake();
  if(current===2)startPong();
- if(current===3)startTTT();
- if(current===4)startMemory();
+ if(current===3)startBreakout();
+ if(current===4)startTTT();
  if(current===5)startReaction();
 }
+
+function gridBoard(size){
+ const div=document.createElement("div");
+ div.className="board";
+ div.style.gridTemplateColumns=`repeat(${size},1fr)`;
+ $("gameArea").appendChild(div);
+ return div;
+}
+
 function start2048(){
- $("instructions").textContent="Use arrow keys to slide and combine matching numbers.";
+ $("instructions").textContent="Use your arrow keys or the buttons to combine matching tiles.";
  board=Array(16).fill(0);
- const grid=makeGrid(4);
+ const root=gridBoard(4);
+
  function add(){
   const free=board.map((v,i)=>v?-1:i).filter(i=>i>=0);
   if(free.length)board[free[Math.floor(Math.random()*free.length)]]=Math.random()<.9?2:4;
  }
  function render(){
-  grid.replaceChildren();
-  board.forEach(v=>{
-   const b=gameButton(v||"",()=>{});
-   b.dataset.v=v;b.disabled=true;grid.appendChild(b);
+  root.replaceChildren();
+  board.forEach(n=>{
+   const tile=document.createElement("button");
+   tile.className="tile";
+   tile.textContent=n||"";
+   tile.dataset.value=n;
+   tile.disabled=true;
+   root.appendChild(tile);
   });
   say("Score: "+score);
  }
- function merge(row){
-  row=row.filter(Boolean);
-  for(let i=0;i<row.length-1;i++){
-   if(row[i]===row[i+1]){
-    row[i]*=2;score+=row[i];row.splice(i+1,1);
+ function merge(values){
+  values=values.filter(Boolean);
+  for(let i=0;i<values.length-1;i++){
+   if(values[i]===values[i+1]){
+    values[i]*=2;
+    score+=values[i];
+    values.splice(i+1,1);
    }
   }
-  while(row.length<4)row.push(0);
-  return row;
+  while(values.length<4)values.push(0);
+  return values;
  }
  window.move2048=function(dir){
   if(current!==0)return;
-  const old=board.join(",");
-  for(let j=0;j<4;j++){
-   const indices=[];
-   for(let k=0;k<4;k++){
-    const x=(dir==="right"?3-k:k);
-    const y=(dir==="down"?3-k:k);
-    indices.push(dir==="left"||dir==="right"?j*4+x:y*4+j);
+  const previous=board.join(",");
+  for(let row=0;row<4;row++){
+   let positions=[];
+   for(let col=0;col<4;col++){
+    const x=(dir==="right"?3-col:col);
+    const y=(dir==="down"?3-col:col);
+    positions.push(dir==="left"||dir==="right"?row*4+x:y*4+row);
    }
-   const values=merge(indices.map(i=>board[i]));
-   indices.forEach((index,k)=>board[index]=values[k]);
+   const result=merge(positions.map(i=>board[i]));
+   positions.forEach((p,j)=>board[p]=result[j]);
   }
-  if(board.join(",")!==old)add();
+  if(board.join(",")!==previous)add();
   render();
   if(board.includes(2048))say("You reached 2048!");
- }
+ };
  add();add();render();
+ makeDirectionButtons(true);
 }
+
 function startTTT(){
- $("instructions").textContent="You're X. Play against the computer.";
+ $("instructions").textContent="You are X. Play against the computer.";
  board=Array(9).fill("");
- const grid=makeGrid(3);
- const wins=[[0,1,2],[3,4,5],[6,7,8],
- [0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
- function winner(){
-  for(const line of wins){
-   const[a,b,c]=line;
-   if(board[a]&&board[a]===board[b]&&board[b]===board[c])return board[a];
-  }
-  return board.every(Boolean)?"Draw":null;
+ const root=gridBoard(3);
+ const wins=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+
+ function winner(a=board){
+  for(const w of wins)if(a[w[0]]&&w.every(i=>a[i]===a[w[0]]))return a[w[0]];
+  return a.every(Boolean)?"Draw":null;
  }
  function render(){
-  grid.replaceChildren();
+  root.replaceChildren();
   board.forEach((v,i)=>{
-   const b=gameButton(v||" ",()=>move(i));
+   const b=document.createElement("button");
+   b.className="tile";
+   b.textContent=v||"";
    b.disabled=!!v||!!winner();
-   grid.appendChild(b);
+   b.onclick=()=>move(i);
+   root.appendChild(b);
   });
-  if(winner())say(winner()==="Draw"?"Draw!":winner()+" wins!");
-  else say("Your turn");
+  const w=winner();
+  say(w?(w==="Draw"?"Draw!":w+" wins!"):"Your turn");
  }
  function move(i){
   if(board[i]||winner())return;
   board[i]="X";
   if(!winner()){
-   const empty=board.map((v,j)=>v?-1:j).filter(j=>j>=0);
-   const computer=empty.find(j=>{
-    const copy=[...board];copy[j]="O";
-    return wins.some(w=>w.every(k=>copy[k]==="O"));
+   const free=board.map((v,j)=>v?-1:j).filter(j=>j>=0);
+   const pickWin=symbol=>free.find(j=>{
+    const trial=[...board];trial[j]=symbol;
+    return wins.some(w=>w.every(k=>trial[k]===symbol));
    });
-   const block=empty.find(j=>{
-    const copy=[...board];copy[j]="X";
-    return wins.some(w=>w.every(k=>copy[k]==="X"));
-   });
-   const choice=computer??block??(empty.includes(4)?4:empty[Math.floor(Math.random()*empty.length)]);
-   if(choice!==undefined)board[choice]="O";
+   const chosen=pickWin("O")??pickWin("X")??(free.includes(4)?4:free[Math.floor(Math.random()*free.length)]);
+   if(chosen!==undefined)board[chosen]="O";
   }
   render();
  }
  render();
 }
-function startMemory(){
- $("instructions").textContent="Find all eight matching pairs.";
- const values=[1,2,3,4,5,6,7,8];
- board=[...values,...values].sort(()=>Math.random()-.5);
- matched=new Set();let flipped=[],locked=false;
- const grid=makeGrid(4);
- function render(){
-  grid.replaceChildren();
-  board.forEach((v,i)=>{
-   const shown=matched.has(i)||flipped.includes(i);
-   const b=gameButton(shown?String(v):"? ",()=>flip(i));
-   b.disabled=matched.has(i)||locked||flipped.includes(i);
-   grid.appendChild(b);
-  });
-  say(matched.size/2+" / 8 pairs");
-  if(matched.size===16)say("All pairs found! You win.");
- }
- function flip(i){
-  flipped.push(i);render();
-  if(flipped.length===2){
-   const[a,b]=flipped;
-   if(board[a]===board[b]){
-    matched.add(a);matched.add(b);flipped=[];
-    render();
-   }else{
-    locked=true;
-    timer=setTimeout(()=>{
-     locked=false;flipped=[];timer=null;render();
-    },700);
-   }
-  }
- }
- render();
+
+function createCanvas(){
+ canvas=document.createElement("canvas");
+ canvas.width=600;
+ canvas.height=360;
+ $("gameArea").appendChild(canvas);
+ ctx=canvas.getContext("2d");
+ return ctx;
 }
-function startReaction(){
- $("instructions").textContent="Wait until the box turns green, then click it.";
- const box=document.createElement("button");
- box.style.cssText="border:0;border-radius:12px;width:min(100%,480px);height:270px;background:#923b43;color:white;font-size:30px;font-weight:bold";
- box.textContent="WAIT...";
- area.appendChild(box);
- let ready=false,started=0,finished=false;
- timer=setTimeout(()=>{
-  if(current!==5||finished)return;
-  ready=true;started=performance.now();
-  box.style.background="#368a57";box.textContent="CLICK!";
- },1300+Math.random()*2500);
- box.onclick=()=>{
-  if(finished)return;
-  if(!ready){
-   clearTimeout(timer);finished=true;
-   box.textContent="TOO EARLY";
-   say("Click Restart to try again.");
-  }else{
-   const ms=Math.round(performance.now()-started);
-   finished=true;box.textContent=ms+" ms";
-   say("Reaction time: "+ms+" milliseconds.");
-  }
- };
-}
-function canvasGame(){
- const c=document.createElement("canvas");
- c.width=600;c.height=360;
- area.appendChild(c);
- return [c,c.getContext("2d")];
-}
-function addArrows(){
- const controls=document.createElement("div");
- controls.className="actions";
- for(const [text,key] of [["◀","ArrowLeft"],["▲","ArrowUp"],["▼","ArrowDown"],["▶","ArrowRight"]]){
+
+function makeDirectionButtons(all=false){
+ const items=all?
+ [["←","ArrowLeft"],["↑","ArrowUp"],["↓","ArrowDown"],["→","ArrowRight"]]:
+ [["←","ArrowLeft"],["→","ArrowRight"]];
+ for(const [text,key] of items){
   const b=document.createElement("button");
-  b.className="control secondary";b.textContent=text;
-  b.onpointerdown=e=>{e.preventDefault();keys[key]=true;chooseDir(key)};
+  b.className="secondary";
+  b.textContent=text;
+  b.onpointerdown=e=>{
+   e.preventDefault();
+   keys[key]=true;
+   steer(key);
+   if(current===0)move2048(key.replace("Arrow","").toLowerCase());
+  };
   b.onpointerup=b.onpointercancel=()=>keys[key]=false;
-  b.onclick=()=>chooseDir(key);
-  controls.appendChild(b);
+  $("gameControls").appendChild(b);
  }
- area.appendChild(controls);
 }
-function chooseDir(k){
+
+function steer(key){
  if(current!==1)return;
- const map={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};
- const d=map[k];
+ const map={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0]};
+ const d=map[key];
  if(d&&!(d[0]===-direction[0]&&d[1]===-direction[1]))nextDirection=d;
 }
+
 function startSnake(){
- $("instructions").textContent="Use arrows or WASD. Eat the yellow squares.";
- const[c,ctx]=canvasGame();addArrows();
- snake=[[10,9],[9,9],[8,9]];
- food=[20,9];direction=[1,0];nextDirection=[1,0];
+ $("instructions").textContent="Use arrow keys or WASD. Collect yellow squares.";
+ createCanvas();
+ makeDirectionButtons(true);
+ snake=[[10,8],[9,8],[8,8]];
+ food=[18,8];direction=[1,0];nextDirection=[1,0];
+
  function draw(){
-  ctx.fillStyle="#111a20";ctx.fillRect(0,0,600,360);
-  ctx.fillStyle="#f4c542";ctx.fillRect(food[0]*20+1,food[1]*20+1,18,18);
+  ctx.fillStyle="#111b23";ctx.fillRect(0,0,600,360);
+  ctx.fillStyle="#f5c542";
+  ctx.fillRect(food[0]*20+1,food[1]*20+1,18,18);
   snake.forEach((p,i)=>{
-   ctx.fillStyle=i===0?"#aee6a4":"#39845a";
+   ctx.fillStyle=i===0?"#b1f0a4":"#458d61";
    ctx.fillRect(p[0]*20+1,p[1]*20+1,18,18);
   });
  }
  function step(){
   direction=nextDirection;
   const h=[snake[0][0]+direction[0],snake[0][1]+direction[1]];
-  const eating=h[0]===food[0]&&h[1]===food[1];
-  const body=eating?snake:snake.slice(0,-1);
-  if(h[0]<0||h[0]>=30||h[1]<0||h[1]>=18
-   ||body.some(p=>p[0]===h[0]&&p[1]===h[1])){
-   stop();say("Game over. Score: "+score);return;
+  const eat=h[0]===food[0]&&h[1]===food[1];
+  const body=eat?snake:snake.slice(0,-1);
+  if(h[0]<0||h[0]>=30||h[1]<0||h[1]>=18||body.some(p=>p[0]===h[0]&&p[1]===h[1])){
+   stop();say("Game over! Score: "+score);return;
   }
   snake.unshift(h);
-  if(eating){
+  if(eat){
    score++;
+   if(snake.length===540){stop();say("You win!");return;}
    do{
     food=[Math.floor(Math.random()*30),Math.floor(Math.random()*18)];
    }while(snake.some(p=>p[0]===food[0]&&p[1]===food[1]));
   }else snake.pop();
-  say("Score: "+score);draw();
+  say("Score: "+score);
+  draw();
  }
  draw();say("Score: 0");
  timer=setInterval(step,135);
 }
+
 function startPong(){
- $("instructions").textContent="Use left/right arrows or A/D to move your paddle.";
- const[c,ctx]=canvasGame();addArrows();
- paddle=260;
- ball={x:300,y:200,dx:3.3,dy:-3.3};
+ $("instructions").textContent="Move your paddle left and right to keep the ball in play.";
+ createCanvas();makeDirectionButtons();
+ paddle=260;ball={x:300,y:190,vx:3.5,vy:-3.5};
+
  function step(){
-  if(keys.ArrowLeft||keys.a)paddle=Math.max(0,paddle-7);
-  if(keys.ArrowRight||keys.d)paddle=Math.min(520,paddle+7);
-  ball.x+=ball.dx;ball.y+=ball.dy;
-  if(ball.x<9||ball.x>591)ball.dx=-ball.dx;
-  if(ball.y<9)ball.dy=Math.abs(ball.dy);
-  if(ball.y>323&&ball.y<343&&ball.x>=paddle&&ball.x<=paddle+80&&ball.dy>0){
-   ball.dy=-Math.abs(ball.dy);
-   ball.dx=(ball.x-paddle-40)/10;
+  if(keys.ArrowLeft)paddle=Math.max(0,paddle-7);
+  if(keys.ArrowRight)paddle=Math.min(520,paddle+7);
+  ball.x+=ball.vx;ball.y+=ball.vy;
+  if(ball.x<9||ball.x>591)ball.vx*=-1;
+  if(ball.y<9)ball.vy=Math.abs(ball.vy);
+  if(ball.y>323&&ball.y<344&&ball.x>=paddle&&ball.x<=paddle+80&&ball.vy>0){
+   ball.vy=-Math.abs(ball.vy);
+   ball.vx=(ball.x-paddle-40)/10;
    score++;
   }
-  if(ball.y>370){
-   stop();say("Game over! Score: "+score);return;
-  }
-  ctx.fillStyle="#101820";ctx.fillRect(0,0,600,360);
-  ctx.fillStyle="#f4c542";ctx.fillRect(paddle,340,80,10);
-  ctx.fillStyle="white";
-  ctx.beginPath();ctx.arc(ball.x,ball.y,8,0,Math.PI*2);ctx.fill();
+  if(ball.y>370){stop();say("Game over! Hits: "+score);return;}
+  ctx.fillStyle="#111820";ctx.fillRect(0,0,600,360);
+  ctx.fillStyle="#f5c542";ctx.fillRect(paddle,340,80,10);
+  ctx.fillStyle="white";ctx.beginPath();ctx.arc(ball.x,ball.y,8,0,Math.PI*2);ctx.fill();
   say("Hits: "+score);
  }
  timer=setInterval(step,16);
 }
+
+function startBreakout(){
+ $("instructions").textContent="Move the paddle with your arrow keys. Break all the bricks.";
+ createCanvas();makeDirectionButtons();
+ paddle=260;
+ ball={x:300,y:280,vx:3,vy:-3.5};
+ bricks=[];
+ for(let y=0;y<4;y++)for(let x=0;x<10;x++)bricks.push({x:31+x*55,y:34+y*28,alive:true});
+
+ function step(){
+  if(keys.ArrowLeft)paddle=Math.max(0,paddle-7);
+  if(keys.ArrowRight)paddle=Math.min(520,paddle+7);
+  ball.x+=ball.vx;ball.y+=ball.vy;
+  if(ball.x<8||ball.x>592)ball.vx*=-1;
+  if(ball.y<8)ball.vy=Math.abs(ball.vy);
+  if(ball.y>321&&ball.y<345&&ball.x>=paddle&&ball.x<=paddle+80&&ball.vy>0){
+   ball.vy=-Math.abs(ball.vy);
+   ball.vx=(ball.x-paddle-40)/12;
+  }
+  for(const b of bricks){
+   if(b.alive&&ball.x>b.x&&ball.x<b.x+49&&ball.y>b.y&&ball.y<b.y+20){
+    b.alive=false;ball.vy*=-1;score++;break;
+   }
+  }
+  if(ball.y>370){stop();say("Game over. Bricks: "+score);return;}
+  if(score===40){stop();say("You cleared every brick!");return;}
+  ctx.fillStyle="#111820";ctx.fillRect(0,0,600,360);
+  bricks.forEach(b=>{
+   if(!b.alive)return;
+   ctx.fillStyle="#749fcd";ctx.fillRect(b.x,b.y,49,20);
+  });
+  ctx.fillStyle="#f5c542";ctx.fillRect(paddle,340,80,10);
+  ctx.fillStyle="white";ctx.beginPath();ctx.arc(ball.x,ball.y,7,0,Math.PI*2);ctx.fill();
+  say("Bricks broken: "+score);
+ }
+ timer=setInterval(step,16);
+}
+
+function startReaction(){
+ $("instructions").textContent="Wait for green, then click as fast as you can.";
+ const box=document.createElement("button");
+ box.style.cssText="width:min(100%,550px);height:275px;border:0;border-radius:11px;background:#963c48;color:white;font-size:30px;font-weight:bold";
+ box.textContent="WAIT...";
+ $("gameArea").appendChild(box);
+ let ready=false,finished=false,start=0;
+ timer=setTimeout(()=>{
+  if(current!==5||finished)return;
+  ready=true;start=performance.now();
+  box.style.background="#3b975e";
+  box.textContent="CLICK!";
+ },1200+Math.random()*2500);
+ box.onclick=()=>{
+  if(finished)return;
+  finished=true;
+  if(!ready){
+   clearTimeout(timer);box.textContent="TOO EARLY";
+   say("Click Restart to try again.");
+  }else{
+   const ms=Math.round(performance.now()-start);
+   box.textContent=ms+" ms";say("Reaction time: "+ms+" milliseconds");
+  }
+ };
+}
+
+function fullscreen(){
+ const screen=document.querySelector(".screen");
+ if(screen.requestFullscreen)screen.requestFullscreen().catch(()=>{});
+}
+
 document.addEventListener("keydown",e=>{
  if(current<0||e.target.tagName==="INPUT")return;
- let key=e.key;
- if(key==="a")key="ArrowLeft";
- if(key==="d")key="ArrowRight";
- if(key==="w")key="ArrowUp";
- if(key==="s")key="ArrowDown";
- if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(key)){
-  e.preventDefault();keys[key]=true;chooseDir(key);
-  if(current===0)window.move2048(key.replace("Arrow","").toLowerCase());
+ const map={w:"ArrowUp",a:"ArrowLeft",s:"ArrowDown",d:"ArrowRight"};
+ const key=map[e.key.toLowerCase()]||e.key;
+ if(key.startsWith("Arrow")){
+  e.preventDefault();keys[key]=true;steer(key);
+  if(current===0)move2048(key.replace("Arrow","").toLowerCase());
  }
- if(e.key==="Escape")showHome();
+ if(e.key==="Escape")showPage("home");
 });
+
 document.addEventListener("keyup",e=>{
- keys[e.key]=false;
- const map={a:"ArrowLeft",d:"ArrowRight",w:"ArrowUp",s:"ArrowDown"};
- if(map[e.key])keys[map[e.key]]=false;
+ const map={w:"ArrowUp",a:"ArrowLeft",s:"ArrowDown",d:"ArrowRight"};
+ keys[map[e.key.toLowerCase()]||e.key]=false;
 });
+
+function loadYouTube(){
+ const input=$("youtubeUrl").value.trim();
+ let id="";
+ try{
+  const url=new URL(input);
+  const host=url.hostname.toLowerCase();
+  if(host==="youtu.be"||host==="www.youtu.be")id=url.pathname.split("/")[1];
+  else if(["youtube.com","www.youtube.com","m.youtube.com"].includes(host)){
+   id=url.searchParams.get("v")||"";
+   if(!id&&url.pathname.startsWith("/shorts/"))id=url.pathname.split("/")[2];
+   if(!id&&url.pathname.startsWith("/embed/"))id=url.pathname.split("/")[2];
+  }
+ }catch(e){}
+ if(!/^[a-zA-Z0-9_-]{11}$/.test(id)){
+  $("youtubeMessage").textContent="Paste a valid YouTube video link.";
+  return;
+ }
+ $("youtubeMessage").textContent="Video loading. Some videos do not allow embedding.";
+ const frame=document.createElement("iframe");
+ frame.title="YouTube video player";
+ frame.allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen";
+ frame.allowFullscreen=true;
+ frame.referrerPolicy="strict-origin-when-cross-origin";
+ frame.src="https://www.youtube.com/embed/"+id;
+ $("videoArea").replaceChildren(frame);
+}
+
+renderGames();
+showPage("home");
 </script>
 </body>
 </html>
