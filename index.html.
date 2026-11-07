@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gamefor ffun</title>
+<style>
+:root{--bg:#101014;--panel:#1b1b21;--line:#34343b;--gold:#f4c542;--muted:#a8a8b1}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:white;font:14px Arial,Helvetica,sans-serif}
+button,input{font:inherit}
+button{cursor:pointer}
+header{height:64px;background:#19191e;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:28px;padding:0 28px}
+.logo{font-size:22px;font-weight:900;white-space:nowrap}
+.logo span{color:var(--gold)}
+nav{display:flex;gap:10px}
+nav button{border:0;background:transparent;color:#bbb;padding:12px;border-radius:6px}
+nav button:hover,.active{background:#2a261c!important;color:var(--gold)!important}
+.topsearch{margin-left:auto;background:#26262d;border:1px solid #444;border-radius:8px;color:white;padding:12px;width:min(320px,35vw)}
+main{max-width:1200px;margin:auto;padding:35px 25px}
+.hero{text-align:center;padding:40px 0 46px}
+.hero h1{font-size:clamp(30px,5vw,54px);letter-spacing:-2px;margin:0 0 12px}
+.hero h1 span{color:var(--gold)}
+.hero p{color:var(--muted);font-size:15px}
+.head{display:flex;align-items:center;justify-content:space-between;margin:15px 0}
+h2{font-size:21px}
+.count{color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:17px}
+.card{background:var(--panel);border:1px solid var(--line);padding:0;border-radius:10px;color:white;overflow:hidden;text-align:left}
+.card:hover{border-color:var(--gold);transform:translateY(-2px)}
+.cover{height:135px;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+.art{font-weight:900;font-size:58px;letter-spacing:-4px;position:relative;z-index:1}
+.cover:before{content:"";position:absolute;width:180px;height:180px;border:22px solid #ffffff13;border-radius:30px;transform:rotate(35deg);right:-65px;top:-55px}
+.cardinfo{padding:14px}
+.cardinfo b{display:block;font-size:16px}
+.cardinfo small{color:var(--muted);display:block;margin-top:7px}
+.green{background:linear-gradient(135deg,#264b38,#152b28);color:#a9e59e}
+.blue{background:linear-gradient(135deg,#2b4775,#17253d);color:#a8caff}
+.purple{background:linear-gradient(135deg,#53366c,#29203b);color:#dbbbff}
+.orange{background:linear-gradient(135deg,#654128,#33241d);color:#ffd49b}
+.red{background:linear-gradient(135deg,#632e41,#341d2c);color:#ffadca}
+.teal{background:linear-gradient(135deg,#205f61,#18353a);color:#9fe3db}
+#player{display:none}
+#player.show{display:block}
+.playhead{display:flex;align-items:center;gap:12px;justify-content:space-between;margin-bottom:20px}
+.control{background:var(--gold);color:#211d10;border:0;padding:11px 17px;border-radius:7px;font-weight:bold}
+.secondary{background:#303038;color:white}
+.screen{background:#19191e;border:1px solid var(--line);border-radius:12px;max-width:850px;margin:auto;padding:25px;text-align:center;min-height:380px}
+canvas{width:100%;max-width:640px;background:#10151b;border-radius:9px;touch-action:none}
+#gameArea{margin:20px auto}
+.gamegrid{display:grid;gap:7px;margin:auto;width:min(100%,380px)}
+.tile{aspect-ratio:1;border:0;border-radius:8px;background:#2c2b34;color:white;font-size:27px;font-weight:bold}
+.tile[data-v="2"]{background:#eee4da;color:#594b43}
+.tile[data-v="4"]{background:#ede0c8;color:#594b43}
+.tile[data-v="8"]{background:#f2b179}
+.tile[data-v="16"]{background:#f59563}
+.tile[data-v="32"]{background:#f67c5f}
+.tile[data-v="64"]{background:#f65e3b}
+.tile[data-v="128"],.tile[data-v="256"],.tile[data-v="512"],.tile[data-v="1024"],.tile[data-v="2048"]{background:#e4bc38;color:#292000}
+.actions{display:flex;gap:9px;justify-content:center;flex-wrap:wrap;margin-top:15px}
+#message{color:var(--gold);min-height:20px}
+#settings{display:none;max-width:650px;margin:40px auto}
+footer{color:#777;text-align:center;padding:55px 15px}
+[hidden]{display:none!important}
+@media(max-width:650px){
+header{padding:10px 15px;height:auto;flex-wrap:wrap;gap:8px}
+nav{order:3;width:100%;justify-content:center}
+.topsearch{width:100%;margin-left:0}
+main{padding:20px 15px}
+.hero{padding:30px 0}
+.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.cover{height:105px}
+.art{font-size:44px}
+.screen{padding:12px}
+}
+</style>
+</head>
+<body>
+<header>
+<div class="logo">gamefor <span>ffun</span></div>
+<nav>
+<button class="active" id="homeBtn">Home</button>
+<button id="browseBtn">Browse</button>
+<button id="settingsBtn">Settings</button>
+</nav>
+<input id="search" class="topsearch" placeholder="Search games..." aria-label="Search games">
+</header>
+
+<main>
+<section id="library">
+<div class="hero">
+<h1>Unlimited <span>Games.</span></h1>
+<p>Your games, all in one place.</p>
+</div>
+<div class="head">
+<h2>Browse games</h2>
+<span class="count" id="count"></span>
+</div>
+<div class="grid" id="cards"></div>
+<p id="empty" hidden>No games found.</p>
+</section>
+
+<section id="player">
+<div class="playhead">
+<h2 id="gameName">Game</h2>
+<button class="control" id="back">← Back</button>
+</div>
+<div class="screen">
+<p id="message"></p>
+<div id="gameArea"></div>
+<div class="actions">
+<button class="control" id="restart">Restart</button>
+<button class="control secondary" id="fullscreen">Fullscreen</button>
+</div>
+<p style="color:#aaa" id="instructions"></p>
+</div>
+</section>
+
+<section id="settings">
+<h2>Settings & About</h2>
+<p style="color:#aaa;line-height:1.8">
+Welcome to gamefor ffun. These games run directly in this website.
+Your search looks through the local game collection, without sending
+you to a separate game website.
+</p>
+<button class="control" onclick="showHome()">Return home</button>
+</section>
+</main>
+<footer>gamefor ffun · Built for fun</footer>
+
+<script>
+const games=[
+ {name:"2048",art:"2048",color:"orange",type:"Puzzle"},
+ {name:"Snake",art:"S",color:"green",type:"Arcade"},
+ {name:"Pong",art:"P",color:"blue",type:"Arcade"},
+ {name:"Three in a Row",art:"X O",color:"purple",type:"Strategy"},
+ {name:"Memory Match",art:"?",color:"teal",type:"Puzzle"},
+ {name:"Reaction Test",art:"GO",color:"red",type:"Skill"}
+];
+
+const $=id=>document.getElementById(id);
+let current=-1,timer=null,keys={},board=[],score=0;
+let snake,food,direction,nextDirection,ball,paddle,matched;
+const area=$("gameArea");
+const cards=$("cards");
+
+games.forEach((g,i)=>{
+ const card=document.createElement("button");
+ card.className="card";
+ card.innerHTML=`
+ <div class="cover ${g.color}"><span class="art">${g.art}</span></div>
+ <div class="cardinfo"><b>${g.name}</b><small>${g.type} · Play here</small></div>`;
+ card.onclick=()=>openGame(i);
+ cards.appendChild(card);
+});
+
+function filterGames(){
+ const q=$("search").value.toLowerCase().trim();
+ let count=0;
+ [...cards.children].forEach((card,i)=>{
+  const visible=games[i].name.toLowerCase().includes(q)
+   || games[i].type.toLowerCase().includes(q);
+  card.hidden=!visible;
+  if(visible)count++;
+ });
+ $("count").textContent=count+" games";
+ $("empty").hidden=count!==0;
+}
+$("search").addEventListener("input",()=>{
+ showHome(false);
+ filterGames();
+});
+filterGames();
+
+function stop(){
+ if(timer!==null){clearInterval(timer);clearTimeout(timer)}
+ timer=null;
+ keys={};
+}
+function showHome(clear=true){
+ stop();current=-1;
+ $("library").hidden=false;
+ $("player").classList.remove("show");
+ $("settings").style.display="none";
+ if(clear)$("search").value="";
+ filterGames();
+ window.scrollTo(0,0);
+}
+function showSettings(){
+ showHome();
+ $("library").hidden=true;
+ $("settings").style.display="block";
+}
+$("homeBtn").onclick=()=>showHome();
+$("browseBtn").onclick=()=>{showHome();$("cards").scrollIntoView()};
+$("settingsBtn").onclick=showSettings;
+$("back").onclick=()=>showHome();
+$("restart").onclick=()=>startGame();
+$("fullscreen").onclick=()=>{
+ const screen=document.querySelector(".screen");
+ if(screen.requestFullscreen)screen.requestFullscreen().catch(()=>{});
+};
+
+function openGame(i){
+ stop();current=i;
+ $("library").hidden=true;
+ $("settings").style.display="none";
+ $("player").classList.add("show");
+ $("gameName").textContent=games[i].name;
+ startGame();
+ window.scrollTo(0,0);
+}
+function say(s){$("message").textContent=s}
+function gameButton(t,fn){
+ const b=document.createElement("button");
+ b.className="tile";b.textContent=t;b.onclick=fn;return b;
+}
+function makeGrid(n){
+ const d=document.createElement("div");
+ d.className="gamegrid";
+ d.style.gridTemplateColumns=`repeat(${n},1fr)`;
+ area.appendChild(d);
+ return d;
+}
+function startGame(){
+ stop();area.replaceChildren();score=0;say("");
+ if(current===0)start2048();
+ if(current===1)startSnake();
+ if(current===2)startPong();
+ if(current===3)startTTT();
+ if(current===4)startMemory();
+ if(current===5)startReaction();
+}
+function start2048(){
+ $("instructions").textContent="Use arrow keys to slide and combine matching numbers.";
+ board=Array(16).fill(0);
+ const grid=makeGrid(4);
+ function add(){
+  const free=board.map((v,i)=>v?-1:i).filter(i=>i>=0);
+  if(free.length)board[free[Math.floor(Math.random()*free.length)]]=Math.random()<.9?2:4;
+ }
+ function render(){
+  grid.replaceChildren();
+  board.forEach(v=>{
+   const b=gameButton(v||"",()=>{});
+   b.dataset.v=v;b.disabled=true;grid.appendChild(b);
+  });
+  say("Score: "+score);
+ }
+ function merge(row){
+  row=row.filter(Boolean);
+  for(let i=0;i<row.length-1;i++){
+   if(row[i]===row[i+1]){
+    row[i]*=2;score+=row[i];row.splice(i+1,1);
+   }
+  }
+  while(row.length<4)row.push(0);
+  return row;
+ }
+ window.move2048=function(dir){
+  if(current!==0)return;
+  const old=board.join(",");
+  for(let j=0;j<4;j++){
+   const indices=[];
+   for(let k=0;k<4;k++){
+    const x=(dir==="right"?3-k:k);
+    const y=(dir==="down"?3-k:k);
+    indices.push(dir==="left"||dir==="right"?j*4+x:y*4+j);
+   }
+   const values=merge(indices.map(i=>board[i]));
+   indices.forEach((index,k)=>board[index]=values[k]);
+  }
+  if(board.join(",")!==old)add();
+  render();
+  if(board.includes(2048))say("You reached 2048!");
+ }
+ add();add();render();
+}
+function startTTT(){
+ $("instructions").textContent="You're X. Play against the computer.";
+ board=Array(9).fill("");
+ const grid=makeGrid(3);
+ const wins=[[0,1,2],[3,4,5],[6,7,8],
+ [0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+ function winner(){
+  for(const line of wins){
+   const[a,b,c]=line;
+   if(board[a]&&board[a]===board[b]&&board[b]===board[c])return board[a];
+  }
+  return board.every(Boolean)?"Draw":null;
+ }
+ function render(){
+  grid.replaceChildren();
+  board.forEach((v,i)=>{
+   const b=gameButton(v||" ",()=>move(i));
+   b.disabled=!!v||!!winner();
+   grid.appendChild(b);
+  });
+  if(winner())say(winner()==="Draw"?"Draw!":winner()+" wins!");
+  else say("Your turn");
+ }
+ function move(i){
+  if(board[i]||winner())return;
+  board[i]="X";
+  if(!winner()){
+   const empty=board.map((v,j)=>v?-1:j).filter(j=>j>=0);
+   const computer=empty.find(j=>{
+    const copy=[...board];copy[j]="O";
+    return wins.some(w=>w.every(k=>copy[k]==="O"));
+   });
+   const block=empty.find(j=>{
+    const copy=[...board];copy[j]="X";
+    return wins.some(w=>w.every(k=>copy[k]==="X"));
+   });
+   const choice=computer??block??(empty.includes(4)?4:empty[Math.floor(Math.random()*empty.length)]);
+   if(choice!==undefined)board[choice]="O";
+  }
+  render();
+ }
+ render();
+}
+function startMemory(){
+ $("instructions").textContent="Find all eight matching pairs.";
+ const values=[1,2,3,4,5,6,7,8];
+ board=[...values,...values].sort(()=>Math.random()-.5);
+ matched=new Set();let flipped=[],locked=false;
+ const grid=makeGrid(4);
+ function render(){
+  grid.replaceChildren();
+  board.forEach((v,i)=>{
+   const shown=matched.has(i)||flipped.includes(i);
+   const b=gameButton(shown?String(v):"? ",()=>flip(i));
+   b.disabled=matched.has(i)||locked||flipped.includes(i);
+   grid.appendChild(b);
+  });
+  say(matched.size/2+" / 8 pairs");
+  if(matched.size===16)say("All pairs found! You win.");
+ }
+ function flip(i){
+  flipped.push(i);render();
+  if(flipped.length===2){
+   const[a,b]=flipped;
+   if(board[a]===board[b]){
+    matched.add(a);matched.add(b);flipped=[];
+    render();
+   }else{
+    locked=true;
+    timer=setTimeout(()=>{
+     locked=false;flipped=[];timer=null;render();
+    },700);
+   }
+  }
+ }
+ render();
+}
+function startReaction(){
+ $("instructions").textContent="Wait until the box turns green, then click it.";
+ const box=document.createElement("button");
+ box.style.cssText="border:0;border-radius:12px;width:min(100%,480px);height:270px;background:#923b43;color:white;font-size:30px;font-weight:bold";
+ box.textContent="WAIT...";
+ area.appendChild(box);
+ let ready=false,started=0,finished=false;
+ timer=setTimeout(()=>{
+  if(current!==5||finished)return;
+  ready=true;started=performance.now();
+  box.style.background="#368a57";box.textContent="CLICK!";
+ },1300+Math.random()*2500);
+ box.onclick=()=>{
+  if(finished)return;
+  if(!ready){
+   clearTimeout(timer);finished=true;
+   box.textContent="TOO EARLY";
+   say("Click Restart to try again.");
+  }else{
+   const ms=Math.round(performance.now()-started);
+   finished=true;box.textContent=ms+" ms";
+   say("Reaction time: "+ms+" milliseconds.");
+  }
+ };
+}
+function canvasGame(){
+ const c=document.createElement("canvas");
+ c.width=600;c.height=360;
+ area.appendChild(c);
+ return [c,c.getContext("2d")];
+}
+function addArrows(){
+ const controls=document.createElement("div");
+ controls.className="actions";
+ for(const [text,key] of [["◀","ArrowLeft"],["▲","ArrowUp"],["▼","ArrowDown"],["▶","ArrowRight"]]){
+  const b=document.createElement("button");
+  b.className="control secondary";b.textContent=text;
+  b.onpointerdown=e=>{e.preventDefault();keys[key]=true;chooseDir(key)};
+  b.onpointerup=b.onpointercancel=()=>keys[key]=false;
+  b.onclick=()=>chooseDir(key);
+  controls.appendChild(b);
+ }
+ area.appendChild(controls);
+}
+function chooseDir(k){
+ if(current!==1)return;
+ const map={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};
+ const d=map[k];
+ if(d&&!(d[0]===-direction[0]&&d[1]===-direction[1]))nextDirection=d;
+}
+function startSnake(){
+ $("instructions").textContent="Use arrows or WASD. Eat the yellow squares.";
+ const[c,ctx]=canvasGame();addArrows();
+ snake=[[10,9],[9,9],[8,9]];
+ food=[20,9];direction=[1,0];nextDirection=[1,0];
+ function draw(){
+  ctx.fillStyle="#111a20";ctx.fillRect(0,0,600,360);
+  ctx.fillStyle="#f4c542";ctx.fillRect(food[0]*20+1,food[1]*20+1,18,18);
+  snake.forEach((p,i)=>{
+   ctx.fillStyle=i===0?"#aee6a4":"#39845a";
+   ctx.fillRect(p[0]*20+1,p[1]*20+1,18,18);
+  });
+ }
+ function step(){
+  direction=nextDirection;
+  const h=[snake[0][0]+direction[0],snake[0][1]+direction[1]];
+  const eating=h[0]===food[0]&&h[1]===food[1];
+  const body=eating?snake:snake.slice(0,-1);
+  if(h[0]<0||h[0]>=30||h[1]<0||h[1]>=18
+   ||body.some(p=>p[0]===h[0]&&p[1]===h[1])){
+   stop();say("Game over. Score: "+score);return;
+  }
+  snake.unshift(h);
+  if(eating){
+   score++;
+   do{
+    food=[Math.floor(Math.random()*30),Math.floor(Math.random()*18)];
+   }while(snake.some(p=>p[0]===food[0]&&p[1]===food[1]));
+  }else snake.pop();
+  say("Score: "+score);draw();
+ }
+ draw();say("Score: 0");
+ timer=setInterval(step,135);
+}
+function startPong(){
+ $("instructions").textContent="Use left/right arrows or A/D to move your paddle.";
+ const[c,ctx]=canvasGame();addArrows();
+ paddle=260;
+ ball={x:300,y:200,dx:3.3,dy:-3.3};
+ function step(){
+  if(keys.ArrowLeft||keys.a)paddle=Math.max(0,paddle-7);
+  if(keys.ArrowRight||keys.d)paddle=Math.min(520,paddle+7);
+  ball.x+=ball.dx;ball.y+=ball.dy;
+  if(ball.x<9||ball.x>591)ball.dx=-ball.dx;
+  if(ball.y<9)ball.dy=Math.abs(ball.dy);
+  if(ball.y>323&&ball.y<343&&ball.x>=paddle&&ball.x<=paddle+80&&ball.dy>0){
+   ball.dy=-Math.abs(ball.dy);
+   ball.dx=(ball.x-paddle-40)/10;
+   score++;
+  }
+  if(ball.y>370){
+   stop();say("Game over! Score: "+score);return;
+  }
+  ctx.fillStyle="#101820";ctx.fillRect(0,0,600,360);
+  ctx.fillStyle="#f4c542";ctx.fillRect(paddle,340,80,10);
+  ctx.fillStyle="white";
+  ctx.beginPath();ctx.arc(ball.x,ball.y,8,0,Math.PI*2);ctx.fill();
+  say("Hits: "+score);
+ }
+ timer=setInterval(step,16);
+}
+document.addEventListener("keydown",e=>{
+ if(current<0||e.target.tagName==="INPUT")return;
+ let key=e.key;
+ if(key==="a")key="ArrowLeft";
+ if(key==="d")key="ArrowRight";
+ if(key==="w")key="ArrowUp";
+ if(key==="s")key="ArrowDown";
+ if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(key)){
+  e.preventDefault();keys[key]=true;chooseDir(key);
+  if(current===0)window.move2048(key.replace("Arrow","").toLowerCase());
+ }
+ if(e.key==="Escape")showHome();
+});
+document.addEventListener("keyup",e=>{
+ keys[e.key]=false;
+ const map={a:"ArrowLeft",d:"ArrowRight",w:"ArrowUp",s:"ArrowDown"};
+ if(map[e.key])keys[map[e.key]]=false;
+});
+</script>
+</body>
+</html>
