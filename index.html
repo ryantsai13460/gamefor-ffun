@@ -3172,3 +3172,494 @@ go("home");
 </script>
 </body>
 </html>
+<script>
+(() => {
+  "use strict";
+
+  function installExpansion() {
+    // Prevent duplicate games if this block is pasted twice.
+    if (window.ffunExpansion26) return;
+
+    if (
+      typeof games === "undefined" ||
+      !Array.isArray(games) ||
+      typeof byId === "undefined" ||
+      !(byId instanceof Map) ||
+      typeof card !== "function" ||
+      typeof render !== "function" ||
+      typeof showFrame !== "function" ||
+      typeof openGame !== "function"
+    ) {
+      const note = document.createElement("p");
+      note.className = "notice";
+      note.textContent =
+        "The extra-games add-on needs the existing gamefor ffun " +
+        "code above it. Your original code has not been removed.";
+
+      (document.querySelector("main") || document.body).prepend(note);
+      return;
+    }
+
+    const find = id => document.getElementById(id);
+
+    const clientURL =
+      "https://elite4r.github.io/Resent-Client/";
+
+    const publisher = "https://www.miniplay.com";
+
+    /*
+      Each row:
+      publisher slug, game name, category,
+      artwork server, artwork number.
+
+      These use the embedding addresses published
+      on the original game pages.
+    */
+    const rows = [
+      [
+        "slope",
+        "Slope",
+        "Arcade",
+        5, 205490
+      ],
+      [
+        "cluster-rush",
+        "Cluster Rush",
+        "Parkour",
+        1, 227682
+      ],
+      [
+        "geometry-dash",
+        "Geometry Dash",
+        "Parkour",
+        4, 213070
+      ],
+      [
+        "red-ball-4",
+        "Red Ball 4",
+        "Parkour",
+        2, 22727
+      ],
+      [
+        "suika-game-merge-fruits",
+        "Suika Game: Merge Fruits",
+        "Puzzle",
+        5, 247497
+      ],
+      [
+        "tennis-masters",
+        "Tennis Masters",
+        "Sports",
+        4, 236330
+      ],
+      [
+        "chess-classic",
+        "Chess Classic",
+        "Strategy",
+        1, 215585
+      ],
+      [
+        "volleyball-challenge",
+        "Volleyball Challenge",
+        "Sports",
+        3, 244554
+      ],
+      [
+        "bouncy-dunk",
+        "Bouncy Dunk",
+        "Sports",
+        0, 0
+      ],
+      [
+        "crazy-roll-3d",
+        "Crazy Roll 3D",
+        "Arcade",
+        1, 227906
+      ],
+      [
+        "snail-bob",
+        "Snail Bob",
+        "Puzzle",
+        5, 18241
+      ],
+      [
+        "doodle-jump",
+        "Doodle Jump",
+        "Arcade",
+        5, 201848
+      ],
+      [
+        "color-tunnel",
+        "Color Tunnel",
+        "Arcade",
+        5, 226898
+      ],
+      [
+        "cut-the-rope-2",
+        "Cut the Rope 2",
+        "Puzzle",
+        4, 212477
+      ],
+      [
+        "fireboy-and-watergirl-3-the-ice-temple",
+        "Fireboy and Watergirl 3: Ice Temple",
+        "Puzzle",
+        5, 20785
+      ],
+      [
+        "basketball-legends-2020",
+        "Basketball Legends 2020",
+        "Sports",
+        4, 235405
+      ],
+      [
+        "football-legends-2021",
+        "Football Legends 2021",
+        "Sports",
+        3, 237881
+      ],
+      [
+        "mini-golf-club",
+        "Mini Golf Club",
+        "Sports",
+        5, 239358
+      ],
+      [
+        "table-tennis-world-tour",
+        "Table Tennis: World Tour",
+        "Sports",
+        5, 221767
+      ],
+      [
+        "color-switch-online",
+        "Color Switch Online",
+        "Arcade",
+        4, 213801
+      ],
+      [
+        "hole-io",
+        "Hole.io",
+        "Arcade",
+        2, 225259
+      ],
+      [
+        "nonogram-frvr",
+        "Nonogram FRVR",
+        "Puzzle",
+        1, 220468
+      ],
+      [
+        "ludo-hero",
+        "Ludo Hero",
+        "Strategy",
+        2, 229028
+      ],
+      [
+        "mahjong-connect",
+        "Mahjong Connect",
+        "Puzzle",
+        4, 230034
+      ],
+      [
+        "zooplop",
+        "Zooplop",
+        "Puzzle",
+        0, 0
+      ]
+    ];
+
+    const requested = [
+      {
+        id: "extra-resent-client",
+        name: "Resent Client (Minecraft)",
+        category: "Sandbox",
+        url: clientURL,
+        embed: clientURL,
+        local: false,
+        image: ""
+      },
+
+      ...rows.map(
+        ([slug, name, category, imageHost, imageNumber]) => ({
+          id: "extra-" + slug,
+          name,
+          category,
+          url: publisher + "/game/" + slug,
+          embed: publisher + "/embed/" + slug,
+          local: false,
+
+          image: imageNumber
+            ? "https://www" +
+              imageHost +
+              ".minijuegosgratis.com/v3/games/thumbnails/" +
+              imageNumber +
+              "_7_sq.jpg"
+            : ""
+        })
+      )
+    ];
+
+    /*
+      Append only.
+      Never remove or replace an existing game.
+    */
+    const pack = [];
+    const added = [];
+
+    for (const entry of requested) {
+      const existing =
+        byId.get(entry.id) ||
+        games.find(game =>
+          game.name.toLowerCase() === entry.name.toLowerCase() ||
+          game.url === entry.url ||
+          game.embed === entry.embed
+        );
+
+      if (existing) {
+        pack.push(existing);
+        continue;
+      }
+
+      games.push(entry);
+      byId.set(entry.id, entry);
+
+      pack.push(entry);
+      added.push(entry);
+    }
+
+    /*
+      Add a separate shelf.
+      Your original Featured, Just Added, and Offline
+      sections stay where they are.
+    */
+    const section = document.createElement("section");
+    section.id = "ffun-extra-games-26";
+
+    const heading = document.createElement("div");
+    heading.className = "head";
+
+    const title = document.createElement("h2");
+    title.textContent = "More games + Resent Client";
+
+    const count = document.createElement("small");
+    count.textContent = pack.length + " online players";
+
+    heading.append(title, count);
+
+    const shelf = document.createElement("div");
+    shelf.className = "grid";
+
+    section.append(heading, shelf);
+
+    const anchor = find("newGames");
+
+    if (anchor) {
+      anchor.after(section);
+    } else {
+      find("home").append(section);
+    }
+
+    /*
+      Reuse your existing card builder and favorites.
+
+      The additional shelf only redraws when its
+      artwork or favorite settings change.
+    */
+    const originalRender = render;
+    let lastShelfState = "";
+
+    render = function (...args) {
+      const result = originalRender.apply(this, args);
+
+      const signature = JSON.stringify([
+        prefs.favorites,
+        prefs.artwork
+      ]);
+
+      if (signature !== lastShelfState) {
+        shelf.replaceChildren(
+          ...pack.map(game => card(game))
+        );
+
+        lastShelfState = signature;
+      }
+
+      if (find("health")) {
+        find("health").textContent =
+          "Ready · " + games.length + " games";
+      }
+
+      return result;
+    };
+
+    /*
+      Add Sandbox without changing existing categories.
+    */
+    if (!document.querySelector('[data-category="Sandbox"]')) {
+      const sandbox = button(
+        "Sandbox",
+        () => {
+          activeCategory = "Sandbox";
+          pageSize = 24;
+          render();
+        },
+        "filter"
+      );
+
+      sandbox.dataset.category = "Sandbox";
+      find("categories").append(sandbox);
+    }
+
+    /*
+      Add a quick Resent shortcut on the homepage.
+    */
+    const resent = pack.find(game => game.url === clientURL);
+    const shortcuts = document.querySelector("#home .shortcuts");
+
+    if (shortcuts && resent) {
+      shortcuts.append(
+        button(
+          "Resent / Minecraft",
+          () => openGame(resent.id),
+          "quiet"
+        )
+      );
+    }
+
+    /*
+      Improve controls for the added online players only.
+
+      Original local games, video controls, and normal
+      browsing functions are not replaced.
+    */
+    const newPlayers = new Map(
+      added.map(game => [game.embed, game])
+    );
+
+    const originalShowFrame = showFrame;
+
+    showFrame = function (url, name, source) {
+      const result = originalShowFrame.call(
+        this,
+        url,
+        name,
+        source
+      );
+
+      const game = newPlayers.get(url);
+      if (!game) return result;
+
+      const iframe = find("stage").querySelector("iframe");
+      if (!iframe) return result;
+
+      iframe.tabIndex = 0;
+      iframe.allowFullscreen = true;
+
+      /*
+        Keep the sandbox.
+
+        This permission lets the game request mouse capture
+        after you click inside it. It does not automatically
+        lock your mouse.
+      */
+      iframe.sandbox.add("allow-pointer-lock");
+
+      const minecraft = url === clientURL;
+
+      find("playerStatus").textContent = minecraft
+        ? "Let Resent finish loading, then click inside the game."
+        : "Online player: click inside the game when its own menu appears.";
+
+      find("playerHelp").textContent = minecraft
+        ? "Keyboard and mouse: click the game, then use W/A/S/D, " +
+          "Space, and the mouse. Esc releases mouse capture. " +
+          "Fullscreen is optional. This is an online client, " +
+          "not a game copied into your file."
+        : "The original game loads here only when selected. " +
+          "Its loading screen, ads, and controls are provided " +
+          "by the game host.";
+
+      const focusButton = button(
+        "Focus game controls",
+        () => {
+          iframe.focus({preventScroll: true});
+
+          try {
+            iframe.contentWindow.focus();
+          } catch (_) {}
+
+          find("playerStatus").textContent = minecraft
+            ? "Now click inside Resent itself to activate " +
+              "its controls and mouse capture."
+            : "Now click inside the game and use its " +
+              "on-screen instructions.";
+        }
+      );
+
+      focusButton.dataset.ffunFocus = "true";
+      find("playerLinks").prepend(focusButton);
+
+      /*
+        No automatic redirects and no fake "game loaded"
+        claim based only on an iframe load event.
+      */
+      const note = document.createElement("span");
+      note.className = "help";
+      note.textContent =
+        "If this stays blank or refuses to connect, the host " +
+        "may not allow embedding. The original-site link is " +
+        "optional; no automatic redirect.";
+
+      find("playerLinks").append(note);
+
+      return result;
+    };
+
+    /*
+      Add credits for the new online entries.
+      Their game engines are not copied into your HTML.
+    */
+    const credits = find("credits");
+
+    if (credits) {
+      const details = document.createElement("details");
+      details.className = "panel";
+      details.style.marginTop = "18px";
+
+      const summary = document.createElement("summary");
+      summary.textContent = "Additional game sources";
+
+      const sources = document.createElement("div");
+      sources.className = "source-list";
+
+      for (const game of pack) {
+        sources.append(
+          externalLink(game.url, game.name)
+        );
+      }
+
+      details.append(summary, sources);
+      credits.append(details);
+    }
+
+    window.ffunExpansion26 = Object.freeze({
+      version: "1.0",
+      added: added.length,
+      ids: Object.freeze(pack.map(game => game.id))
+    });
+
+    render();
+    renderRecent();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener(
+      "DOMContentLoaded",
+      installExpansion,
+      {once: true}
+    );
+  } else {
+    installExpansion();
+  }
+})();
+</script>
