@@ -2381,3 +2381,23 @@ server.headersTimeout = 10000;
 server.listen(PORT, HOST, () => {
   console.log(`gamefor ffun: http://${HOST}:${PORT}`);
 });
+hint.textContent =
+        'Website links open inside this page when embedding is allowed. ' +
+        'Game searches and YouTube links still work here.';
+    }
+
+    render();
+    renderRecent();
+    find('health').textContent = 'Ready · ' + games.length + ' entries';
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener(
+      'DOMContentLoaded',
+      installAdditions,
+      {once: true}
+    );
+  } else {
+    queueMicrotask(installAdditions);
+  }
+}
