@@ -8065,3 +8065,461 @@ hook-pin-jam|Hook Pin Jam|Puzzle|
   }
 })();
 </script>
+<script>
+(() => {
+  'use strict';
+
+  function install() {
+    if (window.ffunAccessLabelsV1) return;
+
+    if (
+      typeof games === 'undefined' || !Array.isArray(games) ||
+      typeof card !== 'function' || typeof render !== 'function' ||
+      typeof go !== 'function' || typeof showFrame !== 'function' ||
+      typeof preparePlayer !== 'function'
+    ) {
+      const p = document.createElement('p');
+      p.className = 'notice';
+      p.textContent =
+        'Keep your original gamefor ffun code above this add-on.';
+      document.body.append(p);
+      return;
+    }
+
+    const $ = id => document.getElementById(id);
+
+    if (
+      !$('home') ||
+      !$('stage') ||
+      !document.querySelector('main')
+    ) return;
+
+    window.ffunAccessLabelsV1 = true;
+
+    const make = (tag, text, cls) => {
+      const n = document.createElement(tag);
+      if (text !== undefined) n.textContent = text;
+      if (cls) n.className = cls;
+      return n;
+    };
+
+    const button = (text, action, cls = 'button') => {
+      const b = make('button', text, cls);
+      b.type = 'button';
+      b.onclick = action;
+      return b;
+    };
+
+    // These are provider checks, NOT tests of your school's filters.
+    function usesMiniplay(url) {
+      try {
+        const host = new URL(url).hostname.toLowerCase();
+
+        return [
+          'miniplay.com',
+          'minijuegos.com',
+          'minijuegosgratis.com'
+        ].some(domain =>
+          host === domain || host.endsWith('.' + domain)
+        );
+      } catch {
+        return false;
+      }
+    }
+
+    function groupOf(game) {
+      if (game.local === true && !game.embed) {
+        return 'built';
+      }
+
+      if (
+        usesMiniplay(game.embed) ||
+        usesMiniplay(game.url)
+      ) {
+        return 'home';
+      }
+
+      return 'other';
+    }
+
+    const labels = {
+      built: 'Built in · No Miniplay player',
+      home: 'Blocked at school · Home use only',
+      other: 'Other website · Access not checked'
+    };
+
+    const notes = {
+      built:
+        'These use the game code already included in your site. ' +
+        'School permission to use your site is still required.',
+
+      home:
+        'These entries depend on Miniplay. You reported that it ' +
+        'is blocked at school, so keep these for home. ' +
+        'No games were deleted.',
+
+      other:
+        'These are your existing non-Miniplay entries, not a list ' +
+        'of confirmed unblocked sites. Their access and embedding ' +
+        'are unverified.'
+    };
+
+    function labelCard(node, game) {
+      const group = groupOf(game);
+      let label = node.querySelector('.ffun-access-label');
+
+      if (!label) {
+        label = make('p', '', 'ffun-access-label');
+        node.append(label);
+      }
+
+      label.dataset.access = group;
+      label.textContent = labels[group];
+
+      if (group === 'home') {
+        label.title =
+          'Based on the Miniplay block you reported; ' +
+          'not a network test.';
+      }
+
+      return node;
+    }
+
+    const oldCard = card;
+
+    card = game => labelCard(oldCard(game), game);
+
+    const style = make('style');
+
+    style.textContent = `
+      .ffun-access-label {
+        margin:0;
+        padding:9px 12px;
+        border-top:1px solid #38383f;
+        font-size:11px;
+        line-height:1.5;
+        color:#bcbcc7;
+      }
+
+      .ffun-access-label[data-access="built"] {
+        color:#bcdf9d;
+      }
+
+      .ffun-access-label[data-access="home"] {
+        color:#f2c18d;
+      }
+
+      .ffun-access-tools {
+        display:flex;
+        gap:8px;
+        flex-wrap:wrap;
+        margin:16px 0;
+      }
+
+      .ffun-access-tools [aria-pressed="true"] {
+        border-color:var(--gold,#f4c542);
+        color:var(--gold,#f4c542);
+      }
+
+      .ffun-access-pager {
+        display:flex;
+        gap:13px;
+        align-items:center;
+        justify-content:center;
+        margin:22px 0;
+      }
+
+      #ffun-access .field {
+        max-width:440px;
+        margin:0 0 16px;
+      }
+
+      header nav {
+        flex-wrap:wrap;
+      }
+    `;
+
+    document.head.append(style);
+
+    const page = make('section', undefined, 'view');
+    page.id = 'ffun-access';
+    page.hidden = true;
+
+    const heading = make('div', undefined, 'head');
+    const count = make('small');
+
+    heading.append(
+      make('h2', 'Where games run'),
+      count
+    );
+
+    const tools = make(
+      'div',
+      undefined,
+      'ffun-access-tools'
+    );
+
+    const note = make('p', '', 'notice');
+    const search = make('input', undefined, 'field');
+
+    search.type = 'search';
+    search.placeholder = 'Find a game in this section…';
+    search.setAttribute(
+      'aria-label',
+      'Find a game in this section'
+    );
+
+    const grid = make('div', undefined, 'grid');
+
+    const pager = make(
+      'div',
+      undefined,
+      'ffun-access-pager'
+    );
+
+    const position = make('small');
+
+    let selected = 'built';
+    let pageNumber = 0;
+
+    const groups = [
+      ['built', 'Built-in games'],
+      ['home', 'Miniplay · Home only'],
+      ['other', 'Other websites']
+    ];
+
+    function draw() {
+      const q = search.value.trim().toLowerCase();
+
+      const list = games.filter(game =>
+        groupOf(game) === selected &&
+        (game.name + ' ' + game.category)
+          .toLowerCase()
+          .includes(q)
+      );
+
+      const pages = Math.max(
+        1,
+        Math.ceil(list.length / 24)
+      );
+
+      pageNumber = Math.max(
+        0,
+        Math.min(pageNumber, pages - 1)
+      );
+
+      grid.replaceChildren(
+        ...list
+          .slice(pageNumber * 24, pageNumber * 24 + 24)
+          .map(card)
+      );
+
+      if (!list.length) {
+        grid.append(
+          make(
+            'p',
+            'No matches. Clear the search.',
+            'empty'
+          )
+        );
+      }
+
+      count.textContent = list.length + ' entries';
+      note.textContent = notes[selected];
+
+      position.textContent =
+        (pageNumber + 1) + ' / ' + pages;
+
+      previous.disabled = pageNumber === 0;
+      next.disabled = pageNumber === pages - 1;
+
+      tools.querySelectorAll('button').forEach(b => {
+        b.setAttribute(
+          'aria-pressed',
+          String(b.dataset.group === selected)
+        );
+      });
+    }
+
+    function visit(group = 'built') {
+      selected = group;
+      pageNumber = 0;
+      search.value = '';
+      go(page.id);
+    }
+
+    groups.forEach(([id, title]) => {
+      const b = button(title, () => visit(id));
+      b.dataset.group = id;
+      tools.append(b);
+    });
+
+    const previous = button('← Previous', () => {
+      pageNumber--;
+      draw();
+    });
+
+    const next = button('Next →', () => {
+      pageNumber++;
+      draw();
+    });
+
+    pager.append(previous, position, next);
+
+    page.append(
+      heading,
+      tools,
+      note,
+      search,
+      grid,
+      pager
+    );
+
+    document.querySelector('main').append(page);
+
+    search.oninput = () => {
+      pageNumber = 0;
+      draw();
+    };
+
+    const banner = make('section', undefined, 'notice');
+
+    banner.append(
+      make(
+        'strong',
+        'Miniplay is marked for home use. Your games are still here.'
+      )
+    );
+
+    const shortcuts = make(
+      'div',
+      undefined,
+      'ffun-access-tools'
+    );
+
+    groups.forEach(([id, title]) => {
+      shortcuts.append(
+        button(title, () => visit(id))
+      );
+    });
+
+    banner.append(shortcuts);
+    $('home').prepend(banner);
+
+    const nav = document.querySelector('header nav');
+
+    if (nav) {
+      const b = button(
+        'Game access',
+        () => visit(),
+        ''
+      );
+
+      b.dataset.go = page.id;
+      nav.append(b);
+    }
+
+    const oldGo = go;
+
+    go = function (id) {
+      const result = oldGo(id);
+      if (id === page.id) draw();
+      return result;
+    };
+
+    const oldRender = render;
+
+    render = function (...args) {
+      const result = oldRender.apply(this, args);
+      if (!page.hidden) draw();
+      return result;
+    };
+
+    /*
+      Show a clear notice before requesting a Miniplay game.
+      No alternate hosts, proxies, downloads, or copied engines.
+    */
+    const oldFrame = showFrame;
+
+    showFrame = function (url, title, source) {
+      if (!usesMiniplay(url)) {
+        return oldFrame(url, title, source);
+      }
+
+      preparePlayer(title, notes.home);
+
+      currentGame = {
+        type: 'frame',
+        url,
+        title,
+        source
+      };
+
+      const box = make(
+        'div',
+        undefined,
+        'placeholder'
+      );
+
+      box.append(
+        make(
+          'h3',
+          'Blocked at school · Home use only'
+        ),
+
+        make(
+          'p',
+          'This game still loads from Miniplay. Its code has ' +
+          'not been copied into gamefor ffun. Changing the ' +
+          'label does not unblock it.'
+        ),
+
+        button(
+          'Play at home',
+          () => oldFrame(url, title, source)
+        ),
+
+        button(
+          'View built-in games',
+          () => visit('built')
+        )
+      );
+
+      $('stage').append(box);
+
+      if ($('playerStatus')) {
+        $('playerStatus').textContent =
+          'Miniplay player not loaded yet.';
+      }
+    };
+
+    render();
+
+    /*
+      Earlier add-ons cache some shelves.
+      Label those existing cards too.
+    */
+    const names = new Map(
+      games.map(g => [g.name, g])
+    );
+
+    document.querySelectorAll('.card').forEach(node => {
+      const game = names.get(
+        node.querySelector('.info strong')?.textContent
+      );
+
+      if (game) labelCard(node, game);
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener(
+      'DOMContentLoaded',
+      install,
+      {once: true}
+    );
+  } else {
+    install();
+  }
+})();
+</script>
