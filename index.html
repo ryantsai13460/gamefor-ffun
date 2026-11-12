@@ -8523,3 +8523,730 @@ hook-pin-jam|Hook Pin Jam|Puzzle|
   }
 })();
 </script>
+<script>
+  (() => {
+  'use strict';
+
+  function install() {
+    if (window.ffunGameLinksV1) return;
+
+    const get = id => document.getElementById(id);
+
+    if (
+      typeof games === 'undefined' ||
+      !Array.isArray(games) ||
+      typeof go !== 'function' ||
+      typeof card !== 'function' ||
+      !get('home') ||
+      !document.querySelector('main')
+    ) {
+      const warning = document.createElement('p');
+      warning.className = 'notice';
+      warning.textContent =
+        'Paste Game Links after your existing gamefor ffun code.';
+      document.body.append(warning);
+      return;
+    }
+
+    const node = (tag, text, cls) => {
+      const n = document.createElement(tag);
+      if (text !== undefined) n.textContent = text;
+      if (cls) n.className = cls;
+      return n;
+    };
+
+    const button = (text, action, cls = 'button') => {
+      const b = node('button', text, cls);
+      b.type = 'button';
+      b.onclick = action;
+      return b;
+    };
+
+    const nameKey = text =>
+      String(text || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+
+    function publicURL(value) {
+      try {
+        const u = new URL(value);
+
+        if (
+          u.protocol !== 'https:' ||
+          u.username ||
+          u.password ||
+          u.port ||
+          !u.hostname.includes('.') ||
+          u.hostname.includes(':') ||
+          /^\d+\./.test(u.hostname) ||
+          /\.(local|localhost|internal)$/.test(u.hostname)
+        ) {
+          return '';
+        }
+
+        return u.href;
+      } catch (_) {
+        return '';
+      }
+    }
+
+    function isMiniplay(value) {
+      try {
+        const host = new URL(value).hostname.toLowerCase();
+
+        return [
+          'miniplay.com',
+          'minijuegos.com',
+          'minijuegosgratis.com'
+        ].some(domain =>
+          host === domain || host.endsWith('.' + domain)
+        );
+      } catch (_) {
+        return false;
+      }
+    }
+
+    const usesMiniplay = game =>
+      isMiniplay(game.url) || isMiniplay(game.embed);
+
+    /*
+      Normal publisher/developer pages, not proxy hosts.
+
+      Page locations were checked.
+      Gameplay, school access, and embedding were NOT verified.
+    */
+    const checkedPages = {
+      ovo:
+        'https://www.coolmathgames.com/0-ovo',
+
+      territorialio:
+        'https://territorial.io/',
+
+      minefunio:
+        'https://poki.com/en/g/minefun-io',
+
+      bloxdio:
+        'https://www.crazygames.com/game/bloxdhop-io'
+    };
+
+    function sources(game) {
+      const result = [];
+
+      function add(raw, checked = false, player = false) {
+        const url = publicURL(raw);
+        if (!url) return;
+
+        const previous = result.find(s => s.url === url);
+
+        if (previous) {
+          previous.checked ||= checked;
+          return;
+        }
+
+        result.push({
+          url,
+          mini: isMiniplay(url),
+          checked,
+          player
+        });
+      }
+
+      add(checkedPages[nameKey(game.name)], true);
+      add(game.url);
+
+      if (!result.length) {
+        add(game.embed, false, true);
+      }
+
+      // Show a known non-Miniplay page first, when available.
+      return result.sort(
+        (a, b) => Number(a.mini) - Number(b.mini)
+      );
+    }
+
+    const style = node('style');
+
+    style.textContent = `
+      #ffun-game-links .gl-tools {
+        display:flex;
+        gap:10px;
+        flex-wrap:wrap;
+        margin:18px 0;
+      }
+
+      #ffun-game-links .gl-tools .field {
+        flex:1 1 220px;
+        max-width:440px;
+      }
+
+      #ffun-game-links select {
+        background:#252529;
+        color:#eee;
+        border:1px solid #444;
+        border-radius:6px;
+        padding:10px;
+        max-width:100%;
+      }
+
+      .gl-entry {
+        border:1px solid var(--line,#343439);
+        border-radius:9px;
+        padding:17px;
+        margin:12px 0;
+        background:var(--panel,#1c1c20);
+      }
+
+      .gl-entry h3 {
+        font-size:15px;
+        margin:0 0 8px;
+      }
+
+      .gl-source {
+        margin-top:12px;
+      }
+
+      .gl-source small {
+        display:block;
+        line-height:1.6;
+        color:#b7b7c0;
+        margin-bottom:6px;
+      }
+
+      .gl-entry .gl-note {
+        font-size:12px;
+        line-height:1.7;
+        color:#e0cba6;
+      }
+
+      .gl-source .field {
+        font:12px monospace;
+        padding:10px;
+        width:100%;
+        min-width:0;
+      }
+
+      .gl-actions,
+      .gl-pager {
+        display:flex;
+        gap:8px;
+        flex-wrap:wrap;
+        margin-top:10px;
+        align-items:center;
+      }
+
+      .gl-actions .button {
+        font-size:11px;
+        padding:8px 11px;
+        min-height:35px;
+      }
+
+      .gl-pager {
+        justify-content:center;
+        margin:22px 0;
+      }
+
+      .gl-pager small {
+        color:var(--muted,#aaa);
+      }
+
+      .gl-card-button {
+        display:block;
+        width:100%;
+        border:0;
+        border-top:1px solid #393941;
+        border-radius:0;
+        background:none;
+        color:var(--gold,#f4c542);
+        padding:10px;
+        font-size:11px;
+        text-align:left;
+      }
+
+      #ffun-game-links textarea {
+        width:100%;
+        min-height:150px;
+        background:#252529;
+        color:#eee;
+        border:1px solid #555;
+        border-radius:6px;
+        font:12px monospace;
+      }
+
+      #ffun-game-links .gl-status {
+        font-size:12px;
+        line-height:1.7;
+        min-height:22px;
+        margin:12px 0;
+        color:#cbdab9;
+      }
+
+      header nav {
+        flex-wrap:wrap;
+      }
+    `;
+
+    document.head.append(style);
+
+    const page = node('section', undefined, 'view');
+    page.id = 'ffun-game-links';
+    page.hidden = true;
+
+    const head = node('div', undefined, 'head');
+    const count = node('small');
+
+    head.append(
+      node('h2', 'Game links'),
+      count
+    );
+
+    const explanation = node(
+      'p',
+      'Every Miniplay entry is listed. Non-Miniplay links appear ' +
+      'only when already saved or checked. Other entries still ' +
+      'have only their Miniplay source. No link is marked ' +
+      'unblocked; availability and embedding rules still apply.',
+      'notice'
+    );
+
+    const tools = node('div', undefined, 'gl-tools');
+
+    const search = node('input', undefined, 'field');
+    search.type = 'search';
+    search.placeholder = 'Find a game or publisher…';
+    search.setAttribute('aria-label', 'Search game links');
+
+    const filter = node('select');
+    filter.setAttribute('aria-label', 'Link availability');
+
+    for (const [value, title] of [
+      ['all', 'All Miniplay entries'],
+      ['other', 'Have a non-Miniplay link'],
+      ['mini', 'Only Miniplay source known']
+    ]) {
+      const option = node('option', title);
+      option.value = value;
+      filter.append(option);
+    }
+
+    const status = node('p', '', 'gl-status');
+    status.setAttribute('role', 'status');
+
+    const manual = node('textarea');
+    manual.readOnly = true;
+    manual.hidden = true;
+    manual.setAttribute(
+      'aria-label',
+      'Links selected for manual copying'
+    );
+
+    const list = node('div');
+    const pager = node('div', undefined, 'gl-pager');
+    const position = node('small');
+
+    position.setAttribute('aria-live', 'polite');
+
+    let pageNumber = 0;
+    let currentRows = [];
+
+    /*
+      Clipboard permissions can vary.
+      If automatic copying fails, select the actual text instead.
+    */
+    async function copyText(text, field) {
+      try {
+        if (!navigator.clipboard?.writeText) {
+          throw Error('Clipboard unavailable');
+        }
+
+        await navigator.clipboard.writeText(text);
+
+        status.textContent =
+          'Copied. Paste into Browse, or into your browser’s ' +
+          'address bar.';
+
+      } catch (_) {
+        const target = field || manual;
+
+        target.value = text;
+        target.hidden = false;
+        target.focus();
+        target.select();
+
+        status.textContent =
+          'Automatic copy was unavailable. The text is selected: ' +
+          'press Command+C on Mac or Ctrl+C on Windows.';
+      }
+    }
+
+    /*
+      This fills the existing Browse input.
+      It does not automatically load the site.
+    */
+    function putInBrowse(url) {
+      const field = get('webQuery');
+      if (!field || !get('browse')) return;
+
+      go('browse');
+      field.value = url;
+
+      const message = get('browseMessage');
+
+      if (message) {
+        message.textContent =
+          'Address inserted. Press Open to request this exact ' +
+          'website. It may refuse embedding.';
+      }
+
+      field.focus();
+    }
+
+    function draw() {
+      const all = games
+        .filter(usesMiniplay)
+        .map(game => ({
+          game,
+          links: sources(game)
+        }));
+
+      const alternateCount = all.filter(
+        row => row.links.some(source => !source.mini)
+      ).length;
+
+      const q = search.value.trim().toLowerCase();
+
+      currentRows = all.filter(row => {
+        const hasOther = row.links.some(source => !source.mini);
+
+        const text =
+          row.game.name + ' ' +
+          row.links.map(
+            source => new URL(source.url).hostname
+          ).join(' ');
+
+        return (
+          text.toLowerCase().includes(q) &&
+          (
+            filter.value === 'all' ||
+            (
+              filter.value === 'other'
+                ? hasOther
+                : !hasOther
+            )
+          )
+        );
+      });
+
+      count.textContent =
+        all.length + ' Miniplay entries · ' +
+        alternateCount + ' have another saved/checked link';
+
+      const pages = Math.max(
+        1,
+        Math.ceil(currentRows.length / 20)
+      );
+
+      pageNumber = Math.max(
+        0,
+        Math.min(pageNumber, pages - 1)
+      );
+
+      const fragment = document.createDocumentFragment();
+
+      for (
+        const row of currentRows.slice(
+          pageNumber * 20,
+          pageNumber * 20 + 20
+        )
+      ) {
+        const entry = node('article', undefined, 'gl-entry');
+        entry.append(node('h3', row.game.name));
+
+        if (!row.links.some(source => !source.mini)) {
+          entry.append(
+            node(
+              'p',
+              'No non-Miniplay source verified for this entry. ' +
+              'The saved link below still uses Miniplay.',
+              'gl-note'
+            )
+          );
+        }
+
+        if (!row.links.length) {
+          entry.append(
+            node('p', 'No valid HTTPS link saved.', 'gl-note')
+          );
+        }
+
+        for (const source of row.links) {
+          const box = node('div', undefined, 'gl-source');
+
+          const label = source.mini
+            ? 'Miniplay · home-use source'
+            : source.checked
+              ? 'Non-Miniplay page checked · gameplay/access not checked'
+              : 'Saved non-Miniplay link · not reverified';
+
+          box.append(
+            node(
+              'small',
+              label + (source.player ? ' · Player URL' : '')
+            )
+          );
+
+          const field = node('input', undefined, 'field');
+
+          field.type = 'text';
+          field.readOnly = true;
+          field.value = source.url;
+          field.setAttribute(
+            'aria-label',
+            row.game.name + ' source address'
+          );
+
+          field.onclick = () => field.select();
+
+          const actions = node('div', undefined, 'gl-actions');
+
+          actions.append(
+            button(
+              'Copy link',
+              () => copyText(source.url, field)
+            ),
+
+            button(
+              'Put in Browse',
+              () => putInBrowse(source.url)
+            )
+          );
+
+          const open = node(
+            'a',
+            'Open publisher ↗',
+            'button'
+          );
+
+          open.href = source.url;
+          open.target = '_blank';
+          open.rel = 'noopener noreferrer';
+
+          actions.append(open);
+          box.append(field, actions);
+          entry.append(box);
+        }
+
+        fragment.append(entry);
+      }
+
+      list.replaceChildren(fragment);
+
+      if (!currentRows.length) {
+        list.append(
+          node(
+            'p',
+            'No matches. Clear the search or change the filter.',
+            'empty'
+          )
+        );
+      }
+
+      position.textContent =
+        currentRows.length + ' matches · ' +
+        (pageNumber + 1) + ' / ' + pages;
+
+      previous.disabled = pageNumber === 0;
+      next.disabled = pageNumber === pages - 1;
+    }
+
+    const previous = button('← Previous', () => {
+      pageNumber--;
+      draw();
+    });
+
+    const next = button('Next →', () => {
+      pageNumber++;
+      draw();
+    });
+
+    pager.append(previous, position, next);
+
+    const copyAll = button('Copy matching links', () => {
+      const text = currentRows.flatMap(row =>
+        row.links.map(source =>
+          row.game.name + '\t' +
+          source.url + '\t' +
+          (source.mini ? 'Miniplay' : 'Non-Miniplay')
+        )
+      ).join('\n');
+
+      if (!text) {
+        status.textContent = 'No links to copy.';
+        return;
+      }
+
+      copyText(text);
+    });
+
+    tools.append(search, filter, copyAll);
+
+    page.append(
+      head,
+      explanation,
+      tools,
+      status,
+      manual,
+      list,
+      pager
+    );
+
+    document.querySelector('main').append(page);
+
+    function visit(name = '') {
+      search.value = name;
+      filter.value = 'all';
+      pageNumber = 0;
+      manual.hidden = true;
+      status.textContent = '';
+      go(page.id);
+    }
+
+    const oldGo = go;
+
+    go = function (id) {
+      const result = oldGo(id);
+      if (id === page.id) draw();
+      return result;
+    };
+
+    search.oninput = filter.onchange = () => {
+      pageNumber = 0;
+      manual.hidden = true;
+      draw();
+    };
+
+    const nav = button(
+      'Game links',
+      () => visit(),
+      ''
+    );
+
+    nav.dataset.go = page.id;
+    document.querySelector('header nav')?.append(nav);
+
+    const homeLink = node('div', undefined, 'gl-actions');
+
+    homeLink.append(
+      button('Copy game links', () => visit())
+    );
+
+    get('home').prepend(homeLink);
+
+    /*
+      Keep existing Play actions.
+      Add a separate links button to Miniplay game cards.
+    */
+    function decorate(c, game) {
+      if (
+        usesMiniplay(game) &&
+        !c.querySelector('.gl-card-button')
+      ) {
+        c.append(
+          button(
+            'Game links / Copy',
+            () => visit(game.name),
+            'gl-card-button'
+          )
+        );
+      }
+
+      return c;
+    }
+
+    const oldCard = card;
+
+    card = function (game) {
+      return decorate(oldCard(game), game);
+    };
+
+    /*
+      Earlier add-ons may have already rendered their cards.
+      Add the button to those without rebuilding the whole site.
+    */
+    const names = new Map(
+      games.map(game => [game.name, game])
+    );
+
+    document.querySelectorAll('.card').forEach(c => {
+      const game = names.get(
+        c.querySelector('.info strong')?.textContent
+      );
+
+      if (game) decorate(c, game);
+    });
+
+    /*
+      Honor an explicitly pasted saved publisher URL.
+
+      The old search sometimes substituted the game's Miniplay
+      player for the address you entered. This preserves that
+      known address instead.
+
+      Miniplay URLs still use your existing Miniplay handling,
+      including the home-use warning. No iframe policy is removed.
+    */
+    if (
+      typeof openAddress === 'function' &&
+      typeof safeAddress === 'function' &&
+      typeof showFrame === 'function'
+    ) {
+      const originalOpen = openAddress;
+
+      openAddress = function (input) {
+        const url = publicURL(safeAddress(input));
+
+        if (!url || isMiniplay(url)) {
+          return originalOpen(input);
+        }
+
+        const destination = new URL(url);
+
+        const key = value => {
+          const u = new URL(value);
+          return u.origin + u.pathname.replace(/\/+$/, '');
+        };
+
+        const known = games.some(game =>
+          sources(game).some(source =>
+            !source.mini &&
+            key(source.url) === key(url)
+          )
+        );
+
+        if (!known) {
+          return originalOpen(input);
+        }
+
+        return showFrame(
+          url,
+          destination.hostname,
+          url
+        );
+      };
+    }
+
+    window.ffunGameLinksV1 = Object.freeze({
+      version: '1.0'
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener(
+      'DOMContentLoaded',
+      install,
+      {once: true}
+    );
+  } else {
+    install();
+  }
+})();
+</script>
