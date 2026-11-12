@@ -6447,3 +6447,1621 @@ bob-the-robber-4|Bob the Robber 4: France|Puzzle|
   }
 })();
 </script>
+<script id="uc50-data" type="text/plain">
+wheely-6|Wheely 6: Fairytale|Puzzle|
+wheely-7|Wheely 7: Detective|Puzzle|1:213278
+wheely-8-aliens|Wheely 8: Aliens|Puzzle|
+dunk-shot|Dunk Shot|Sports|
+gravity-linez|Gravity Linez|Sports|
+perfect-dunk|Perfect Dunk|Sports|
+basketball-legend|Basketball Legend|Sports|
+basketball-rush|Basketball Rush|Sports|
+trivia-nation|Trivia Nation|Puzzle|
+pigeon-pop|Pigeon Pop|Arcade|4:257537
+screw-puzzle-3d-brain-teaser|Screw Puzzle 3D: Brain Teaser|Puzzle|
+mike-happy-glass|Mike & Happy Glass|Puzzle|
+mojicon-garden-jigsolitaire|Mojicon Garden JigSolitaire|Puzzle|
+bears-vs-art|Bears vs Art|Puzzle|
+tap-bead|Tap Bead|Puzzle|
+mr-slice|Mr. Slice|Arcade|
+kitty-match-3-puzzle-game|Kitty Match: Match 3 Puzzle Game|Puzzle|
+reach-2048|Reach 2048|Puzzle|
+blob-launcher|Blob Launcher|Puzzle|
+daddy-long-legs|Daddy Long Legs|Arcade|
+tap-away-story|Tap Away Story|Puzzle|
+worm-escape|Worm Escape|Puzzle|
+merge-fruit-characters|Merge Fruit Characters|Puzzle|
+word-stars|Word Stars|Puzzle|
+hole-market|Hole Market|Arcade|
+pixel-flow|Pixel Flow|Puzzle|1:257152
+sand-loop|Sand Loop|Puzzle|2:257130
+merge-home-mania|Merge Home Mania|Simulation|
+escape-machine-city|Escape Machine City|Puzzle|
+escape-from-the-portal|Escape from the Portal|Puzzle|
+heart-lock-key|Heart Lock Key|Puzzle|
+jigsolitaire|Jigsolitaire|Puzzle|
+yarn-fever-unravel-puzzle|Yarn Fever: Unravel Puzzle|Puzzle|
+forest-match-4|Forest Match 4|Puzzle|
+thats-my-seat|That's My Seat!|Puzzle|
+soda-block-jam|Soda Block Jam|Puzzle|
+word-search-sea|Word Search Sea|Puzzle|
+pool-merge|Pool Merge|Puzzle|
+merge-world|Merge World|Simulation|
+wordsnake|Wordsnake|Puzzle|
+cubica|Cubica|Puzzle|
+mini-golf-puzzles|Mini Golf: Puzzles|Sports|
+golf-peaks-puzzle|Golf Peaks: Puzzle|Sports|
+yummy-trails|Yummy Trails|Puzzle|
+covelink|Covelink|Puzzle|
+enclose-horse|Enclose Horse|Puzzle|5:255826
+card-solitaire-word-game|Card Solitaire: Word Game|Puzzle|
+color-nuts|Color Nuts|Puzzle|
+jigsaw-cards-daily-puzzles|Jigsaw Cards: Daily Puzzles|Puzzle|
+hook-pin-jam|Hook Pin Jam|Puzzle|
+</script>
+<script>
+  (() => {
+  'use strict';
+
+  function install() {
+    if (window.ffunChannels50) return;
+
+    const $ = id => document.getElementById(id);
+
+    const el = (tag, text, cls) => {
+      const n = document.createElement(tag);
+      if (text !== undefined) n.textContent = text;
+      if (cls) n.className = cls;
+      return n;
+    };
+
+    const btn = (text, fn, cls = 'button') => {
+      const b = el('button', text, cls);
+      b.type = 'button';
+      b.onclick = fn;
+      return b;
+    };
+
+    const link = (text, href) => {
+      const a = el('a', text, 'button');
+      a.href = href;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      return a;
+    };
+
+    const fail = text =>
+      (document.querySelector('main') || document.body)
+        .prepend(el('p', text, 'notice'));
+
+    if (
+      typeof games === 'undefined' ||
+      !Array.isArray(games) ||
+      typeof byId === 'undefined' ||
+      !(byId instanceof Map) ||
+      typeof render !== 'function' ||
+      typeof card !== 'function' ||
+      typeof go !== 'function' ||
+      typeof playVideo !== 'function' ||
+      !$('youtube') ||
+      !$('stage') ||
+      !document.querySelector('main')
+    ) {
+      fail('Keep the original gamefor ffun code above this add-on.');
+      return;
+    }
+
+    const rows = ($('uc50-data')?.textContent || '')
+      .trim()
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map(s => s.split('|'));
+
+    if (
+      rows.length !== 50 ||
+      new Set(rows.map(r => r[0])).size !== 50 ||
+      rows.some(r =>
+        r.length !== 4 ||
+        !/^[a-z0-9-]+$/.test(r[0]) ||
+        (r[3] && !/^[1-5]:\d+$/.test(r[3]))
+      )
+    ) {
+      fail('Paste the complete 50-game list before the installer.');
+      return;
+    }
+
+    const normalize = s =>
+      String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    const match = (text, query) =>
+      String(query)
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(Boolean)
+        .every(w => String(text).toLowerCase().includes(w));
+
+    const pack = [];
+    let added = 0;
+
+    for (const [slug, name, category, art] of rows) {
+      const url = 'https://www.miniplay.com/game/' + slug;
+      const embed = 'https://www.miniplay.com/embed/' + slug;
+
+      let g = games.find(x =>
+        normalize(x.name) === normalize(name) ||
+        x.url === url ||
+        x.embed === embed
+      );
+
+      if (!g) {
+        const [host, number] = art.split(':');
+
+        g = {
+          id: 'uc50-' + slug,
+          name,
+          category,
+          url,
+          embed,
+          local: false,
+          image: art
+            ? `https://www${host}.minijuegosgratis.com/v3/games/thumbnails/${number}_7_sq.jpg`
+            : ''
+        };
+
+        games.push(g);
+        byId.set(g.id, g);
+        added++;
+      }
+
+      pack.push(g);
+    }
+
+    const style = el('style');
+
+    style.textContent = `
+      .uc50-tools {
+        display:flex;
+        gap:9px;
+        align-items:center;
+        flex-wrap:wrap;
+        margin:17px 0;
+      }
+
+      .uc50-tools .field {
+        flex:1 1 210px;
+        max-width:450px;
+      }
+
+      .uc50-tools select {
+        background:#252529;
+        color:#eee;
+        border:1px solid #444;
+        border-radius:6px;
+        padding:10px;
+        max-width:100%;
+      }
+
+      .uc50-grid {
+        display:grid;
+        grid-template-columns:repeat(3,minmax(0,1fr));
+        gap:16px;
+        margin-top:20px;
+      }
+
+      .uc50-video {
+        background:var(--panel,#1c1c20);
+        border:1px solid #35353d;
+        border-radius:9px;
+        overflow:hidden;
+        min-width:0;
+      }
+
+      .uc50-play {
+        display:block;
+        background:none;
+        color:inherit;
+        border:0;
+        width:100%;
+        padding:0;
+        text-align:left;
+      }
+
+      .uc50-thumb {
+        display:grid;
+        place-items:center;
+        aspect-ratio:16/9;
+        background:#26262d;
+        color:#aaa;
+      }
+
+      .uc50-thumb img {
+        display:block;
+        width:100%;
+        height:100%;
+        object-fit:cover;
+      }
+
+      .uc50-copy {
+        display:block;
+        padding:13px;
+        font-size:13px;
+        line-height:1.5;
+      }
+
+      .uc50-copy strong {
+        display:block;
+      }
+
+      .uc50-copy small {
+        display:block;
+        color:#aaa;
+        margin-top:7px;
+        font-size:11px;
+      }
+
+      .uc50-pager {
+        display:flex;
+        gap:14px;
+        align-items:center;
+        justify-content:center;
+        margin:23px 0;
+      }
+
+      #uc50-creators textarea {
+        display:block;
+        width:100%;
+        min-height:85px;
+        resize:vertical;
+        margin:10px 0;
+        padding:12px;
+        background:#252529;
+        color:white;
+        border:1px solid #49494f;
+        border-radius:7px;
+        font:13px monospace;
+      }
+
+      #uc50-status {
+        white-space:pre-line;
+      }
+
+      .uc50-channel {
+        padding:10px 0;
+        border-bottom:1px solid #333;
+        font-size:12px;
+        line-height:1.7;
+        color:#bfbfc7;
+      }
+
+      #uc50-creators details {
+        margin:16px 0;
+      }
+
+      #uc50-creators label {
+        font-size:12px;
+      }
+
+      .uc50-tools [aria-pressed=true] {
+        border-color:var(--gold,#f4c542);
+        color:var(--gold,#f4c542);
+      }
+
+      @media(max-width:800px) {
+        .uc50-grid {
+          grid-template-columns:repeat(2,minmax(0,1fr));
+        }
+      }
+
+      @media(max-width:540px) {
+        .uc50-grid {
+          grid-template-columns:1fr;
+        }
+
+        .uc50-tools .field {
+          max-width:none;
+        }
+      }
+    `;
+
+    document.head.append(style);
+
+    /* Channel data is imported from YouTube, not guessed or scraped. */
+    const DEFAULTS = [
+      '@wemmbumc',
+      '@ParrotX2',
+      '@SpokeIsHere',
+      '@FlameFragsMC'
+    ];
+
+    const VID = /^[A-Za-z0-9_-]{11}$/;
+    const CID = /^UC[A-Za-z0-9_-]{22}$/;
+
+    const KEY = 'ffun-public-channels-v1';
+    const TTL = 7 * 24 * 60 * 60 * 1000;
+
+    let cached = [];
+    let handles = DEFAULTS.join('\n');
+    let storageOK = true;
+    let busy = false;
+    let job = null;
+    let catalog = [];
+    let videoPage = 0;
+
+    /* Keep the existing preselected videos. */
+    const seed = [];
+
+    for (
+      const line of
+      ($('ffun-videos-24')?.textContent || '')
+        .trim()
+        .split(/\r?\n/)
+    ) {
+      const [id, creator, title] = line.split('|');
+
+      if (VID.test(id || '') && title) {
+        seed.push({
+          id,
+          creator,
+          title,
+          seed: true,
+          duration: null,
+          date: ''
+        });
+      }
+    }
+
+    function checkedChannels(value) {
+      if (!Array.isArray(value)) return [];
+
+      return value
+        .filter(c =>
+          c &&
+          CID.test(c.id || '') &&
+          typeof c.handle === 'string' &&
+          Number.isFinite(c.at) &&
+          c.at <= Date.now() + 60000 &&
+          Date.now() - c.at < TTL &&
+          Array.isArray(c.items)
+        )
+        .map(c => ({
+          id: c.id,
+          handle: c.handle.slice(0, 100),
+          title: String(c.title || '').slice(0, 160),
+          at: c.at,
+
+          items: c.items
+            .filter(v =>
+              v &&
+              VID.test(v.id || '') &&
+              v.channelId === c.id
+            )
+            .map(v => ({
+              id: v.id,
+              channelId: c.id,
+              title: String(v.title || 'YouTube video')
+                .slice(0, 250),
+              creator: String(v.creator || c.title || '')
+                .slice(0, 160),
+              date: String(v.date || '').slice(0, 30),
+              duration:
+                Number.isFinite(v.duration) && v.duration >= 0
+                  ? v.duration
+                  : null,
+              embeddable: v.embeddable !== false
+            }))
+        }));
+    }
+
+    try {
+      const old = JSON.parse(localStorage.getItem(KEY) || '{}');
+
+      cached = checkedChannels(old.channels);
+
+      if (typeof old.handles === 'string') {
+        handles = old.handles.slice(0, 4000);
+      }
+    } catch (_) {
+      storageOK = false;
+    }
+
+    function saveCatalog() {
+      try {
+        localStorage.setItem(
+          KEY,
+          JSON.stringify({
+            handles: handleBox.value,
+            channels: cached
+          })
+        );
+      } catch (_) {
+        storageOK = false;
+      }
+    }
+
+    const page = el('section', undefined, 'view');
+    page.id = 'uc50-creators';
+    page.hidden = true;
+
+    const heading = el('div', undefined, 'head');
+    const count = el('small');
+
+    heading.append(
+      el('h2', 'Creator library — videos + Shorts'),
+      count
+    );
+
+    const intro = el(
+      'p',
+      'The four main creator channels are preset. Add other ' +
+      'creators or secondary channels by @handle. Import all ' +
+      'follows every uploads-playlist page; it does not stop ' +
+      'after 24 or 50 videos.',
+      'help'
+    );
+
+    const setup = el('details', undefined, 'panel');
+    setup.open = !cached.length;
+
+    setup.append(
+      el('summary', 'Connect YouTube and import all public uploads')
+    );
+
+    const handleLabel = el(
+      'label',
+      'Channels to import (one @handle or channel ID per line):'
+    );
+
+    const handleBox = el('textarea');
+    handleBox.id = 'uc50-handles';
+    handleBox.value = handles;
+    handleBox.maxLength = 4000;
+    handleBox.setAttribute('aria-label', 'Creator handles');
+
+    const apiLabel = el(
+      'label',
+      'Restricted YouTube Data API key — used for this import only:'
+    );
+
+    const apiKey = el('input', undefined, 'field');
+    apiKey.id = 'uc50-key';
+    apiKey.type = 'password';
+    apiKey.autocomplete = 'off';
+    apiKey.spellcheck = false;
+    apiKey.maxLength = 200;
+    apiKey.setAttribute(
+      'aria-label',
+      'Restricted YouTube Data API key'
+    );
+
+    const instructions = el(
+      'p',
+      'Enable YouTube Data API v3 in your Google Cloud project. ' +
+      'Restrict this key to that API and to ' +
+      'https://ryantsai13460.github.io/* ' +
+      '(and https://ryantsai13460.github.io). ' +
+      'Do not paste the key into GitHub or this chat. ' +
+      'It is sent only to Google, not saved by this add-on.'
+    );
+
+    const setupLink = link(
+      'Google API setup instructions ↗',
+      'https://developers.google.com/youtube/v3/quickstart/js'
+    );
+
+    const actions = el('div', undefined, 'uc50-tools');
+
+    const importButton = btn(
+      'Import all / refresh',
+      () => importAll(),
+      'button primary'
+    );
+
+    const stopButton = btn(
+      'Stop import',
+      () => job?.abort()
+    );
+
+    stopButton.disabled = true;
+
+    const exportButton = btn(
+      'Export public catalog',
+      exportCatalog
+    );
+
+    const clearButton = btn('Clear imported catalog', () => {
+      if (busy) return;
+
+      cached = [];
+      publishedLoaded = true;
+      saveCatalog();
+      rebuild();
+
+      report.textContent =
+        'Imported metadata cleared from this browser. ' +
+        'Existing games and saved picks remain.';
+    });
+
+    actions.append(
+      importButton,
+      stopButton,
+      exportButton,
+      clearButton
+    );
+
+    setup.append(
+      handleLabel,
+      handleBox,
+      apiLabel,
+      apiKey,
+      instructions,
+      setupLink,
+      actions,
+      el(
+        'p',
+        'No videos are downloaded. Imported titles and IDs are ' +
+        'cached here for up to 7 days. Export creates a public ' +
+        'metadata file, without the key or viewing history.'
+      )
+    );
+
+    const report = el(
+      'p',
+      cached.length
+        ? 'Cached imports loaded. Refresh to include newer uploads.'
+        : 'Not imported yet. The old saved picks are still available; ' +
+          'this is not a complete channel archive.',
+      'notice'
+    );
+
+    report.id = 'uc50-status';
+    report.setAttribute('role', 'status');
+
+    const channelStatus = el('div');
+    channelStatus.id = 'uc50-channel-status';
+
+    const tools = el('div', undefined, 'uc50-tools');
+
+    const query = el('input', undefined, 'field');
+    query.type = 'search';
+    query.placeholder = 'Find an imported video or creator…';
+    query.id = 'uc50-query';
+    query.setAttribute('aria-label', 'Search creator uploads');
+
+    const channelFilter = el('select');
+    channelFilter.setAttribute('aria-label', 'Creator filter');
+
+    const lengthFilter = el('select');
+    lengthFilter.setAttribute('aria-label', 'Video length filter');
+
+    for (const [value, title] of [
+      ['all', 'All uploads'],
+      ['short', '3 minutes or less'],
+      ['long', 'Longer than 3 minutes']
+    ]) {
+      const option = el('option', title);
+      option.value = value;
+      lengthFilter.append(option);
+    }
+
+    tools.append(query, channelFilter, lengthFilter);
+
+    const grid = el('div', undefined, 'uc50-grid');
+    grid.id = 'uc50-videos';
+
+    const pager = el('div', undefined, 'uc50-pager');
+    const pageLabel = el('small');
+
+    const prev = btn('← Previous', () => {
+      videoPage--;
+      drawVideos();
+    });
+
+    const next = btn('Next →', () => {
+      videoPage++;
+      drawVideos();
+    });
+
+    pager.append(prev, pageLabel, next);
+
+    page.append(
+      heading,
+      intro,
+      setup,
+      report,
+      channelStatus,
+      tools,
+      grid,
+      pager,
+      el(
+        'p',
+        'All uploads includes any Shorts returned by YouTube. ' +
+        'The length filter is not an exact Shorts detector. ' +
+        'Private, deleted, age/region-restricted, and ' +
+        'embedding-disabled videos are not unlocked here.',
+        'help'
+      )
+    );
+
+    document.querySelector('main').append(page);
+
+    function rebuild() {
+      cached = checkedChannels(cached);
+
+      const map = new Map(seed.map(v => [v.id, v]));
+
+      for (const channel of cached) {
+        for (const v of channel.items) {
+          map.set(v.id, v);
+        }
+      }
+
+      catalog = [...map.values()].sort((a, b) =>
+        String(b.date).localeCompare(String(a.date))
+      );
+
+      const selected = channelFilter.value;
+
+      channelFilter.replaceChildren(
+        el('option', 'All creators')
+      );
+
+      channelFilter.firstChild.value = '';
+
+      for (
+        const name of
+        [...new Set(catalog.map(v => v.creator))].sort()
+      ) {
+        const option = el('option', name);
+        option.value = name;
+        channelFilter.append(option);
+      }
+
+      if (
+        [...channelFilter.options]
+          .some(option => option.value === selected)
+      ) {
+        channelFilter.value = selected;
+      }
+
+      channelStatus.replaceChildren(
+        ...cached.map(channel =>
+          el(
+            'p',
+            `${channel.title} (${channel.handle}): ` +
+            `${channel.items.length} public uploads returned; ` +
+            `every playlist page read on ` +
+            `${new Date(channel.at).toLocaleString()}.`,
+            'uc50-channel'
+          )
+        )
+      );
+
+      exportButton.disabled = busy || !cached.length;
+      drawVideos();
+    }
+
+    function duration(value) {
+      const m =
+        /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/
+          .exec(value || '');
+
+      return m
+        ? Number(m[1] || 0) * 86400 +
+          Number(m[2] || 0) * 3600 +
+          Number(m[3] || 0) * 60 +
+          Number(m[4] || 0)
+        : null;
+    }
+
+    function timeText(n) {
+      if (n === null || n === 0) {
+        return 'Length unavailable';
+      }
+
+      const h = Math.floor(n / 3600);
+      const m = Math.floor(n % 3600 / 60);
+      const s = Math.floor(n % 60);
+
+      return (
+        h ? h + ':' + String(m).padStart(2, '0') : m
+      ) + ':' + String(s).padStart(2, '0');
+    }
+
+    function watch(v) {
+      if (v.embeddable === false) {
+        preparePlayer(
+          v.title,
+          'The creator does not allow this video to be embedded.'
+        );
+
+        currentGame = {
+          type: 'catalog',
+          id: '',
+          uc50Video: v.id
+        };
+
+        const box = el('div', undefined, 'placeholder');
+
+        box.append(
+          el('h3', v.title),
+          el(
+            'p',
+            'This video must be watched on its official YouTube page.'
+          ),
+          link(
+            'Open on YouTube ↗',
+            'https://www.youtube.com/watch?v=' + v.id
+          )
+        );
+
+        $('stage').append(box);
+        return;
+      }
+
+      playVideo(v.id);
+
+      $('playerTitle').textContent = v.title;
+      $('playerHelp').textContent =
+        'YouTube · ' + v.creator +
+        '. Use the official player controls. Availability may change.';
+
+      if (currentGame) {
+        currentGame.uc50Video = v.id;
+      }
+    }
+
+    const previousRestart = $('restartButton')?.onclick;
+
+    if ($('restartButton')) {
+      $('restartButton').onclick = function (event) {
+        const v = catalog.find(
+          x => x.id === currentGame?.uc50Video
+        );
+
+        if (v) return watch(v);
+
+        if (typeof previousRestart === 'function') {
+          return previousRestart.call(this, event);
+        }
+      };
+    }
+
+    function drawVideos() {
+      if (cached.some(channel => Date.now() - channel.at >= TTL)) {
+        rebuild();
+        return;
+      }
+
+      const list = catalog.filter(v =>
+        match(v.title + ' ' + v.creator + ' unstable smp', query.value) &&
+        (
+          !channelFilter.value ||
+          channelFilter.value === v.creator
+        ) &&
+        (
+          lengthFilter.value === 'all' ||
+          (
+            v.duration !== null &&
+            v.duration > 0 &&
+            (
+              lengthFilter.value === 'short'
+                ? v.duration <= 180
+                : v.duration > 180
+            )
+          )
+        )
+      );
+
+      const pages = Math.max(1, Math.ceil(list.length / 12));
+
+      videoPage = Math.max(
+        0,
+        Math.min(videoPage, pages - 1)
+      );
+
+      const fragment = document.createDocumentFragment();
+
+      for (
+        const v of list.slice(videoPage * 12, videoPage * 12 + 12)
+      ) {
+        const article = el('article', undefined, 'uc50-video');
+        const play = btn('', () => watch(v), 'uc50-play');
+
+        const thumb = el('span', undefined, 'uc50-thumb');
+        const img = el('img');
+
+        img.src =
+          'https://i.ytimg.com/vi/' + v.id + '/mqdefault.jpg';
+        img.alt = '';
+        img.loading = 'lazy';
+        img.decoding = 'async';
+
+        img.onerror = () => {
+          img.remove();
+          thumb.textContent = 'Preview unavailable';
+        };
+
+        thumb.append(img);
+
+        const copy = el('span', undefined, 'uc50-copy');
+
+        copy.append(
+          el('strong', v.title),
+          el(
+            'small',
+            v.creator + ' · ' +
+            (v.seed ? 'Saved pick' : timeText(v.duration)) +
+            (v.embeddable === false ? ' · YouTube only' : '')
+          )
+        );
+
+        play.append(thumb, copy);
+        article.append(play);
+        fragment.append(article);
+      }
+
+      grid.replaceChildren(fragment);
+
+      if (!list.length) {
+        grid.append(
+          el(
+            'p',
+            'No matches. Import channels, or clear the search ' +
+            'and length filter.',
+            'empty'
+          )
+        );
+      }
+
+      count.textContent =
+        `${catalog.length} unique entries · ` +
+        `${cached.length} channels imported`;
+
+      pageLabel.textContent =
+        `${list.length} matches · Page ${videoPage + 1} / ${pages}`;
+
+      prev.disabled = videoPage === 0;
+      next.disabled = videoPage === pages - 1;
+    }
+
+    query.oninput =
+    channelFilter.onchange =
+    lengthFilter.onchange = () => {
+      videoPage = 0;
+      drawVideos();
+    };
+
+    function parseHandles(text) {
+      const result = [];
+
+      for (let handle of text.split(/[\s,]+/).filter(Boolean)) {
+        if (/^https:\/\//i.test(handle)) {
+          const u = new URL(handle);
+
+          if (
+            !['youtube.com', 'www.youtube.com', 'm.youtube.com']
+              .includes(u.hostname)
+          ) {
+            throw Error('Use YouTube channel handles only.');
+          }
+
+          handle = u.pathname.startsWith('/channel/')
+            ? u.pathname.split('/')[2]
+            : u.pathname.split('/')[1];
+        }
+
+        if (!CID.test(handle)) {
+          handle = handle.replace(/^@/, '');
+
+          if (!/^[A-Za-z0-9_.-]{3,50}$/.test(handle)) {
+            throw Error(
+              'Use an @handle or UC channel ID for each channel.'
+            );
+          }
+
+          handle = '@' + handle;
+        }
+
+        if (
+          !result.some(
+            x => x.toLowerCase() === handle.toLowerCase()
+          )
+        ) {
+          result.push(handle);
+        }
+      }
+
+      if (!result.length) {
+        throw Error('Enter at least one creator handle.');
+      }
+
+      return result;
+    }
+
+    async function yt(resource, params, key, signal) {
+      if (
+        !['channels', 'playlistItems', 'videos'].includes(resource)
+      ) {
+        throw Error('Invalid API resource.');
+      }
+
+      const url = new URL(
+        'https://www.googleapis.com/youtube/v3/' + resource
+      );
+
+      url.search = new URLSearchParams({...params, key});
+
+      const timeout = new AbortController();
+      const stop = () => timeout.abort();
+
+      signal.addEventListener('abort', stop, {once: true});
+      const timer = setTimeout(stop, 18000);
+
+      try {
+        if (signal.aborted) {
+          throw new DOMException('Stopped', 'AbortError');
+        }
+
+        const response = await fetch(url, {
+          signal: timeout.signal,
+          credentials: 'omit',
+          cache: 'no-store',
+          referrerPolicy: 'strict-origin-when-cross-origin'
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          const reason = data.error?.errors?.[0]?.reason;
+
+          if (
+            [
+              'quotaExceeded',
+              'dailyLimitExceeded',
+              'rateLimitExceeded'
+            ].includes(reason)
+          ) {
+            throw Error(
+              'YouTube quota reached. Wait for your quota to reset.'
+            );
+          }
+
+          throw Error(
+            'YouTube API rejected the request (' +
+            response.status +
+            '). Check API enablement, key, and website restrictions.'
+          );
+        }
+
+        return data;
+
+      } finally {
+        clearTimeout(timer);
+        signal.removeEventListener('abort', stop);
+      }
+    }
+
+    async function importAll() {
+      if (busy) return;
+
+      let requested;
+
+      try {
+        requested = parseHandles(handleBox.value);
+      } catch (e) {
+        report.textContent = e.message;
+        return;
+      }
+
+      const key = apiKey.value.trim();
+
+      if (!key) {
+        setup.open = true;
+        report.textContent =
+          'Enter your restricted YouTube Data API key first. ' +
+          'No complete archive has been imported yet.';
+        return;
+      }
+
+      if (location.protocol !== 'https:') {
+        report.textContent =
+          'Run this importer on your HTTPS GitHub Pages site, ' +
+          'not as a downloaded file.';
+        return;
+      }
+
+      busy = true;
+      job = new AbortController();
+      const signal = job.signal;
+
+      apiKey.value = '';
+      apiKey.disabled = true;
+      handleBox.disabled = true;
+      importButton.disabled = true;
+      stopButton.disabled = false;
+      clearButton.disabled = true;
+      exportButton.disabled = true;
+
+      let complete = 0;
+      const messages = [];
+
+      try {
+        for (const handle of requested) {
+          if (signal.aborted) break;
+
+          report.textContent =
+            messages.join('\n') + '\nResolving ' + handle + '…';
+
+          try {
+            const data = await yt(
+              'channels',
+              {
+                part: 'snippet,contentDetails',
+                ...(
+                  CID.test(handle)
+                    ? {id: handle}
+                    : {forHandle: handle}
+                )
+              },
+              key,
+              signal
+            );
+
+            const channel = data.items?.[0];
+            const uploads =
+              channel?.contentDetails?.relatedPlaylists?.uploads;
+
+            if (
+              !channel ||
+              !CID.test(channel.id) ||
+              !uploads
+            ) {
+              throw Error(
+                'Channel not found. Check its exact @handle.'
+              );
+            }
+
+            const result = new Map();
+            const seen = new Set();
+
+            let token = '';
+            let pages = 0;
+
+            do {
+              if (seen.has(token)) {
+                throw Error(
+                  'YouTube repeated a page token; import stopped ' +
+                  'instead of claiming completion.'
+                );
+              }
+
+              seen.add(token);
+
+              const pageData = await yt(
+                'playlistItems',
+                {
+                  part: 'contentDetails',
+                  playlistId: uploads,
+                  maxResults: '50',
+                  ...(token ? {pageToken: token} : {})
+                },
+                key,
+                signal
+              );
+
+              if (
+                !Array.isArray(pageData.items) ||
+                (
+                  pageData.nextPageToken &&
+                  typeof pageData.nextPageToken !== 'string'
+                )
+              ) {
+                throw Error(
+                  'YouTube returned an incomplete playlist response.'
+                );
+              }
+
+              const ids = [
+                ...new Set(
+                  pageData.items
+                    .map(x => x.contentDetails?.videoId)
+                    .filter(id => VID.test(id || ''))
+                )
+              ];
+
+              if (ids.length) {
+                const details = await yt(
+                  'videos',
+                  {
+                    part: 'snippet,contentDetails,status',
+                    id: ids.join(',')
+                  },
+                  key,
+                  signal
+                );
+
+                if (!Array.isArray(details.items)) {
+                  throw Error(
+                    'YouTube returned an incomplete video response.'
+                  );
+                }
+
+                for (const v of details.items) {
+                  if (
+                    !VID.test(v.id || '') ||
+                    v.snippet?.channelId !== channel.id ||
+                    v.status?.privacyStatus !== 'public'
+                  ) {
+                    continue;
+                  }
+
+                  result.set(v.id, {
+                    id: v.id,
+                    channelId: channel.id,
+                    title: v.snippet.title,
+                    creator: v.snippet.channelTitle,
+                    date: v.snippet.publishedAt,
+                    duration: duration(v.contentDetails?.duration),
+                    embeddable: v.status.embeddable !== false
+                  });
+                }
+              }
+
+              pages++;
+              token = pageData.nextPageToken || '';
+
+              report.textContent =
+                messages.join('\n') +
+                `\n${handle}: ${pages} playlist pages read; ` +
+                `${result.size} public uploads collected` +
+                (
+                  token
+                    ? ' — continuing…'
+                    : ' — final page.'
+                );
+
+            } while (token);
+
+            if (signal.aborted) {
+              throw new DOMException('Stopped', 'AbortError');
+            }
+
+            const entry = {
+              id: channel.id,
+              handle,
+              title: channel.snippet.title,
+              at: Date.now(),
+              items: [...result.values()]
+            };
+
+            /*
+              Replace a channel only after every page succeeds.
+              An interrupted import never replaces a complete cache.
+            */
+            cached = cached.filter(c => c.id !== entry.id);
+            cached.push(entry);
+
+            complete++;
+            saveCatalog();
+            rebuild();
+
+            messages.push(
+              `${entry.title}: complete for this scan ` +
+              `(${entry.items.length} public uploads returned).`
+            );
+
+          } catch (e) {
+            if (signal.aborted) {
+              messages.push(
+                'Import stopped. Completed channels were kept; ' +
+                'unfinished channels were not marked complete.'
+              );
+              break;
+            }
+
+            messages.push(
+              handle + ': ' +
+              (
+                e.name === 'AbortError'
+                  ? 'Request timed out. Try again.'
+                  : e.message
+              )
+            );
+          }
+        }
+
+      } finally {
+        busy = false;
+        job = null;
+
+        apiKey.value = '';
+        apiKey.disabled = false;
+        handleBox.disabled = false;
+        importButton.disabled = false;
+        stopButton.disabled = true;
+        clearButton.disabled = false;
+
+        report.textContent =
+          messages.join('\n') +
+          `\n${complete} of ${requested.length} requested ` +
+          'channels completed this run.' +
+          (
+            !storageOK
+              ? ' Browser storage is unavailable; export the ' +
+                'public catalog to keep these results.'
+              : ''
+          );
+
+        rebuild();
+      }
+    }
+
+    function exportCatalog() {
+      cached = checkedChannels(cached);
+
+      if (!cached.length) {
+        report.textContent =
+          'Import at least one complete channel before exporting.';
+        return;
+      }
+
+      const file = JSON.stringify(
+        {version: 1, channels: cached},
+        null,
+        2
+      );
+
+      const url = URL.createObjectURL(
+        new Blob([file], {type: 'application/json'})
+      );
+
+      const a = el('a');
+      a.href = url;
+      a.download = 'unstable-library.json';
+
+      document.body.append(a);
+      a.click();
+      a.remove();
+
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+      report.textContent =
+        'Exported public titles and IDs only. Upload ' +
+        'unstable-library.json beside index.html to share this ' +
+        'catalog across devices. Refresh and replace it within 7 days.';
+    }
+
+    let publishedLoaded = false;
+
+    async function loadPublished() {
+      if (
+        publishedLoaded ||
+        location.protocol !== 'https:' ||
+        busy
+      ) {
+        return;
+      }
+
+      publishedLoaded = true;
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+
+      try {
+        const response = await fetch('unstable-library.json', {
+          cache: 'no-store',
+          credentials: 'same-origin',
+          signal: controller.signal
+        });
+
+        if (!response.ok) return;
+
+        const data = await response.json();
+        if (busy) return;
+
+        const incoming = checkedChannels(data.channels);
+        let changed = false;
+
+        for (const channel of incoming) {
+          const old = cached.find(x => x.id === channel.id);
+
+          if (!old || old.at < channel.at) {
+            cached = cached.filter(x => x.id !== channel.id);
+            cached.push(channel);
+            changed = true;
+          }
+        }
+
+        if (changed) {
+          saveCatalog();
+          rebuild();
+
+          report.textContent =
+            'Published public catalog loaded. Counts below show ' +
+            'when each channel was imported.';
+
+        } else if (
+          Array.isArray(data.channels) &&
+          data.channels.length &&
+          !incoming.length
+        ) {
+          report.textContent =
+            'The published catalog is expired or invalid. ' +
+            'Import channels again and replace the exported JSON file.';
+        }
+
+      } catch (_) {
+        /* No published catalog yet: the local importer still works. */
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    const visit = () => {
+      go(page.id);
+      rebuild();
+      loadPublished();
+    };
+
+    const shortcut = el('div', undefined, 'uc50-tools');
+
+    shortcut.append(
+      btn(
+        'All creator uploads + Shorts',
+        visit,
+        'button primary'
+      )
+    );
+
+    $('youtube').prepend(shortcut);
+
+    const homeBar = el('div', undefined, 'uc50-tools');
+    homeBar.append(btn('Creator library', visit));
+    $('home').append(homeBar);
+
+    /*
+      Preserve existing YouTube search.
+      After importing, saved-library keyword searches can search
+      the full imported catalog. Pasted links remain unchanged.
+    */
+    document.addEventListener('submit', event => {
+      const form = event.target;
+
+      const youtubeForm = form.id === 'youtubeSearch';
+      const homeForm =
+        form.id === 'mainSearch' &&
+        $('mainMode')?.value === 'youtube';
+
+      if (!youtubeForm && !homeForm) return;
+
+      const q = (
+        youtubeForm ? $('youtubeQuery') : $('mainQuery')
+      )?.value.trim() || '';
+
+      if (
+        !cached.length ||
+        /^(https?:\/\/|(?:www\.)?(?:youtube\.com|youtu\.be)\/)/i
+          .test(q)
+      ) {
+        return;
+      }
+
+      const oldScope = $('youtube').querySelector(
+        'select[aria-label="Video search scope"]'
+      );
+
+      if (oldScope?.value === 'online') return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      query.value = q;
+      channelFilter.value = '';
+      lengthFilter.value = 'all';
+      videoPage = 0;
+
+      visit();
+
+    }, true);
+
+    /*
+      New game collection: 24 cards per page.
+      Reuses the existing game player and favorites.
+    */
+    const gamePage = el('section', undefined, 'view');
+    gamePage.id = 'uc50-games';
+    gamePage.hidden = true;
+
+    const gameHead = el('div', undefined, 'head');
+    const gameCount = el('small');
+
+    gameHead.append(
+      el('h2', '50 more games'),
+      gameCount
+    );
+
+    const gameSearch = el('input', undefined, 'field');
+    gameSearch.type = 'search';
+    gameSearch.placeholder = 'Search the new games…';
+    gameSearch.setAttribute(
+      'aria-label',
+      'Search 50 new games'
+    );
+
+    const gameGrid = el('div', undefined, 'grid');
+    gameGrid.style.marginTop = '18px';
+
+    const gamePager = el('div', undefined, 'uc50-pager');
+    const gameNumber = el('small');
+
+    let gp = 0;
+
+    const gpPrev = btn('← Previous', () => {
+      gp--;
+      drawGames();
+    });
+
+    const gpNext = btn('Next →', () => {
+      gp++;
+      drawGames();
+    });
+
+    gamePager.append(gpPrev, gameNumber, gpNext);
+
+    gamePage.append(
+      gameHead,
+      gameSearch,
+      gameGrid,
+      gamePager,
+      el(
+        'p',
+        'Online players require their original hosts. ' +
+        'Publisher links and embeds were located; ' +
+        'live gameplay is not guaranteed.',
+        'help'
+      )
+    );
+
+    document.querySelector('main').append(gamePage);
+
+    function drawGames() {
+      const list = pack.filter(g =>
+        match(
+          g.name + ' ' + g.category,
+          gameSearch.value
+        )
+      );
+
+      const pages = Math.max(1, Math.ceil(list.length / 24));
+      gp = Math.max(0, Math.min(gp, pages - 1));
+
+      gameGrid.replaceChildren(
+        ...list.slice(gp * 24, gp * 24 + 24).map(card)
+      );
+
+      if (!list.length) {
+        gameGrid.append(
+          el('p', 'No matches. Clear the search.', 'empty')
+        );
+      }
+
+      gameCount.textContent = list.length + ' entries';
+      gameNumber.textContent = `${gp + 1} / ${pages}`;
+      gpPrev.disabled = gp === 0;
+      gpNext.disabled = gp === pages - 1;
+    }
+
+    const visitGames = () => {
+      go(gamePage.id);
+      drawGames();
+    };
+
+    gameSearch.oninput = () => {
+      gp = 0;
+      drawGames();
+    };
+
+    homeBar.append(btn('50 new games', visitGames));
+
+    if ($('categories')) {
+      $('categories').append(
+        btn('New 50', visitGames, 'filter')
+      );
+    }
+
+    const oldRender = render;
+
+    render = function (...args) {
+      const result = oldRender.apply(this, args);
+
+      if (currentView === gamePage.id) {
+        drawGames();
+      }
+
+      return result;
+    };
+
+    const originalGo = go;
+
+    go = function (next) {
+      if (next !== page.id && busy) {
+        job?.abort();
+      }
+
+      return originalGo(next);
+    };
+
+    const credits = $('credits');
+
+    if (credits) {
+      const details = el('details', undefined, 'panel');
+      details.style.marginTop = '18px';
+
+      details.append(
+        el('summary', 'Creator library and new-game sources')
+      );
+
+      let filled = false;
+
+      details.ontoggle = () => {
+        if (!details.open || filled) return;
+        filled = true;
+
+        details.append(
+          el(
+            'p',
+            'Unofficial creator library. Videos remain on YouTube; ' +
+            'game engines remain on their publishers.'
+          )
+        );
+
+        for (const handle of DEFAULTS) {
+          details.append(
+            link(handle, 'https://www.youtube.com/' + handle)
+          );
+        }
+
+        const list = el('div', undefined, 'source-list');
+
+        for (const g of pack) {
+          list.append(link(g.name, g.url));
+        }
+
+        details.append(list);
+      };
+
+      credits.append(details);
+    }
+
+    window.addEventListener('pagehide', () => {
+      job?.abort();
+      apiKey.value = '';
+    });
+
+    window.ffunChannels50 = Object.freeze({
+      version: '1.0',
+      addedGames: added,
+      configuredChannels: DEFAULTS.slice()
+    });
+
+    saveCatalog();
+    rebuild();
+    render();
+
+    if ($('health')) {
+      $('health').textContent =
+        'Ready · ' + games.length + ' entries';
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener(
+      'DOMContentLoaded',
+      install,
+      {once: true}
+    );
+  } else {
+    install();
+  }
+})();
+</script>
