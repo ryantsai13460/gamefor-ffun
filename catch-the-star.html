@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Catch the Star</title>
+    <style>
+      body {
+        background: #151520;
+        color: white;
+        font-family: Arial, sans-serif;
+        text-align: center;
+        padding: 30px;
+      }
+
+      button {
+        background: gold;
+        border: none;
+        border-radius: 12px;
+        padding: 30px;
+        font-size: 45px;
+        cursor: pointer;
+        margin-top: 30px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>⭐ Catch the Star!</h1>
+    <p>Click the star to earn points!</p>
+    <h2 id="score">Score: 0</h2>
+
+    <button id="star">⭐</button>
+
+    <script>
+      let score = 0;
+
+      document.getElementById('star').onclick = () => {
+        score++;
+        document.getElementById('score').textContent = 'Score: ' + score;
+      };
+    </script>
+  </body>
+</html>
