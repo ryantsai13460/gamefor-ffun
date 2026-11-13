@@ -10199,3 +10199,2177 @@ hook-pin-jam|Hook Pin Jam|Puzzle|
   }
 })();
 </script>
+<script>
+(() => {
+  'use strict';
+
+  function install() {
+    if (window.ffunCleanV1) return;
+
+    const $ = id => document.getElementById(id);
+
+    if (
+      typeof games === 'undefined' ||
+      !Array.isArray(games) ||
+      typeof byId === 'undefined' ||
+      typeof go !== 'function' ||
+      typeof openGame !== 'function' ||
+      typeof preparePlayer !== 'function' ||
+      !$('stage') ||
+      !$('playerLinks') ||
+      !document.querySelector('main')
+    ) {
+      const p = document.createElement('p');
+      p.textContent =
+        'Keep your existing gamefor ffun code above this add-on.';
+      document.body.append(p);
+      return;
+    }
+
+    const el = (tag, text, cls) => {
+      const n = document.createElement(tag);
+      if (text !== undefined) n.textContent = text;
+      if (cls) n.className = cls;
+      return n;
+    };
+
+    const button = (text, fn, cls = 'button') => {
+      const b = el('button', text, cls);
+      b.type = 'button';
+      b.onclick = fn;
+      return b;
+    };
+
+    const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+
+    const overlap = (a, b) =>
+      a.x < b.x + b.w &&
+      a.x + a.w > b.x &&
+      a.y < b.y + b.h &&
+      a.y + a.h > b.y;
+
+    let active = null;
+    let q = '';
+    let group = 'all';
+    let page = 0;
+
+    const oldIds = games.map(g => g.id);
+    const STORE = 'ffun-original-games-v1';
+
+    let best = {};
+
+    try {
+      const v = JSON.parse(localStorage.getItem(STORE) || '{}');
+
+      if (
+        v &&
+        typeof v === 'object' &&
+        !Array.isArray(v)
+      ) {
+        best = v;
+      }
+    } catch (_) {}
+
+    function record(key, seconds) {
+      if (!Number.isFinite(seconds) || seconds <= 0) return;
+
+      if (
+        !Number.isFinite(best[key]) ||
+        seconds < best[key]
+      ) {
+        best[key] = seconds;
+      }
+
+      try {
+        localStorage.setItem(STORE, JSON.stringify(best));
+      } catch (_) {}
+    }
+
+    function rect(c, x, y, w, h, color) {
+      c.fillStyle = color;
+      c.fillRect(x, y, w, h);
+    }
+
+    function text(
+      c, s, x, y,
+      size = 20,
+      color = '#ecedf0',
+      align = 'left'
+    ) {
+      c.fillStyle = color;
+      c.font = `600 ${size}px system-ui`;
+      c.textAlign = align;
+      c.fillText(s, x, y);
+    }
+
+    function background(c) {
+      rect(c, 0, 0, 800, 450, '#101a22');
+
+      c.strokeStyle = '#1c2b36';
+      c.lineWidth = 1;
+
+      for (let x = 0; x < 800; x += 40) {
+        c.beginPath();
+        c.moveTo(x, 0);
+        c.lineTo(x, 450);
+        c.stroke();
+      }
+
+      for (let y = 10; y < 450; y += 40) {
+        c.beginPath();
+        c.moveTo(0, y);
+        c.lineTo(800, y);
+        c.stroke();
+      }
+    }
+
+    /*
+      SKYLINE SPRINT
+      Eight original stages, double jump and checkpoints.
+
+      Stage format:
+      platforms, crystals, reset pads, goal.
+    */
+    function skyline() {
+      const levels = [
+        [
+          [
+            [0,400,800,50],
+            [160,334,115,16],
+            [345,278,115,16],
+            [545,334,105,16]
+          ],
+          [[214,308],[400,252],[597,308]],
+          [],
+          [738,400]
+        ],
+
+        [
+          [
+            [0,400,170,50],
+            [292,400,190,50],
+            [650,400,150,50],
+            [185,325,82,16],
+            [450,272,88,16],
+            [555,332,74,16]
+          ],
+          [[225,299],[495,246],[590,306]],
+          [],
+          [738,400]
+        ],
+
+        [
+          [
+            [0,400,800,50],
+            [130,326,95,16],
+            [305,253,100,16],
+            [490,190,100,16],
+            [660,265,100,16]
+          ],
+          [[175,300],[350,227],[540,164]],
+          [[240,386,48,14],[435,386,48,14]],
+          [710,265]
+        ],
+
+        [
+          [
+            [0,400,155,50],
+            [240,345,92,18],
+            [420,285,105,18],
+            [585,343,90,18],
+            [710,400,90,50]
+          ],
+          [[286,319],[470,259],[628,317]],
+          [],
+          [755,400]
+        ],
+
+        [
+          [
+            [0,400,800,50],
+            [110,315,100,18],
+            [280,245,105,18],
+            [470,315,95,18],
+            [645,245,100,18]
+          ],
+          [[160,289],[335,219],[695,219]],
+          [
+            [220,386,70,14],
+            [385,386,75,14],
+            [565,386,70,14]
+          ],
+          [695,245]
+        ],
+
+        [
+          [
+            [0,400,130,50],
+            [220,350,85,18],
+            [390,295,100,18],
+            [565,235,95,18],
+            [700,335,100,18]
+          ],
+          [[262,324],[435,269],[612,209]],
+          [],
+          [746,335]
+        ],
+
+        [
+          [
+            [0,400,800,50],
+            [130,320,95,18],
+            [315,240,95,18],
+            [500,160,95,18],
+            [660,240,100,18]
+          ],
+          [[175,294],[360,214],[545,134]],
+          [
+            [235,386,65,14],
+            [425,386,65,14],
+            [610,386,50,14]
+          ],
+          [712,240]
+        ],
+
+        [
+          [
+            [0,400,130,50],
+            [205,330,85,18],
+            [385,260,90,18],
+            [555,190,90,18],
+            [705,290,95,18]
+          ],
+          [[247,304],[430,234],[600,164]],
+          [],
+          [753,290]
+        ]
+      ];
+
+      let level = 0;
+      let t = 0;
+      let retries = 0;
+
+      let crystals;
+      let platforms;
+      let pads;
+      let goal;
+      let p;
+      let spawn;
+      let checkpoint;
+
+      let jumps = 0;
+      let buffer = 0;
+      let coyote = 0;
+      let done = false;
+
+      function load() {
+        const l = levels[level];
+
+        platforms = l[0].map(
+          ([x,y,w,h]) => ({x,y,w,h})
+        );
+
+        crystals = l[1].map(
+          ([x,y]) => ({x,y,taken:false})
+        );
+
+        pads = l[2].map(
+          ([x,y,w,h]) => ({x,y,w,h})
+        );
+
+        goal = {x:l[3][0], y:l[3][1]};
+        spawn = {x:42, y:365};
+
+        p = {
+          ...spawn,
+          w:20,
+          h:28,
+          vx:0,
+          vy:0
+        };
+
+        checkpoint = false;
+        t = 0;
+        retries = 0;
+        done = false;
+        jumps = 0;
+        buffer = 0;
+        coyote = 0;
+      }
+
+      function resetPosition() {
+        p.x = spawn.x;
+        p.y = spawn.y;
+        p.vx = 0;
+        p.vy = 0;
+
+        jumps = 0;
+        buffer = 0;
+        coyote = 0;
+        retries++;
+      }
+
+      load();
+
+      return {
+        title: 'Skyline Sprint',
+
+        instructions:
+          'A/D or Left/Right: move. Space/W/Up: jump; ' +
+          'press again for an air jump. Collect three crystals, ' +
+          'then reach the flag. Middle crystal sets a checkpoint.',
+
+        controls: [
+          ['Left','left'],
+          ['Right','right'],
+          ['Jump','up']
+        ],
+
+        reset: load,
+
+        next() {
+          if (done && level < levels.length - 1) {
+            level++;
+            load();
+          }
+        },
+
+        input(key) {
+          if (key === 'up') buffer = .13;
+        },
+
+        update(dt, held) {
+          if (done) return;
+
+          t += dt;
+          buffer = Math.max(0, buffer - dt);
+          coyote = Math.max(0, coyote - dt);
+
+          const axis =
+            Number(held.has('right')) -
+            Number(held.has('left'));
+
+          const target = axis * 220;
+
+          p.vx +=
+            (target - p.vx) *
+            Math.min(1, 14 * dt);
+
+          if (
+            buffer > 0 &&
+            (coyote > 0 || jumps < 2)
+          ) {
+            p.vy = -445;
+            jumps = coyote > 0 ? 1 : jumps + 1;
+            coyote = 0;
+            buffer = 0;
+          }
+
+          p.vy = Math.min(720, p.vy + 1250 * dt);
+          p.x += p.vx * dt;
+
+          for (const b of platforms) {
+            if (overlap(p,b)) {
+              p.x = p.vx > 0
+                ? b.x - p.w
+                : b.x + b.w;
+
+              p.vx = 0;
+            }
+          }
+
+          p.x = clamp(p.x, 0, 800 - p.w);
+          p.y += p.vy * dt;
+
+          for (const b of platforms) {
+            if (overlap(p,b)) {
+              if (p.vy >= 0) {
+                p.y = b.y - p.h;
+                coyote = .09;
+                jumps = 0;
+              } else {
+                p.y = b.y + b.h;
+              }
+
+              p.vy = 0;
+            }
+          }
+
+          if (
+            p.y > 510 ||
+            pads.some(b => overlap(p,b))
+          ) {
+            resetPosition();
+            return;
+          }
+
+          crystals.forEach((v,i) => {
+            if (
+              !v.taken &&
+              Math.hypot(
+                p.x + 10 - v.x,
+                p.y + 14 - v.y
+              ) < 28
+            ) {
+              v.taken = true;
+
+              if (i === 1) {
+                const floor = platforms
+                  .filter(b =>
+                    v.x >= b.x &&
+                    v.x <= b.x + b.w &&
+                    b.y >= v.y
+                  )
+                  .sort((a,b) => a.y - b.y)[0];
+
+                if (floor) {
+                  spawn = {
+                    x: clamp(
+                      v.x - 10,
+                      floor.x,
+                      floor.x + floor.w - p.w
+                    ),
+                    y: floor.y - p.h
+                  };
+
+                  checkpoint = true;
+                }
+              }
+            }
+          });
+
+          if (
+            crystals.every(v => v.taken) &&
+            Math.abs(p.x + 10 - goal.x) < 30 &&
+            Math.abs(p.y + p.h - goal.y) < 36
+          ) {
+            done = true;
+            record('skyline-' + level, t);
+          }
+        },
+
+        draw(c) {
+          background(c);
+
+          for (let i = 0; i < 12; i++) {
+            const h = 45 + (i * 41) % 130;
+
+            rect(
+              c, i * 75, 450 - h,
+              58, h, '#192732'
+            );
+
+            rect(
+              c, i * 75 + 10, 460 - h,
+              5, 6, '#2c3b46'
+            );
+          }
+
+          for (const b of platforms) {
+            rect(c,b.x,b.y,b.w,b.h,'#405765');
+            rect(c,b.x,b.y,b.w,3,'#97bac2');
+          }
+
+          pads.forEach(b => {
+            c.fillStyle = '#d78e72';
+
+            for (
+              let x = b.x;
+              x < b.x + b.w;
+              x += 12
+            ) {
+              c.beginPath();
+              c.moveTo(x, b.y + b.h);
+              c.lineTo(x + 6, b.y);
+              c.lineTo(x + 12, b.y + b.h);
+              c.fill();
+            }
+          });
+
+          if (checkpoint) {
+            rect(
+              c,spawn.x+10,spawn.y-17,
+              2,17,'#88c0af'
+            );
+
+            rect(
+              c,spawn.x+12,spawn.y-17,
+              14,8,'#88c0af'
+            );
+          }
+
+          crystals.forEach(v => {
+            if (v.taken) return;
+
+            c.fillStyle = '#f2ca66';
+            c.beginPath();
+            c.moveTo(v.x, v.y - 10);
+            c.lineTo(v.x + 8, v.y);
+            c.lineTo(v.x, v.y + 10);
+            c.lineTo(v.x - 8, v.y);
+            c.closePath();
+            c.fill();
+          });
+
+          rect(
+            c, goal.x, goal.y - 57,
+            3, 57, '#d7dfe0'
+          );
+
+          c.fillStyle = crystals.every(v => v.taken)
+            ? '#a8d69b'
+            : '#6f7b87';
+
+          c.beginPath();
+          c.moveTo(goal.x + 3, goal.y - 57);
+          c.lineTo(goal.x + 30, goal.y - 47);
+          c.lineTo(goal.x + 3, goal.y - 36);
+          c.fill();
+
+          rect(c,p.x,p.y,p.w,p.h,'#f4d174');
+
+          rect(
+            c,
+            p.x + (p.vx < 0 ? 3 : 12),
+            p.y + 6,
+            4,4,
+            '#24313a'
+          );
+
+          text(
+            c,
+            'STAGE ' + (level + 1) + ' / 8',
+            22,31,14,'#bbc8cf'
+          );
+
+          text(
+            c,
+            crystals.filter(v => v.taken).length +
+              ' / 3 CRYSTALS',
+            778,31,14,'#f2ca66','right'
+          );
+        },
+
+        hud: () =>
+          `Stage ${level+1}/8 · ${t.toFixed(1)}s · ` +
+          `${retries} retries` +
+          (checkpoint ? ' · Checkpoint saved' : '') +
+          (
+            Number.isFinite(best['skyline-'+level])
+              ? ' · Best ' +
+                best['skyline-'+level].toFixed(1) + 's'
+              : ''
+          ),
+
+        done: () => done,
+
+        message: () => level === 7
+          ? 'All eight stages complete!'
+          : 'Stage cleared!',
+
+        canNext: () => done && level < 7,
+
+        snapshot: () => ({
+          kind:'skyline',
+          level,
+          x:p.x,
+          y:p.y,
+          crystals:crystals.filter(v => v.taken).length,
+          retries,
+          checkpoint,
+          done,
+          time:t
+        })
+      };
+    }
+
+    /*
+      POCKET CIRCUIT
+      Three original tracks.
+      Ordered checkpoints prevent shortcuts.
+    */
+    function circuit() {
+      let course = 0;
+      let points;
+      let car;
+      let time = 0;
+      let laps = 0;
+      let gate = 0;
+      let done = false;
+
+      const names = [
+        'Harbor oval',
+        'Clover circuit',
+        'Ripple ring'
+      ];
+
+      function point(a) {
+        const r = course === 1
+          ? 1 + .11 * Math.cos(3*a)
+          : course === 2
+            ? 1 + .10 * Math.sin(4*a)
+            : 1;
+
+        return {
+          x:400 + 290*r*Math.cos(a),
+          y:228 + 136*r*Math.sin(a)
+        };
+      }
+
+      function reset() {
+        points = Array.from(
+          {length:128},
+          (_,i) => point(i*Math.PI*2/128)
+        );
+
+        const p = point(-Math.PI/2);
+        const next = point(-Math.PI/2 + .015);
+
+        car = {
+          ...p,
+          angle:Math.atan2(next.y-p.y, next.x-p.x),
+          speed:0
+        };
+
+        time = 0;
+        laps = 0;
+        gate = 0;
+        done = false;
+      }
+
+      function distance(p) {
+        let best = Infinity;
+
+        points.forEach((a,i) => {
+          const b = points[(i+1)%points.length];
+          const dx = b.x-a.x;
+          const dy = b.y-a.y;
+
+          const u = clamp(
+            (
+              (p.x-a.x)*dx +
+              (p.y-a.y)*dy
+            ) / (dx*dx+dy*dy),
+            0,1
+          );
+
+          best = Math.min(
+            best,
+            Math.hypot(
+              p.x-a.x-u*dx,
+              p.y-a.y-u*dy
+            )
+          );
+        });
+
+        return best;
+      }
+
+      function road(c,width,color) {
+        c.strokeStyle = color;
+        c.lineWidth = width;
+        c.lineJoin = 'round';
+        c.beginPath();
+
+        points.forEach((p,i) =>
+          i
+            ? c.lineTo(p.x,p.y)
+            : c.moveTo(p.x,p.y)
+        );
+
+        c.closePath();
+        c.stroke();
+      }
+
+      reset();
+
+      return {
+        title:'Pocket Circuit',
+
+        instructions:
+          'W/Up: accelerate. S/Down: brake or reverse. ' +
+          'A/D or Left/Right: steer. Drive clockwise through ' +
+          'the gold checkpoint. Complete three laps; ' +
+          'leaving the road slows the car.',
+
+        controls:[
+          ['Left','left'],
+          ['Right','right'],
+          ['Drive','up'],
+          ['Brake','down']
+        ],
+
+        reset,
+
+        next() {
+          if (done && course < 2) {
+            course++;
+            reset();
+          }
+        },
+
+        input() {},
+
+        update(dt,held) {
+          if (done) return;
+
+          if (
+            held.has('up') ||
+            Math.abs(car.speed) > 1
+          ) {
+            time += dt;
+          }
+
+          const throttle =
+            Number(held.has('up')) -
+            Number(held.has('down'));
+
+          car.speed = clamp(
+            car.speed +
+            (throttle*165-car.speed*.38)*dt,
+            -65,235
+          );
+
+          if (!throttle) {
+            car.speed *= Math.exp(-.8*dt);
+          }
+
+          const turn =
+            Number(held.has('right')) -
+            Number(held.has('left'));
+
+          car.angle +=
+            turn * 2.7 *
+            clamp(car.speed/95,-1,1) * dt;
+
+          car.x +=
+            Math.cos(car.angle) * car.speed * dt;
+
+          car.y +=
+            Math.sin(car.angle) * car.speed * dt;
+
+          const off = distance(car) > 28;
+
+          if (off) {
+            car.speed *= Math.exp(-3.5*dt);
+          }
+
+          car.x = clamp(car.x,10,790);
+          car.y = clamp(car.y,10,440);
+
+          const goal = point(gate*Math.PI/2);
+
+          if (
+            Math.hypot(
+              car.x-goal.x,
+              car.y-goal.y
+            ) < 38 &&
+            !off
+          ) {
+            gate++;
+
+            if (gate === 4) {
+              gate = 0;
+              laps++;
+            }
+
+            if (laps === 3) {
+              done = true;
+              record('circuit-'+course,time);
+            }
+          }
+        },
+
+        draw(c) {
+          background(c);
+
+          road(c,76,'#334333');
+          road(c,66,'#d4c9a6');
+          road(c,60,'#34404a');
+
+          c.setLineDash([10,14]);
+          road(c,1,'#788086');
+          c.setLineDash([]);
+
+          const start = point(-Math.PI/2);
+
+          for (let row=0;row<6;row++) {
+            for (let col=0;col<2;col++) {
+              rect(
+                c,
+                start.x-8+col*8,
+                start.y-24+row*8,
+                8,8,
+                (row+col)%2
+                  ? '#36404a'
+                  : '#e9e7d9'
+              );
+            }
+          }
+
+          const goal = point(gate*Math.PI/2);
+
+          c.strokeStyle = '#f4d174';
+          c.lineWidth = 3;
+          c.beginPath();
+          c.arc(goal.x,goal.y,24,0,Math.PI*2);
+          c.stroke();
+
+          text(
+            c,'NEXT',
+            goal.x,goal.y+5,
+            10,'#f4d174','center'
+          );
+
+          text(
+            c,names[course].toUpperCase(),
+            400,218,19,'#d1d9d8','center'
+          );
+
+          text(
+            c,
+            'LAP '+Math.min(laps+1,3)+' / 3',
+            400,248,16,'#b6c3bf','center'
+          );
+
+          c.save();
+          c.translate(car.x,car.y);
+          c.rotate(car.angle);
+
+          rect(c,-14,-9,28,18,'#f4d174');
+          rect(c,2,-6,6,12,'#18232d');
+          rect(c,-9,-11,7,3,'#101418');
+          rect(c,-9,8,7,3,'#101418');
+
+          c.restore();
+
+          text(
+            c,
+            Math.round(Math.abs(car.speed))+' SPEED',
+            20,30,13,'#ccd7d7'
+          );
+
+          text(
+            c,time.toFixed(1)+'s',
+            780,30,16,'#f4d174','right'
+          );
+        },
+
+        hud: () =>
+          `${names[course]} · ` +
+          `Lap ${Math.min(laps+1,3)}/3 · ` +
+          `${time.toFixed(1)}s` +
+          (
+            Number.isFinite(best['circuit-'+course])
+              ? ' · Best ' +
+                best['circuit-'+course].toFixed(1) + 's'
+              : ''
+          ),
+
+        done: () => done,
+
+        message: () => course === 2
+          ? 'All three circuits complete!'
+          : 'Three laps complete!',
+
+        canNext: () => done && course < 2,
+
+        snapshot: () => ({
+          kind:'circuit',
+          course,
+          x:car.x,
+          y:car.y,
+          angle:car.angle,
+          speed:car.speed,
+          gate,
+          laps,
+          time,
+          done
+        })
+      };
+    }
+
+    const definitions = [
+      {
+        id:'ffun-skyline-v1',
+        name:'Skyline Sprint',
+        category:'Parkour',
+        detail:'8 stages · Double jumps · Checkpoints',
+        factory:skyline
+      },
+      {
+        id:'ffun-circuit-v1',
+        name:'Pocket Circuit',
+        category:'Racing',
+        detail:'3 tracks · Checkpoints · Lap timer',
+        factory:circuit
+      }
+    ];
+
+    const factories = new Map(
+      definitions.map(d => [d.id,d.factory])
+    );
+
+    definitions.forEach(d => {
+      if (byId.has(d.id)) return;
+
+      const c = document.createElement('canvas');
+      c.width = 800;
+      c.height = 450;
+
+      d.factory().draw(c.getContext('2d'));
+
+      const g = {
+        id:d.id,
+        name:d.name,
+        category:d.category,
+        local:true,
+        url:'',
+        embed:'',
+        image:c.toDataURL('image/jpeg',.72)
+      };
+
+      games.push(g);
+      byId.set(g.id,g);
+    });
+
+    const css = el('style');
+    css.id = 'ffun-clean-style';
+
+    css.textContent = `
+      body.ffun-clean {
+        background:#101114;
+        color:#e9eaed;
+      }
+
+      body.ffun-clean>header {
+        background:#16171b;
+        border-color:#303137;
+      }
+
+      body.ffun-clean .top {
+        min-height:68px;
+        gap:16px;
+        flex-wrap:wrap;
+        padding-top:10px;
+        padding-bottom:10px;
+      }
+
+      #fc-mainnav {
+        display:flex;
+        gap:4px;
+        flex-wrap:wrap;
+        margin:0 0 0 auto;
+      }
+
+      #fc-mainnav button {
+        font-size:12px;
+        padding:10px 12px;
+        color:#c9cbd2;
+        background:none;
+        border:0;
+        border-radius:5px;
+      }
+
+      #fc-mainnav button[aria-current=page] {
+        background:#332d1d;
+        color:#f4d174;
+      }
+
+      #fc-more {
+        position:relative;
+      }
+
+      #fc-more summary {
+        cursor:pointer;
+        color:#c0c3cb;
+        font-size:12px;
+        padding:10px;
+      }
+
+      #fc-more nav {
+        position:absolute;
+        right:0;
+        top:40px;
+        z-index:50;
+        padding:10px;
+        width:240px;
+        max-height:65vh;
+        overflow:auto;
+        background:#202127;
+        border:1px solid #41424a;
+        border-radius:8px;
+        box-shadow:0 12px 35px #0006;
+        display:grid!important;
+        gap:4px;
+      }
+
+      #fc-more nav button {
+        text-align:left;
+        font-size:12px;
+        width:100%;
+        padding:10px;
+      }
+
+      #fc-library .fc-heading {
+        display:flex;
+        justify-content:space-between;
+        align-items:end;
+        gap:16px;
+        padding:9px 0 23px;
+      }
+
+      #fc-library h1 {
+        font-size:30px;
+        letter-spacing:-1px;
+        line-height:1.2;
+      }
+
+      #fc-library p {
+        font-size:12px;
+        line-height:1.8;
+        color:#aeb1bc;
+      }
+
+      #fc-library .fc-meta {
+        font-size:11px;
+        color:#9fa4af;
+        margin-top:8px;
+      }
+
+      #fc-library .fc-featured {
+        display:grid;
+        grid-template-columns:1fr 1fr;
+        gap:16px;
+        margin-bottom:25px;
+      }
+
+      #fc-library .fc-feature {
+        background:#19212a;
+        border:1px solid #3b4853;
+        border-radius:8px;
+        overflow:hidden;
+        display:grid;
+        grid-template-columns:1.05fr 1fr;
+        align-items:center;
+        min-width:0;
+      }
+
+      #fc-library .fc-feature img {
+        width:100%;
+        aspect-ratio:16/10;
+        object-fit:cover;
+        display:block;
+      }
+
+      #fc-library .fc-feature div {
+        padding:17px;
+        min-width:0;
+      }
+
+      #fc-library h2 {
+        font-size:19px;
+        margin:0 0 7px;
+        letter-spacing:-.4px;
+      }
+
+      #fc-library .fc-feature .button {
+        margin-top:12px;
+        font-size:11px;
+      }
+
+      #fc-library .fc-tools {
+        display:flex;
+        gap:8px;
+        flex-wrap:wrap;
+        align-items:center;
+        border-block:1px solid #303238;
+        padding:15px 0;
+        margin-bottom:16px;
+      }
+
+      #fc-library input {
+        max-width:330px;
+        background:#1d1f25;
+        color:#fff;
+        border:1px solid #41444e;
+        padding:11px 12px;
+        border-radius:6px;
+        flex:1 1 220px;
+        min-width:0;
+      }
+
+      #fc-library select {
+        background:#202229;
+        color:#d9dbe1;
+        border:1px solid #41444e;
+        border-radius:6px;
+        padding:10px;
+        max-width:100%;
+      }
+
+      #fc-library .fc-filter {
+        padding:10px 12px;
+        font-size:11px;
+        background:#202229;
+        color:#b9bec8;
+        border:1px solid #3a3d46;
+        border-radius:6px;
+      }
+
+      #fc-library .fc-filter[aria-pressed=true] {
+        background:#e5c266;
+        border-color:#e5c266;
+        color:#231e12;
+      }
+
+      #fc-library .fc-count {
+        font-size:11px;
+        margin:0 0 13px;
+        color:#aeb1bc;
+      }
+
+      #fc-library .fc-grid {
+        display:grid;
+        grid-template-columns:repeat(6,minmax(0,1fr));
+        gap:14px;
+      }
+
+      #fc-library .fc-card {
+        border:1px solid #32353d;
+        background:#1b1d23;
+        border-radius:7px;
+        overflow:hidden;
+        position:relative;
+        min-width:0;
+      }
+
+      #fc-library .fc-launch {
+        border:0;
+        background:none;
+        padding:0;
+        display:block;
+        width:100%;
+        color:#e8eaf0;
+        text-align:left;
+      }
+
+      #fc-library .fc-cover {
+        position:relative;
+        display:grid;
+        place-items:center;
+        aspect-ratio:1.45;
+        background:#242934;
+        color:#aeb8c7;
+        text-align:center;
+        font-size:14px;
+        font-weight:600;
+        padding:15px;
+      }
+
+      #fc-library .fc-cover img {
+        position:absolute;
+        inset:0;
+        width:100%;
+        height:100%;
+        object-fit:cover;
+      }
+
+      #fc-library .fc-copy {
+        display:block;
+        padding:12px;
+      }
+
+      #fc-library .fc-copy strong {
+        display:block;
+        font-size:12px;
+        white-space:nowrap;
+        overflow:hidden;
+        text-overflow:ellipsis;
+      }
+
+      #fc-library .fc-copy small {
+        display:block;
+        color:#a1a8b5;
+        font-size:10px;
+        line-height:1.5;
+        margin-top:6px;
+      }
+
+      #fc-library .fc-fav {
+        position:absolute;
+        right:6px;
+        top:6px;
+        border:1px solid #ffffff40;
+        border-radius:50%;
+        width:28px;
+        height:28px;
+        background:#141821eb;
+        color:#ead39a;
+        font-size:17px;
+        padding:0;
+      }
+
+      #fc-library .fc-pagination {
+        display:flex;
+        justify-content:center;
+        gap:14px;
+        align-items:center;
+        padding:23px 0;
+        color:#b5bac6;
+        font-size:12px;
+      }
+
+      #fc-library .fc-notice {
+        margin-top:13px;
+        border-left:2px solid #8f7d49;
+        padding:6px 14px;
+        background:#1d1d1e;
+      }
+
+      #fc-library details {
+        margin:18px 0;
+        border:1px solid #353840;
+        border-radius:6px;
+        padding:14px;
+      }
+
+      #fc-library summary {
+        cursor:pointer;
+        font-size:12px;
+      }
+
+      #fc-library details p {
+        margin-top:10px;
+      }
+
+      #fc-local-tools {
+        display:flex;
+        gap:8px;
+        align-items:center;
+        flex-wrap:wrap;
+        width:100%;
+      }
+
+      #fc-local-tools button {
+        font-size:12px;
+      }
+
+      #fc-local-pad {
+        display:flex;
+        gap:9px;
+        justify-content:center;
+        flex-wrap:wrap;
+        width:100%;
+        margin:10px 0;
+      }
+
+      #fc-local-pad button {
+        touch-action:none;
+        min-width:65px;
+        padding:12px;
+        border:1px solid #606c78;
+        border-radius:7px;
+        background:#253342;
+        color:#f1dfb3;
+      }
+
+      #stage.fc-stage {
+        background:#101a22;
+        overflow:hidden;
+        height:clamp(260px,63vh,620px);
+      }
+
+      #stage.fc-stage canvas {
+        display:block;
+        width:100%;
+        height:100%;
+        max-width:none;
+        max-height:100%;
+        object-fit:contain;
+        aspect-ratio:16/9;
+        margin:0;
+        touch-action:none;
+        outline-offset:-4px;
+      }
+
+      #stage.fc-stage:fullscreen {
+        height:100vh;
+      }
+
+      #stage:fullscreen #fc-local-tools {
+        position:absolute;
+        top:10px;
+        left:10px;
+        width:calc(100% - 160px);
+        z-index:3;
+      }
+
+      #stage:fullscreen #fc-local-pad {
+        position:absolute;
+        bottom:8px;
+        left:0;
+        z-index:3;
+      }
+
+      #stage:fullscreen #fc-local-tools button {
+        background:#17212eea;
+        color:#f1dfb3;
+        border:1px solid #667482;
+      }
+
+      .fc-exit-full {
+        position:fixed;
+        right:14px;
+        top:14px;
+        z-index:90;
+        display:none!important;
+      }
+
+      #stage:fullscreen .fc-exit-full {
+        display:block!important;
+      }
+
+      @media(max-width:1000px) {
+        #fc-library .fc-grid {
+          grid-template-columns:repeat(4,minmax(0,1fr));
+        }
+
+        #fc-library .fc-feature {
+          grid-template-columns:1fr;
+        }
+
+        #fc-library .fc-feature img {
+          aspect-ratio:2.3;
+        }
+      }
+
+      @media(max-width:600px) {
+        #fc-mainnav {
+          margin:0;
+          flex:1;
+        }
+
+        #fc-mainnav button {
+          font-size:11px;
+          padding:9px;
+        }
+
+        #fc-library .fc-heading {
+          display:block;
+        }
+
+        #fc-library h1 {
+          font-size:25px;
+        }
+
+        #fc-library .fc-grid {
+          grid-template-columns:repeat(2,minmax(0,1fr));
+          gap:10px;
+        }
+
+        #fc-library .fc-featured {
+          gap:10px;
+        }
+
+        #fc-library .fc-feature div {
+          padding:12px;
+        }
+
+        #fc-library h2 {
+          font-size:15px;
+        }
+
+        #fc-library .fc-feature p {
+          font-size:10px;
+        }
+
+        #fc-library .fc-feature .button {
+          padding:9px;
+          font-size:10px;
+        }
+
+        #fc-library .fc-tools {
+          gap:7px;
+        }
+
+        #fc-library input {
+          max-width:none;
+          flex-basis:100%;
+        }
+
+        #fc-more nav {
+          right:0;
+          left:auto;
+        }
+
+        #stage.fc-stage {
+          height:48vh;
+          min-height:240px;
+        }
+      }
+    `;
+
+    document.head.append(css);
+
+    /*
+      CLEAN LIBRARY
+    */
+    const library = el('section',undefined,'view');
+    library.id = 'fc-library';
+    library.hidden = true;
+
+    const heading = el('div',undefined,'fc-heading');
+    const headingCopy = el('div');
+
+    headingCopy.append(
+      el('h1','Your collection'),
+      el(
+        'p',
+        'One library. Your games and videos are still here.',
+        'fc-meta'
+      )
+    );
+
+    const totals = el('span','','fc-meta');
+    heading.append(headingCopy,totals);
+
+    const featured = el('div',undefined,'fc-featured');
+
+    definitions.forEach(d => {
+      const article = el('article',undefined,'fc-feature');
+      const im = el('img');
+
+      im.src = byId.get(d.id).image;
+      im.alt = d.name + ' gameplay';
+
+      const copy = el('div');
+
+      copy.append(
+        el('h2',d.name),
+        el('p',d.detail),
+        button(
+          'Play in this file',
+          () => openGame(d.id),
+          'button primary'
+        )
+      );
+
+      article.append(im,copy);
+      featured.append(article);
+    });
+
+    const tools = el('div',undefined,'fc-tools');
+    const input = el('input');
+
+    input.type = 'search';
+    input.placeholder = 'Find a game…';
+
+    input.setAttribute(
+      'aria-label',
+      'Search the whole game collection'
+    );
+
+    const category = el('select');
+    category.setAttribute('aria-label','Game category');
+
+    [
+      'All categories',
+      ...[...new Set(games.map(g => g.category))].sort()
+    ].forEach(n => {
+      category.append(el('option',n));
+    });
+
+    tools.append(input,category);
+
+    const kinds = [
+      ['all','All games'],
+      ['built','Built-in'],
+      ['external','Online / home'],
+      ['catalog','Catalog'],
+      ['saved','Favorites']
+    ];
+
+    kinds.forEach(([id,name]) => {
+      const b = button(
+        name,
+        () => {
+          group = id;
+          page = 0;
+          draw();
+        },
+        'fc-filter'
+      );
+
+      b.dataset.fcFilter = id;
+      tools.append(b);
+    });
+
+    const count = el('p','','fc-count');
+    const grid = el('div',undefined,'fc-grid');
+    grid.id = 'fc-grid';
+
+    const pager = el('div',undefined,'fc-pagination');
+    const pageText = el('span');
+
+    const prev = button('← Previous',() => {
+      page--;
+      draw();
+    });
+
+    const next = button('Next →',() => {
+      page++;
+      draw();
+    });
+
+    pager.append(prev,pageText,next);
+
+    const connection = el('details');
+    const summary = el(
+      'summary',
+      'About external games and the proxy'
+    );
+
+    connection.append(
+      summary,
+
+      el(
+        'p',
+        'No external proxy backend is included or connected ' +
+        'by this update. Your local two-server demonstration ' +
+        'only serves your own test page. It does not unlock ' +
+        'this library.'
+      ),
+
+      el(
+        'p',
+        'Existing online-player addresses are preserved, ' +
+        'not certified. Load them only where their publishers ' +
+        'allow it. Embedding and network rules still apply. ' +
+        'No website headers are changed.'
+      ),
+
+      el(
+        'p',
+        'Built-in means the game code is in this site, not ' +
+        'that a school or other network has approved it.'
+      )
+    );
+
+    const disclaimer = el('div',undefined,'fc-notice');
+
+    disclaimer.append(
+      el(
+        'p',
+        'Online games still use their original hosts. ' +
+        'A thumbnail or player address is not proof that a ' +
+        'game loads. Nothing here is labeled “unblocked.”'
+      )
+    );
+
+    library.append(
+      heading,
+      featured,
+      tools,
+      count,
+      grid,
+      pager,
+      disclaimer,
+      connection
+    );
+
+    document.querySelector('main').append(library);
+
+    function kind(g) {
+      return g.local && !g.embed
+        ? 'built'
+        : g.embed
+          ? 'external'
+          : 'catalog';
+    }
+
+    const favorites = () =>
+      Array.isArray(prefs.favorites)
+        ? prefs.favorites
+        : [];
+
+    function label(g) {
+      return kind(g) === 'built'
+        ? 'Built-in · No game host'
+        : kind(g) === 'external'
+          ? 'Online · Playback unverified'
+          : 'Catalog · No player saved';
+    }
+
+    function miniCard(g) {
+      const article = el('article',undefined,'fc-card');
+      article.dataset.gameId = g.id;
+
+      const launch = button(
+        '',
+        () => openGame(g.id),
+        'fc-launch'
+      );
+
+      const cover = el('span',g.name,'fc-cover');
+
+      if (
+        g.image &&
+        (
+          prefs.artwork !== false ||
+          factories.has(g.id)
+        )
+      ) {
+        const image = el('img');
+
+        image.src = g.image;
+        image.alt = '';
+        image.loading = 'lazy';
+        image.decoding = 'async';
+        image.onerror = () => image.remove();
+
+        cover.append(image);
+      }
+
+      const copy = el('span',undefined,'fc-copy');
+
+      copy.append(
+        el('strong',g.name),
+        el('small',label(g))
+      );
+
+      launch.append(cover,copy);
+
+      const fav = button(
+        favorites().includes(g.id) ? '★' : '☆',
+
+        () => {
+          prefs.favorites = favorites().includes(g.id)
+            ? favorites().filter(id => id !== g.id)
+            : [...favorites(),g.id];
+
+          try {
+            save();
+          } catch (_) {}
+
+          draw();
+        },
+
+        'fc-fav'
+      );
+
+      fav.setAttribute(
+        'aria-label',
+        'Favorite ' + g.name
+      );
+
+      fav.setAttribute(
+        'aria-pressed',
+        String(favorites().includes(g.id))
+      );
+
+      article.append(launch,fav);
+      return article;
+    }
+
+    function draw() {
+      const terms = q
+        .toLowerCase()
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+
+      const filtered = games.filter(g =>
+        (
+          group === 'all' ||
+          group === kind(g) ||
+          (
+            group === 'saved' &&
+            favorites().includes(g.id)
+          )
+        ) &&
+        (
+          category.value === 'All categories' ||
+          g.category === category.value
+        ) &&
+        terms.every(t =>
+          (g.name + ' ' + g.category)
+            .toLowerCase()
+            .includes(t)
+        )
+      );
+
+      const pages = Math.max(
+        1,
+        Math.ceil(filtered.length / 24)
+      );
+
+      page = clamp(page,0,pages-1);
+
+      grid.replaceChildren(
+        ...filtered
+          .slice(page*24,page*24+24)
+          .map(miniCard)
+      );
+
+      if (!filtered.length) {
+        grid.append(
+          el(
+            'p',
+            'No matches. Clear the search or choose All games.',
+            'empty'
+          )
+        );
+      }
+
+      count.textContent = filtered.length + ' matches';
+
+      totals.textContent =
+        'Library v1 · ' + games.length + ' entries · ' +
+        games.filter(g => kind(g) === 'built').length +
+        ' built-in';
+
+      pageText.textContent =
+        'Page ' + (page+1) + ' of ' + pages;
+
+      prev.disabled = page === 0;
+      next.disabled = page === pages-1;
+
+      tools.querySelectorAll('[data-fc-filter]')
+        .forEach(b =>
+          b.setAttribute(
+            'aria-pressed',
+            String(b.dataset.fcFilter === group)
+          )
+        );
+    }
+
+    let searchTimer = 0;
+
+    input.oninput = () => {
+      clearTimeout(searchTimer);
+
+      searchTimer = setTimeout(() => {
+        q = input.value;
+        page = 0;
+        draw();
+      },100);
+    };
+
+    category.onchange = () => {
+      page = 0;
+      draw();
+    };
+
+    function browse(filter = 'all') {
+      group = filter;
+      page = 0;
+      q = '';
+      input.value = '';
+      category.value = 'All categories';
+
+      go(library.id);
+      draw();
+    }
+
+    /*
+      Preserve every old tool in More.
+      Existing handlers and game data stay intact.
+    */
+    const header =
+      document.querySelector('header .top') ||
+      document.querySelector('header');
+
+    let more = null;
+    let oldNav = null;
+
+    if (header) {
+      oldNav = header.querySelector('nav');
+
+      const nav = el('nav');
+      nav.id = 'fc-mainnav';
+      nav.setAttribute('aria-label','Main menu');
+
+      [
+        ['Library',() => browse()],
+        ['Built-in',() => browse('built')],
+        ['Home games',() => browse('external')],
+        ['YouTube',() => go('youtube')]
+      ].forEach(([name,fn]) => {
+        nav.append(button(name,fn,''));
+      });
+
+      header.append(nav);
+
+      if (oldNav) {
+        more = el('details');
+        more.id = 'fc-more';
+
+        more.append(
+          el('summary','More / original site'),
+          oldNav
+        );
+
+        header.append(more);
+      }
+    }
+
+    const hostGo = go;
+
+    go = function(id) {
+      if (
+        document.fullscreenElement === $('stage') &&
+        id !== 'player'
+      ) {
+        document.exitFullscreen().catch(() => {});
+      }
+
+      const result = hostGo(id);
+
+      if (more) more.open = false;
+
+      document.querySelectorAll('#fc-mainnav button')
+        .forEach(b => b.removeAttribute('aria-current'));
+
+      const idx = id === library.id
+        ? group === 'built'
+          ? 1
+          : group === 'external'
+            ? 2
+            : 0
+        : id === 'youtube'
+          ? 3
+          : -1;
+
+      if (idx >= 0) {
+        document.querySelectorAll('#fc-mainnav button')[idx]
+          ?.setAttribute('aria-current','page');
+      }
+
+      if (id === library.id) draw();
+      return result;
+    };
+
+    const hostOpen = openGame;
+
+    openGame = function(id) {
+      if (factories.has(id)) return playLocal(id);
+      return hostOpen(id);
+    };
+
+    /*
+      One fixed-step animation loop.
+      Stops on navigation and pauses when the tab loses focus.
+    */
+    function playLocal(id) {
+      const g = byId.get(id);
+      preparePlayer(g.name,'');
+
+      currentGame = {type:'local',id};
+
+      if (Array.isArray(prefs.recent)) {
+        prefs.recent = [
+          id,
+          ...prefs.recent.filter(x => x !== id)
+        ].slice(0,5);
+
+        try {
+          save();
+        } catch (_) {}
+      }
+
+      const stage = $('stage');
+      stage.classList.add('fc-stage');
+
+      const canvas = el('canvas');
+      canvas.width = 800;
+      canvas.height = 450;
+      canvas.tabIndex = 0;
+      canvas.setAttribute('aria-label',g.name+' game');
+
+      stage.append(canvas);
+
+      const c = canvas.getContext('2d');
+      const game = factories.get(id)();
+
+      let paused = true;
+      let disposed = false;
+      let raf = 0;
+      let last = 0;
+      let acc = 0;
+      let hud = '';
+
+      const held = new Set();
+      const events = new AbortController();
+
+      const tools = el('div');
+      tools.id = 'fc-local-tools';
+
+      const toggle = button(
+        'Start game',
+        () => pause(!paused),
+        'button primary'
+      );
+
+      const reset = button('Restart stage',() => {
+        game.reset();
+        pause(true);
+      });
+
+      const advance = button('Next stage',() => {
+        game.next();
+        pause(true);
+      });
+
+      const quitFull = button(
+        'Exit fullscreen',
+        () => document.exitFullscreen().catch(() => {}),
+        'button fc-exit-full'
+      );
+
+      stage.append(quitFull);
+
+      tools.append(
+        toggle,
+        reset,
+        advance,
+        button(
+          'Back to built-in games',
+          () => browse('built')
+        )
+      );
+
+      const pad = el('div');
+      pad.id = 'fc-local-pad';
+
+      game.controls.forEach(([name,key]) => {
+        const b = button(name,() => {});
+        b.dataset.control = key;
+
+        b.addEventListener('pointerdown',e => {
+          e.preventDefault();
+          b.setPointerCapture(e.pointerId);
+          canvas.focus({preventScroll:true});
+
+          if (!paused && !game.done()) {
+            held.add(key);
+            game.input(key);
+          }
+        },{signal:events.signal});
+
+        const release = () => held.delete(key);
+
+        [
+          'pointerup',
+          'pointercancel',
+          'lostpointercapture'
+        ].forEach(type => {
+          b.addEventListener(
+            type,
+            release,
+            {signal:events.signal}
+          );
+        });
+
+        b.addEventListener('click',e => {
+          if (!e.detail && !paused) {
+            game.input(key);
+          }
+        },{signal:events.signal});
+
+        pad.append(b);
+      });
+
+      $('playerLinks').append(tools,pad);
+
+      document.addEventListener('fullscreenchange',() => {
+        if (disposed) return;
+
+        if (document.fullscreenElement === stage) {
+          stage.append(tools,pad);
+        } else {
+          $('playerLinks').append(tools,pad);
+        }
+      },{signal:events.signal});
+
+      $('playerHelp').textContent =
+        game.instructions +
+        ' P: pause. All game assets are in this file.';
+
+      function paint() {
+        if (disposed) return;
+
+        game.draw(c);
+
+        const value = game.hud();
+
+        if (value !== hud) {
+          $('playerStatus').textContent = value;
+          hud = value;
+        }
+
+        toggle.textContent = paused
+          ? 'Start / resume'
+          : 'Pause';
+
+        toggle.disabled = game.done();
+        advance.hidden = !game.canNext();
+
+        if (paused || game.done()) {
+          rect(
+            c,125,162,550,126,
+            '#101821ed'
+          );
+
+          text(
+            c,
+            game.done()
+              ? game.message()
+              : 'Ready when you are',
+            400,211,24,'#f1dfac','center'
+          );
+
+          text(
+            c,
+            game.done()
+              ? game.canNext()
+                ? 'Choose Next stage below'
+                : 'Restart to improve your time'
+              : 'Choose Start / resume below',
+            400,247,15,'#c2cbd4','center'
+          );
+        }
+      }
+
+      function loop(now) {
+        raf = 0;
+
+        if (
+          disposed ||
+          paused ||
+          game.done()
+        ) {
+          return;
+        }
+
+        acc += last
+          ? Math.min((now-last)/1000,.075)
+          : 0;
+
+        last = now;
+
+        while (
+          acc >= 1/120 &&
+          !game.done()
+        ) {
+          game.update(1/120,held);
+          acc -= 1/120;
+        }
+
+        paint();
+
+        if (!game.done()) {
+          raf = requestAnimationFrame(loop);
+        }
+      }
+
+      function pause(value) {
+        paused = value;
+        held.clear();
+
+        cancelAnimationFrame(raf);
+        raf = 0;
+        last = 0;
+        acc = 0;
+
+        paint();
+
+        if (!paused && !game.done()) {
+          canvas.focus({preventScroll:true});
+          raf = requestAnimationFrame(loop);
+        }
+      }
+
+      const keyName = e => ({
+        ArrowLeft:'left',
+        ArrowRight:'right',
+        ArrowUp:'up',
+        ArrowDown:'down',
+        a:'left',
+        d:'right',
+        w:'up',
+        s:'down',
+        ' ':'up'
+      }[
+        e.key.length === 1
+          ? e.key.toLowerCase()
+          : e.key
+      ] || '');
+
+      document.addEventListener('keydown',e => {
+        if (
+          e.target.closest(
+            'input,textarea,select,[contenteditable=true]'
+          )
+        ) {
+          return;
+        }
+
+        if (
+          e.key.toLowerCase() === 'p' &&
+          !e.repeat
+        ) {
+          e.preventDefault();
+          pause(!paused);
+          return;
+        }
+
+        if (
+          e.target.closest('button') &&
+          e.key === ' '
+        ) {
+          return;
+        }
+
+        const key = keyName(e);
+        if (!key) return;
+
+        e.preventDefault();
+
+        if (!paused && !game.done()) {
+          if (!e.repeat) game.input(key);
+          held.add(key);
+        }
+      },{signal:events.signal});
+
+      document.addEventListener(
+        'keyup',
+        e => held.delete(keyName(e)),
+        {signal:events.signal}
+      );
+
+      window.addEventListener(
+        'blur',
+        () => pause(true),
+        {signal:events.signal}
+      );
+
+      document.addEventListener('visibilitychange',() => {
+        if (document.hidden) pause(true);
+      },{signal:events.signal});
+
+      window.addEventListener(
+        'pointercancel',
+        () => held.clear(),
+        {signal:events.signal}
+      );
+
+      const before = cleanupGame;
+
+      const dispose = () => {
+        if (disposed) return;
+
+        disposed = true;
+        cancelAnimationFrame(raf);
+        raf = 0;
+        
