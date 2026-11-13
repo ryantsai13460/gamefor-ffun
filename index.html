@@ -9250,3 +9250,952 @@ hook-pin-jam|Hook Pin Jam|Puzzle|
   }
 })();
 </script>
+<script>
+(() => {
+  'use strict';
+
+  function install() {
+    if (window.ffunHubV1) return;
+
+    const $ = id => document.getElementById(id);
+
+    if (
+      typeof games === 'undefined' ||
+      !Array.isArray(games) ||
+      typeof go !== 'function' ||
+      typeof openGame !== 'function' ||
+      !$('home') ||
+      !$('player') ||
+      !document.querySelector('main')
+    ) {
+      const p = document.createElement('p');
+      p.textContent =
+        'Keep the original gamefor ffun code above the Play Hub add-on.';
+      p.className = 'notice';
+      document.body.append(p);
+      return;
+    }
+
+    const el = (tag, text, cls) => {
+      const n = document.createElement(tag);
+      if (text !== undefined) n.textContent = text;
+      if (cls) n.className = cls;
+      return n;
+    };
+
+    const btn = (text, fn, cls = 'button') => {
+      const b = el('button', text, cls);
+      b.type = 'button';
+      b.onclick = fn;
+      return b;
+    };
+
+    const key = 'ffun-hub-device-checks-v1';
+    let checks = {};
+    let storage = true;
+
+    try {
+      const value = JSON.parse(localStorage.getItem(key) || '{}');
+
+      if (
+        value &&
+        typeof value === 'object' &&
+        !Array.isArray(value)
+      ) {
+        checks = value;
+      }
+    } catch (_) {
+      storage = false;
+    }
+
+    function https(value) {
+      try {
+        const url = new URL(value);
+
+        return (
+          url.protocol === 'https:' &&
+          !url.username &&
+          !url.password
+        ) ? url : null;
+
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function mini(value) {
+      const url = https(value);
+
+      return Boolean(url) && [
+        'miniplay.com',
+        'minijuegos.com',
+        'minijuegosgratis.com'
+      ].some(domain =>
+        url.hostname === domain ||
+        url.hostname.endsWith('.' + domain)
+      );
+    }
+
+    const local = game =>
+      game.local === true && !game.embed;
+
+    const homeOnly = game =>
+      !local(game) &&
+      (mini(game.embed) || mini(game.url));
+
+    const fingerprint = game =>
+      JSON.stringify([
+        String(game.id),
+        String(game.embed || '')
+      ]);
+
+    function review(game) {
+      const value = checks[fingerprint(game)];
+
+      return (
+        value &&
+        ['plays', 'failed'].includes(value.result) &&
+        Number.isFinite(Date.parse(value.date))
+      ) ? value : null;
+    }
+
+    function saveChecks() {
+      try {
+        localStorage.setItem(key, JSON.stringify(checks));
+      } catch (_) {
+        storage = false;
+      }
+    }
+
+    /*
+      Configuration audit only.
+
+      This does not open hundreds of game windows,
+      test school filters, or claim successful gameplay.
+    */
+    function scan() {
+      const ids = new Map();
+      const urls = new Map();
+
+      games.forEach(game => {
+        ids.set(game.id, (ids.get(game.id) || 0) + 1);
+
+        if (game.embed) {
+          urls.set(
+            game.embed,
+            (urls.get(game.embed) || 0) + 1
+          );
+        }
+      });
+
+      return games.map(game => {
+        const issues = [];
+
+        if (!game.id) issues.push('Missing ID');
+        if (!game.name) issues.push('Missing name');
+
+        if (ids.get(game.id) > 1) {
+          issues.push('Duplicate ID');
+        }
+
+        if (game.local === true && game.embed) {
+          issues.push('Local flag conflicts with external player');
+        }
+
+        if (game.embed && !https(game.embed)) {
+          issues.push('Invalid or non-HTTPS player URL');
+        }
+
+        if (game.url && !https(game.url)) {
+          issues.push('Invalid or non-HTTPS source URL');
+        }
+
+        if (!local(game) && !game.embed) {
+          issues.push('No embedded player configured');
+        }
+
+        if (game.embed && urls.get(game.embed) > 1) {
+          issues.push('Shared player URL');
+        }
+
+        return {
+          id: String(game.id || ''),
+          name: String(game.name || ''),
+          type: local(game)
+            ? 'Built-in'
+            : game.embed
+              ? 'External player'
+              : 'Catalog only',
+
+          homeOnly: homeOnly(game),
+          source: String(game.url || ''),
+          player: String(game.embed || ''),
+          issues,
+          liveCheck: 'Not automatically verified',
+          deviceReview: review(game)
+        };
+      });
+    }
+
+    let records = scan();
+    let tab = 'home';
+    let number = 0;
+    let rows = [];
+    let chosen = null;
+
+    const root = el('section', undefined, 'view');
+    root.id = 'ffun-play-hub';
+    root.hidden = true;
+
+    const style = el('style');
+
+    style.textContent = `
+      #ffun-play-hub .hub-tabs,
+      .hub-controls,
+      .hub-actions,
+      .hub-page {
+        display:flex;
+        gap:8px;
+        align-items:center;
+        flex-wrap:wrap;
+        margin:16px 0;
+      }
+
+      #ffun-play-hub .hub-tabs button[aria-pressed=true] {
+        background:var(--gold,#f4c542);
+        color:#241e0c;
+        border-color:var(--gold,#f4c542);
+      }
+
+      #ffun-play-hub .hub-controls .field {
+        flex:1 1 220px;
+        max-width:400px;
+      }
+
+      #ffun-play-hub select {
+        background:#242429;
+        color:#ddd;
+        border:1px solid #444;
+        border-radius:6px;
+        padding:10px;
+        max-width:100%;
+      }
+
+      #ffun-play-hub .hub-stat {
+        color:#b7b7bf;
+        font-size:12px;
+        line-height:1.8;
+      }
+
+      #ffun-play-hub .hub-grid {
+        display:grid;
+        grid-template-columns:repeat(4,minmax(0,1fr));
+        gap:14px;
+      }
+
+      #ffun-play-hub .hub-card {
+        border:1px solid #38383f;
+        border-radius:8px;
+        background:var(--panel,#1c1c20);
+        padding:15px;
+        min-width:0;
+      }
+
+      #ffun-play-hub .hub-card h3 {
+        font-size:14px;
+        line-height:1.5;
+        margin:0 0 8px;
+      }
+
+      #ffun-play-hub .hub-card p {
+        font-size:11px;
+        color:#b7b7c1;
+        line-height:1.7;
+        overflow-wrap:anywhere;
+      }
+
+      #ffun-play-hub .hub-card .button {
+        font-size:11px;
+        padding:8px 10px;
+      }
+
+      #ffun-play-hub .hub-card [aria-pressed=true] {
+        color:var(--gold,#f4c542);
+      }
+
+      #ffun-play-hub .hub-page {
+        justify-content:center;
+      }
+
+      #ffun-play-hub textarea {
+        width:100%;
+        min-height:140px;
+        background:#202027;
+        color:#ddd;
+        font:11px monospace;
+      }
+
+      .hub-home {
+        margin:18px 0;
+        padding:16px;
+        border:1px solid #494332;
+        border-radius:9px;
+        background:#1e1d19;
+      }
+
+      .hub-home strong {
+        font-size:14px;
+      }
+
+      .hub-home .hub-actions {
+        margin-bottom:0;
+      }
+
+      #ffun-hub-review {
+        margin:16px 0;
+      }
+
+      .hub-note {
+        font-size:12px;
+        line-height:1.8;
+        color:#bbb;
+      }
+
+      @media(max-width:850px) {
+        #ffun-play-hub .hub-grid {
+          grid-template-columns:repeat(3,minmax(0,1fr));
+        }
+      }
+
+      @media(max-width:580px) {
+        #ffun-play-hub .hub-grid {
+          grid-template-columns:repeat(2,minmax(0,1fr));
+          gap:9px;
+        }
+
+        #ffun-play-hub .hub-card {
+          padding:12px;
+        }
+
+        .hub-actions .button {
+          font-size:11px;
+        }
+      }
+    `;
+
+    document.head.append(style);
+
+    const head = el('div', undefined, 'head');
+    const total = el('small');
+
+    head.append(el('h2', 'Play hub'), total);
+
+    const tabs = el('div', undefined, 'hub-tabs');
+    const intro = el('p', '', 'notice');
+    const controls = el('div', undefined, 'hub-controls');
+
+    const search = el('input', undefined, 'field');
+    search.type = 'search';
+    search.placeholder = 'Search your existing games…';
+    search.setAttribute('aria-label', 'Search Play Hub');
+
+    const state = el('select');
+    state.setAttribute('aria-label', 'Player check filter');
+
+    [
+      ['all', 'All check states'],
+      ['unchecked', 'Not tried here'],
+      ['plays', 'You marked: plays'],
+      ['failed', 'You marked: does not load'],
+      ['issues', 'Configuration notes']
+    ].forEach(([value, title]) => {
+      const option = el('option', title);
+      option.value = value;
+      state.append(option);
+    });
+
+    const status = el('p', '', 'hub-stat');
+    status.setAttribute('role', 'status');
+
+    const grid = el('div', undefined, 'hub-grid');
+
+    const pager = el('div', undefined, 'hub-page');
+    const pageLabel = el('small');
+
+    const prev = btn('← Previous', () => {
+      number--;
+      draw();
+    });
+
+    const next = btn('Next →', () => {
+      number++;
+      draw();
+    });
+
+    pager.append(prev, pageLabel, next);
+
+    const special = el('div', undefined, 'panel');
+    special.hidden = true;
+
+    const output = el('textarea');
+    output.readOnly = true;
+    output.hidden = true;
+    output.setAttribute(
+      'aria-label',
+      'Copyable complete catalog report'
+    );
+
+    const definitions = [
+      ['home', 'Home only'],
+      ['built', 'Built-in HTML5'],
+      ['embedded', 'Embedded'],
+      ['proxy', 'Proxy'],
+      ['youtube', 'YouTube'],
+      ['all', 'All saved games']
+    ];
+
+    const descriptions = {
+      home:
+        'Miniplay-linked games, kept for home use. ' +
+        'Nothing is removed or unblocked.',
+
+      built:
+        'These entries use the game code already in your site, ' +
+        'without an external game player.',
+
+      embedded:
+        'Every configured external player, including Home-only ' +
+        'games. Configured does not mean verified playable.',
+
+      proxy:
+        'Not connected. This tab is not a proxy engine ' +
+        'or a replacement for Miniplay.',
+
+      youtube:
+        'Your current video player, saved videos, ' +
+        'and creator importer are unchanged.',
+
+      all:
+        'Your entire current catalog. Entries without an ' +
+        'embedded player remain in the list.'
+    };
+
+    function visit(value) {
+      tab = value;
+      number = 0;
+      search.value = '';
+      state.value = 'all';
+      go(root.id);
+    }
+
+    definitions.forEach(([value, title]) => {
+      const b = btn(title, () => visit(value));
+      b.dataset.hubTab = value;
+      tabs.append(b);
+    });
+
+    function favorites() {
+      return (
+        typeof prefs !== 'undefined' &&
+        Array.isArray(prefs.favorites)
+      ) ? prefs.favorites : [];
+    }
+
+    function toggleFavorite(game) {
+      if (
+        typeof prefs === 'undefined' ||
+        typeof save !== 'function'
+      ) return;
+
+      prefs.favorites = favorites().includes(game.id)
+        ? favorites().filter(id => id !== game.id)
+        : [...favorites(), game.id];
+
+      save();
+
+      if (typeof render === 'function') render();
+      else draw();
+    }
+
+    function exportReport() {
+      const report = {
+        generatedAt: new Date().toISOString(),
+
+        method:
+          'Catalog configuration and user-reported device checks',
+
+        warning:
+          'No network-block test, no automatic playback ' +
+          'verification, and no proxy.',
+
+        total: games.length,
+        entries: scan()
+      };
+
+      const text = JSON.stringify(report, null, 2);
+      output.value = text;
+      output.hidden = false;
+
+      const url = URL.createObjectURL(
+        new Blob([text], {type: 'application/json'})
+      );
+
+      const a = el('a');
+      a.href = url;
+      a.download = 'gamefor-ffun-catalog-report.json';
+
+      root.append(a);
+      a.click();
+      a.remove();
+
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+
+      status.textContent =
+        'Report prepared. If downloading fails, ' +
+        'copy the report text below.';
+    }
+
+    controls.append(
+      search,
+      state,
+
+      btn('Check every entry', () => {
+        records = scan();
+        number = 0;
+        draw();
+      }),
+
+      btn('Export report', exportReport)
+    );
+
+    root.append(
+      head,
+      tabs,
+      intro,
+      controls,
+      status,
+      special,
+      grid,
+      pager,
+      output
+    );
+
+    document.querySelector('main').append(root);
+
+    /*
+      Optional manual playback report.
+
+      Reports belong to this browser/device, not every device.
+      No automatic iframe-load event is counted as a success.
+    */
+    const reviewPanel = el('section', undefined, 'panel');
+    reviewPanel.id = 'ffun-hub-review';
+    reviewPanel.hidden = true;
+
+    const reviewText = el('p', '', 'hub-note');
+    const reviewActions = el('div', undefined, 'hub-actions');
+
+    function mark(result) {
+      if (!chosen) return;
+
+      if (
+        result === 'plays' &&
+        !$('stage')?.querySelector('iframe')
+      ) {
+        reviewText.textContent =
+          'Start the external player first. On a Home-only ' +
+          'notice, use Play at home only where permitted.';
+        return;
+      }
+
+      checks[fingerprint(chosen)] = {
+        result,
+        date: new Date().toISOString()
+      };
+
+      saveChecks();
+
+      reviewText.textContent =
+        'Saved your device report: ' +
+        (result === 'plays' ? 'plays' : 'does not load') +
+        '. This is not a guarantee for other devices.' +
+        (
+          storage
+            ? ''
+            : ' Storage is unavailable; this lasts for this visit.'
+        );
+
+      records = scan();
+    }
+
+    function test(game) {
+      chosen = null;
+      reviewPanel.hidden = true;
+
+      // Preserve the existing player and Home-only warning.
+      openGame(game.id);
+
+      if (!game.embed || !https(game.embed)) return;
+
+      chosen = game;
+
+      reviewText.textContent =
+        'Test ' + game.name + ' in the player. Record Plays only ' +
+        'after you actually play. A loading screen is not a pass.';
+
+      reviewPanel.hidden = false;
+    }
+
+    reviewActions.append(
+      btn('Plays on this device', () => mark('plays')),
+
+      btn('Does not load', () => mark('failed')),
+
+      btn('Next untried player', () => {
+        const candidate = rows
+          .map(row => row.game)
+          .find(game =>
+            https(game.embed) &&
+            !review(game) &&
+            game !== chosen
+          );
+
+        if (candidate) {
+          test(candidate);
+        } else {
+          reviewText.textContent =
+            'No other untried players in this filtered list. ' +
+            'Return to the hub to change filters.';
+        }
+      }),
+
+      btn('Back to hub', () => go(root.id))
+    );
+
+    reviewPanel.append(
+      el('h2', 'Your playback check'),
+      reviewText,
+      reviewActions
+    );
+
+    $('player').append(reviewPanel);
+
+    function draw() {
+      records = scan();
+
+      total.textContent =
+        games.length + ' saved entries · nothing removed';
+
+      intro.textContent = descriptions[tab];
+
+      tabs.querySelectorAll('button').forEach(b => {
+        b.setAttribute(
+          'aria-pressed',
+          String(b.dataset.hubTab === tab)
+        );
+      });
+
+      const isSpecial = tab === 'proxy' || tab === 'youtube';
+
+      controls.hidden = isSpecial;
+      grid.hidden = isSpecial;
+      pager.hidden = isSpecial;
+      special.hidden = !isSpecial;
+      output.hidden = true;
+
+      special.replaceChildren();
+
+      if (isSpecial) {
+        status.textContent = '';
+
+        if (tab === 'proxy') {
+          special.append(
+            el('h2', 'Proxy — not connected'),
+
+            el(
+              'p',
+              'No authorized backend has been supplied. ' +
+              'GitHub Pages runs the interface, not a proxy server. ' +
+              'This add-on does not relay websites, change ' +
+              'security headers, or unblock games.'
+            ),
+
+            el(
+              'p',
+              'For a future game server you own or are authorized ' +
+              'to operate, its fixed service can be connected ' +
+              'separately. Your current games remain unchanged.'
+            )
+          );
+
+        } else {
+          special.append(
+            el('h2', 'Your YouTube library'),
+
+            el(
+              'p',
+              'Open your existing video library or creator ' +
+              'importer. This hub does not copy videos or ' +
+              'remove YouTube restrictions.'
+            ),
+
+            btn(
+              'Open YouTube',
+              () => go('youtube'),
+              'button primary'
+            )
+          );
+
+          if ($('uc50-creators')) {
+            special.append(
+              btn(
+                'Open creator library',
+                () => go('uc50-creators')
+              )
+            );
+          }
+        }
+
+        return;
+      }
+
+      const q = search.value.trim().toLowerCase();
+
+      rows = games
+        .map((game, index) => ({
+          game,
+          record: records[index]
+        }))
+        .filter(({game, record}) => {
+          const group =
+            tab === 'all' ||
+            (tab === 'home' && homeOnly(game)) ||
+            (tab === 'built' && local(game)) ||
+            (tab === 'embedded' && Boolean(game.embed));
+
+          const found = (
+            String(game.name) + ' ' + String(game.category)
+          ).toLowerCase().includes(q);
+
+          const check =
+            state.value === 'all' ||
+            (
+              state.value === 'issues' &&
+              record.issues.length > 0
+            ) ||
+            (
+              state.value === 'unchecked' &&
+              Boolean(game.embed) &&
+              !record.deviceReview
+            ) ||
+            record.deviceReview?.result === state.value;
+
+          return group && found && check;
+        });
+
+      const pages = Math.max(1, Math.ceil(rows.length / 24));
+
+      number = Math.max(0, Math.min(number, pages - 1));
+
+      const embedded = records.filter(row => row.player).length;
+      const issues = records.filter(
+        row => row.issues.length
+      ).length;
+
+      status.textContent =
+        records.length + ' entries inspected for configuration; ' +
+        embedded + ' have an external player; ' +
+        issues + ' have configuration notes. ' +
+        'External playback is NOT automatically verified. ' +
+        'Device reports are your own.';
+
+      grid.replaceChildren(
+        ...rows.slice(number * 24, number * 24 + 24)
+          .map(({game, record}) => {
+            const c = el('article', undefined, 'hub-card');
+            c.dataset.gameId = String(game.id);
+
+            const label = local(game)
+              ? 'Built-in HTML5'
+              : homeOnly(game)
+                ? 'Home only · Miniplay'
+                : game.embed
+                  ? 'External player'
+                  : 'Catalog · no player';
+
+            const evidence = record.deviceReview
+              ? 'Your report: ' +
+                (
+                  record.deviceReview.result === 'plays'
+                    ? 'plays'
+                    : 'does not load'
+                ) +
+                ' · ' +
+                new Date(
+                  record.deviceReview.date
+                ).toLocaleDateString()
+
+              : game.embed
+                ? 'Playback not checked'
+                : local(game)
+                  ? 'Uses your existing local game code'
+                  : 'No in-page player configured';
+
+            c.append(
+              el('h3', game.name),
+              el('p', label),
+              el('p', evidence)
+            );
+
+            if (record.issues.length) {
+              c.append(
+                el('p', record.issues.join(' · '))
+              );
+            }
+
+            const actions = el(
+              'div',
+              undefined,
+              'hub-actions'
+            );
+
+            const play = btn(
+              local(game)
+                ? 'Play here'
+                : game.embed
+                  ? 'Open / test'
+                  : 'View entry',
+
+              () => test(game),
+              'button primary'
+            );
+
+            play.disabled =
+              Boolean(game.embed) && !https(game.embed);
+
+            const fav = btn(
+              favorites().includes(game.id) ? '★' : '☆',
+              () => toggleFavorite(game)
+            );
+
+            fav.setAttribute(
+              'aria-label',
+              'Favorite ' + game.name
+            );
+
+            fav.setAttribute(
+              'aria-pressed',
+              String(favorites().includes(game.id))
+            );
+
+            actions.append(play, fav);
+            c.append(actions);
+            return c;
+          })
+      );
+
+      if (!rows.length) {
+        grid.append(
+          el('p', 'No matches. Clear the filters.', 'empty')
+        );
+      }
+
+      pageLabel.textContent =
+        rows.length + ' matches · ' +
+        (number + 1) + ' / ' + pages;
+
+      prev.disabled = number === 0;
+      next.disabled = number === pages - 1;
+    }
+
+    search.oninput = state.onchange = () => {
+      number = 0;
+      draw();
+    };
+
+    /*
+      Wrap existing navigation, rather than replacing its behavior.
+      Keep a review visible when the same Home-only player starts.
+    */
+    const oldGo = go;
+
+    go = function (id) {
+      if (
+        id !== 'player' ||
+        !chosen ||
+        $('playerTitle')?.textContent !== chosen.name
+      ) {
+        reviewPanel.hidden = true;
+        chosen = null;
+      }
+
+      const result = oldGo(id);
+
+      if (id === root.id) draw();
+      return result;
+    };
+
+    if (typeof render === 'function') {
+      const oldRender = render;
+
+      render = function (...args) {
+        const result = oldRender.apply(this, args);
+        if (!root.hidden) draw();
+        return result;
+      };
+    }
+
+    /*
+      Add one homepage shortcut panel.
+      Existing sections, thumbnails, and add-ons stay intact.
+    */
+    const banner = el('section', undefined, 'hub-home');
+
+    banner.append(
+      el(
+        'strong',
+        'Play hub — your existing collection, organized'
+      )
+    );
+
+    const shortcuts = el('div', undefined, 'hub-actions');
+
+    definitions.forEach(([value, title]) => {
+      shortcuts.append(
+        btn(title, () => visit(value))
+      );
+    });
+
+    banner.append(shortcuts);
+    $('home').prepend(banner);
+
+    const nav = btn(
+      'Play hub',
+      () => visit('home'),
+      ''
+    );
+
+    nav.dataset.go = root.id;
+
+    document.querySelector('header nav')?.append(nav);
+
+    window.ffunHubV1 = Object.freeze({
+      version: '1.0',
+      audit: () => scan(),
+      refresh: () => draw()
+    });
+
+    draw();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener(
+      'DOMContentLoaded',
+      install,
+      {once: true}
+    );
+  } else {
+    install();
+  }
+})();
+</script>
