@@ -233,6 +233,36 @@
   font-size: .875rem;
 }
 
+.proxy-playable {
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line, #303441);
+  text-align: left;
+}
+
+.proxy-playable-group {
+  margin-top: .9rem;
+}
+
+.proxy-playable-group h3 {
+  margin: 0 0 .4rem;
+  font-size: 1rem;
+}
+
+.proxy-playable-group p {
+  margin-bottom: .5rem;
+  font-size: .875rem;
+}
+
+.proxy-playable-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .proxy-bookmarks {
   display: flex;
   justify-content: center;
@@ -327,6 +357,7 @@
 .proxy-window:fullscreen .proxy-stage {
   flex: 1;
   min-height: 0;
+  overflow: auto;
 }
 
 .proxy-window:fullscreen .proxy-frame {

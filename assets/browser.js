@@ -1,4 +1,5 @@
 import { games } from "./catalog.js";
+import { mountLocalGame } from "./local-games.js";
 
 const legacyViewer = "https://proxy-arcade-play.base44.app/browse";
 const home = { kind: "home", title: "Start page", address: "" };
@@ -19,8 +20,10 @@ const youtubeHosts = new Set([
   "youtu.be", "www.youtu.be", "www.youtube-nocookie.com",
 ]);
 const browserViews = new WeakMap();
+const builtInGames = games.filter(game => game.local);
+const embeddedGames = games.filter(game => game.embed);
 const gameEmbeds = new Map(
-  games.filter(game => game.embed).flatMap(game => [[game.url, game], [game.embed, game]])
+  embeddedGames.flatMap(game => [[game.url, game], [game.embed, game]])
 );
 
 export function youtubeVideoId(url) {
@@ -40,6 +43,13 @@ export function youtubeVideoId(url) {
 export function resolveBrowserAddress(input, pageUrl) {
   const address = input.trim();
   if (!address) return home;
+
+  if (address.startsWith("arcade:")) {
+    const game = builtInGames.find(entry => entry.id === address.slice("arcade:".length));
+    if (!game) return null;
+    if (game.local === true) return { kind: "built-in", title: game.title, address, id: game.id };
+    return resolveBrowserAddress(game.local, pageUrl);
+  }
 
   const local = new URL(localPage, pageUrl);
   if ([localPage, `./${localPage}`, local.pathname, local.href].includes(address)) {
@@ -252,7 +262,27 @@ function createBrowser() {
       shortcut.className = "proxy-bookmark";
       bookmarks.append(shortcut);
     }
-    content.append(headline, message, links, bookmarks);
+    const playable = element("section", "proxy-playable");
+    playable.append(element("h2", "", "Play inside the arcade"));
+    for (const [label, entries, destination] of [
+      ["Built-in games", builtInGames, game => `arcade:${game.id}`],
+      ["Official embeds", embeddedGames, game => game.embed]
+    ]) {
+      const group = element("section", "proxy-playable-group");
+      const list = element("ul", "proxy-playable-list");
+      for (const game of entries) {
+        const item = element("li");
+        const play = control(`Play ${game.title}`, game.title, () => submit(destination(game)));
+        play.className = "proxy-bookmark";
+        item.append(play);
+        list.append(item);
+      }
+      group.append(element("h3", "", label));
+      if (entries === embeddedGames) group.append(element("p", "", "Playback depends on the provider and your connection."));
+      group.append(list);
+      playable.append(group);
+    }
+    content.append(headline, message, links, bookmarks, playable);
     return content;
   }
 
@@ -332,11 +362,11 @@ function createBrowser() {
 
   function syncFullscreen() {
     const fullscreen = document.fullscreenElement === windowPanel;
-    const frame = stage.querySelector("iframe");
+    const player = stage.querySelector("iframe, .local-game");
     const label = fullscreen ? "Exit fullscreen" : "Fullscreen";
     expand.setAttribute("aria-label", label);
     expand.title = label;
-    expand.disabled = !fullscreen && (!frame || !document.fullscreenEnabled || !windowPanel.requestFullscreen);
+    expand.disabled = !fullscreen && (!player || !document.fullscreenEnabled || !windowPanel.requestFullscreen);
   }
 
   function showPage() {
@@ -353,11 +383,13 @@ function createBrowser() {
     address.removeAttribute("aria-invalid");
     back.disabled = active.index === 0;
     forward.disabled = active.index === active.entries.length - 1;
-    refresh.disabled = page.kind !== "local" && !page.embed;
+    refresh.disabled = page.kind !== "local" && page.kind !== "built-in" && !page.embed;
     homeButton.disabled = page.kind === "home";
 
     if (page.kind === "home") {
       stage.append(landing());
+    } else if (page.kind === "built-in") {
+      releaseFrame = mountLocalGame(page.id, stage);
     } else if (page.kind === "local" || page.embed) {
       releaseFrame = mountFrame(page);
     } else {

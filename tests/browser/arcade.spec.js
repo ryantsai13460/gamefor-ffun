@@ -165,6 +165,13 @@ test('Proxy Gemini respects frame blocking and keeps links and search explicit',
     body: '<h1>Restricted preview content</h1>'
   }));
   await page.goto('/#browse');
+  await expect(page.locator('.proxy-playable-group').nth(0).getByRole('button')).toHaveCount(13);
+  await expect(page.locator('.proxy-playable-group').nth(1).getByRole('button')).toHaveCount(3);
+  await page.getByRole('button', { name: 'Play 2048', exact: true }).click();
+  await expect(page.getByRole('group', { name: '2048 controls' })).toBeVisible();
+  await expect(page).toHaveURL(/#browse$/);
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.getByRole('group', { name: '2048 controls' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Open Snow Rider 3D', exact: true }).click();
   await expect(page.locator('.proxy-frame')).toHaveAttribute('src', 'https://www.miniplay.com/embed/snow-rider-3d');
   const address = page.getByRole('textbox', { name: 'Address or search query' });
