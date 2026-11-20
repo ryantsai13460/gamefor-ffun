@@ -1,5 +1,6 @@
 import { games } from './catalog.js';
 import { createLibrary, gameAvailability, queryLibrary, restorePreferences } from './library.js';
+import { arcadeEmbed, isMiniplayAddress } from './embedded-content.js';
 
 const storageKey = 'gamefor-ffun-complete-v2';
 const pageSize = 24;
@@ -334,6 +335,15 @@ function renderHome(target) {
   ]) {
     if (section) target.append(section);
   }
+
+  const miniplayGames = games.filter(game => isMiniplayAddress(game.embed));
+  if (miniplayGames.length) {
+    const provider = element('section', 'section-block info-panel');
+    const items = element('div', 'interaction-row');
+    for (const game of miniplayGames) items.append(external(game.title, game.url));
+    provider.append(element('h2', '', 'Miniplay links'), element('p', '', 'These games open on Miniplay in a new tab.'), items);
+    target.append(provider);
+  }
 }
 
 function selectField(label, values, selected = '') {
@@ -573,8 +583,8 @@ function renderWebSearch(target) {
   });
   const players = element('section', 'info-panel search-demo-results');
   const gameLinks = element('div', 'interaction-row');
-  for (const game of games.filter(entry => entry.embed)) {
-    gameLinks.append(link(game.title, hashFor('browse', { address: game.embed }), 'button'));
+  for (const game of games.filter(arcadeEmbed)) {
+    gameLinks.append(link(game.title, hashFor('browse', { address: arcadeEmbed(game) }), 'button'));
   }
   players.append(element('h2', '', 'Try official game embeds'), gameLinks);
   draw();
@@ -634,7 +644,7 @@ function renderGame(target, id) {
 
   const availability = gameAvailability(game);
   const publisherUrl = verifiedSource(game.url);
-  const embedUrl = verifiedSource(game.embed);
+  const embedUrl = verifiedSource(arcadeEmbed(game));
   const relatedUrl = verifiedSource(game.relatedUrl);
   const localFile = typeof game.local === 'string' && game.local.match(/^(?:\.\/)?([\w.-]+\.html)$/)?.[1];
   const header = element('header', 'player-heading');
@@ -662,8 +672,14 @@ function renderGame(target, id) {
 
   if (game.local !== true && !localFile && !embedUrl) {
     if (publisherUrl) {
-      status.textContent = 'Open the official or distributor page to check play options.';
-      stage.append(empty('This game opens separately', 'The game source may require an account, download, or purchase.'));
+      if (isMiniplayAddress(publisherUrl)) {
+        status.textContent = 'This catalog entry uses Miniplay.';
+        stage.append(empty('Publisher link available', 'Use the publisher link if Miniplay is available on your connection.'));
+      } else {
+        const preview = empty('Preview the game site', 'The preview stays in the arcade when the publisher allows embedding.');
+        preview.append(link('Open in Proxy Gemini', hashFor('browse', { address: publisherUrl }), 'button primary'));
+        stage.append(preview);
+      }
     } else {
       status.textContent = 'A matching official game page has yet to be verified.';
       stage.append(empty('Play link unavailable', 'This title is preserved in the catalog.'));
@@ -756,7 +772,7 @@ function renderGame(target, id) {
 }
 
 function randomGame() {
-  const eligible = games.filter(game => (game.local || game.embed) && (!current || current.id !== game.id));
+  const eligible = games.filter(game => (game.local || arcadeEmbed(game)) && (!current || current.id !== game.id));
   if (!eligible.length) {
     announce('There are no built-in games available to select.');
     return;

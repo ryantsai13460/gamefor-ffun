@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { games } from '../../assets/catalog.js';
+import { arcadeEmbed, browserApps } from '../../assets/embedded-content.js';
 
 const origin = 'http://127.0.0.1:4178';
 
@@ -166,15 +167,25 @@ test('Proxy Gemini respects frame blocking and keeps links and search explicit',
   }));
   await page.goto('/#browse');
   await expect(page.locator('.proxy-playable-group').nth(0).getByRole('button')).toHaveCount(13);
-  await expect(page.locator('.proxy-playable-group').nth(1).getByRole('button')).toHaveCount(3);
+  await expect(page.locator('.proxy-playable-group').nth(1).getByRole('button')).toHaveCount(2);
+  for (const app of browserApps) {
+    await page.getByRole('button', { name: 'Open ' + app.title, exact: true }).click();
+    await expect(page.locator('.proxy-frame')).toHaveAttribute('src', app.embed);
+    await expect(page).toHaveURL(/#browse$/);
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
+  }
   await page.getByRole('button', { name: 'Play 2048', exact: true }).click();
   await expect(page.getByRole('group', { name: '2048 controls' })).toBeVisible();
   await expect(page).toHaveURL(/#browse$/);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByRole('group', { name: '2048 controls' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Open Snow Rider 3D', exact: true }).click();
-  await expect(page.locator('.proxy-frame')).toHaveAttribute('src', 'https://www.miniplay.com/embed/snow-rider-3d');
+  await page.getByRole('button', { name: 'Open Stacktris', exact: true }).click();
+  await expect(page.locator('.proxy-frame')).toHaveAttribute('src', 'https://play.fancade.com/5BEC8352E4E078B1');
   const address = page.getByRole('textbox', { name: 'Address or search query' });
+  await address.fill('https://www.miniplay.com/game/snow-rider-3d');
+  await address.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Miniplay links are on Home' })).toBeVisible();
+  await expect(page.locator('.proxy-frame')).toHaveCount(0);
   await address.fill('https://example.com/blocked');
   await address.press('Enter');
   await expect(page.getByText(/the site may block embedding/)).toBeVisible();
@@ -262,7 +273,7 @@ test('every built-in player mounts and publisher embeds retain a direct source',
       await expect(page.locator('.player-stage canvas')).toBeVisible();
     }
   }
-  for (const game of games.filter(({ embed }) => embed)) {
+  for (const game of games.filter(arcadeEmbed)) {
     await page.goto(`/#play/${game.id}`);
     await page.getByRole('button', { name: 'Play game', exact: true }).click();
     await expect(page.locator('.player-stage iframe')).toHaveAttribute('src', game.embed);
@@ -325,6 +336,16 @@ test('Web Search displays local demo results and opens official players in Proxy
   await page.getByRole('searchbox', { name: 'Search the web' }).fill('racing');
   await page.getByRole('button', { name: 'Search demo', exact: true }).click();
   await expect(results.locator('li')).toHaveCount(1);
-  await page.getByRole('link', { name: 'Snow Rider 3D', exact: true }).click();
-  await expect(page.locator('.proxy-frame')).toHaveAttribute('src', 'https://www.miniplay.com/embed/snow-rider-3d');
+  await page.getByRole('link', { name: 'Stacktris', exact: true }).click();
+  await expect(page.locator('.proxy-frame')).toHaveAttribute('src', 'https://play.fancade.com/5BEC8352E4E078B1');
+});
+
+test('game details offer an in-arcade preview and Home collects Miniplay links', async ({ page }) => {
+  await page.goto('/#play/retrobowl');
+  const source = await page.getByRole('link', { name: 'Open game source' }).getAttribute('href');
+  await page.getByRole('link', { name: 'Open in Proxy Gemini' }).click();
+  await expect(page.locator('.proxy-frame')).toHaveAttribute('src', source);
+  await go(page, 'Home', 'Pocket Circuit');
+  await expect(page.getByRole('heading', { name: 'Miniplay links' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Snow Rider 3D', exact: true })).toHaveAttribute('target', '_blank');
 });

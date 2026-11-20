@@ -1,12 +1,13 @@
 import { games } from "./catalog.js";
 import { mountLocalGame } from "./local-games.js";
+import { arcadeEmbed, browserApps, isMiniplayAddress } from "./embedded-content.js";
 
 const legacyViewer = "https://proxy-arcade-play.base44.app/browse";
 const home = { kind: "home", title: "Start page", address: "" };
 const localPage = "catch-the-star.html";
 const shortcuts = [
   ["Catch the Star", localPage, "Local arcade"],
-  ["Snow Rider 3D", "https://www.miniplay.com/game/snow-rider-3d", "Game preview"],
+  ["Stacktris", "https://play.fancade.com/5BEC8352E4E078B1", "Game player"],
   ["Wikipedia", "https://www.wikipedia.org/", "Homepage preview"],
 ];
 const gameShortcuts = [
@@ -21,10 +22,11 @@ const youtubeHosts = new Set([
 ]);
 const browserViews = new WeakMap();
 const builtInGames = games.filter(game => game.local);
-const embeddedGames = games.filter(game => game.embed);
+const embeddedGames = games.filter(arcadeEmbed);
 const gameEmbeds = new Map(
-  embeddedGames.flatMap(game => [[game.url, game], [game.embed, game]])
+  embeddedGames.flatMap(game => [[game.url, game], [arcadeEmbed(game), game]])
 );
+const appEmbeds = new Map(browserApps.map(app => [app.embed, app]));
 
 export function youtubeVideoId(url) {
   if (!youtubeHosts.has(url.hostname)) return "";
@@ -88,7 +90,16 @@ export function resolveBrowserAddress(input, pageUrl) {
 
   const game = gameEmbeds.get(url.href);
   if (game) {
-    return { kind: "game", title: game.title, address: url.href, url: game.url, embed: game.embed };
+    return { kind: "game", title: game.title, address: url.href, url: game.url, embed: arcadeEmbed(game) };
+  }
+
+  const app = appEmbeds.get(url.href);
+  if (app) {
+    return { ...app, kind: "app", address: url.href };
+  }
+
+  if (isMiniplayAddress(url)) {
+    return { kind: "miniplay", title: "Miniplay", address: url.href };
   }
 
   if (url.origin === new URL(legacyViewer).origin && url.pathname.replace(/\/$/, "") === "/browse") {
@@ -262,11 +273,20 @@ function createBrowser() {
       shortcut.className = "proxy-bookmark";
       bookmarks.append(shortcut);
     }
+    const apps = element("section", "proxy-playable");
+    const appLinks = element("div", "proxy-shortcuts proxy-apps");
+    for (const app of browserApps) {
+      const shortcut = control(`Open ${app.title}`, "", () => submit(app.embed));
+      shortcut.className = "proxy-shortcut";
+      shortcut.append(element("strong", "", app.title), element("span", "", app.description));
+      appLinks.append(shortcut);
+    }
+    apps.append(element("h2", "", "Apps"), appLinks);
     const playable = element("section", "proxy-playable");
     playable.append(element("h2", "", "Play inside the arcade"));
     for (const [label, entries, destination] of [
       ["Built-in games", builtInGames, game => `arcade:${game.id}`],
-      ["Official embeds", embeddedGames, game => game.embed]
+      ["Official game players", embeddedGames, arcadeEmbed]
     ]) {
       const group = element("section", "proxy-playable-group");
       const list = element("ul", "proxy-playable-list");
@@ -282,13 +302,19 @@ function createBrowser() {
       group.append(list);
       playable.append(group);
     }
-    content.append(headline, message, links, bookmarks, playable);
+    content.append(headline, message, links, bookmarks, apps, playable);
     return content;
   }
 
   function directPage(page) {
     const search = page.kind === "search";
     const content = element("div", "proxy-direct");
+    if (page.kind === "miniplay") {
+      const homeLink = element("a", "button proxy-action", "Go to Home");
+      homeLink.href = "#home";
+      content.append(element("h2", "", "Miniplay links are on Home"), homeLink);
+      return content;
+    }
     const title = element("h2", "", search ? `Search for “${page.title}”` : page.title);
     const detail = element("p", "", search
       ? "Find matching games in the arcade. Google results are available in a separate tab."
@@ -319,6 +345,9 @@ function createBrowser() {
     } else if (page.kind === "game") {
       frame.allow = "fullscreen; gamepad";
       frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-pointer-lock allow-presentation");
+    } else if (page.kind === "app") {
+      frame.allow = "fullscreen";
+      frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
     } else if (!local) {
       frame.referrerPolicy = "no-referrer";
       frame.setAttribute("sandbox", "allow-scripts");

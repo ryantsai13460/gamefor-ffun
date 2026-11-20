@@ -1,3 +1,5 @@
+import { arcadeEmbed } from "./embedded-content.js";
+
 const PAGE_SIZE = 12;
 const CHECKS_KEY = "ffun-play-hub-checks-v2";
 const LEGACY_KEY = "ffun-hub-device-checks-v1";
@@ -82,7 +84,7 @@ function countAcross(entries, getKey) {
 function identifyGames(games) {
   const entries = games.map(game => {
     const sourceValue = game.sourceUrl ?? game.url ?? game.publisherUrl ?? "";
-    const playerValue = game.embedUrl ?? game.embed ?? "";
+    const playerValue = arcadeEmbed(game) ?? "";
     const source = safeUrl(sourceValue);
     const player = safeUrl(playerValue);
     const name = game.name ?? game.title ?? "";

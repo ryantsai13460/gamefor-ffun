@@ -1,3 +1,5 @@
+import { arcadeEmbed } from './embedded-content.js';
+
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 
 export function normalize(value) {
@@ -49,7 +51,7 @@ export function queryLibrary(library, settings) {
 
 export function gameAvailability(game) {
   if (game.local) return 'local';
-  if (game.embed) return 'embed';
+  if (arcadeEmbed(game)) return 'embed';
   if (game.url) return 'external';
   return 'unverified';
 }

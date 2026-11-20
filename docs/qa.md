@@ -9,7 +9,7 @@ The final run passed eight Node tests and six Chromium browser tests. Separate D
 | Area | Checks |
 | --- | --- |
 | Catalog integrity | 551 unique IDs and normalized titles, including 548 reconciled from the two main libraries. Checked category and availability counts, stable aliases, local asset paths, and HTTPS source links. |
-| Game availability | 13 built-in entries, 3 publisher-provided embed routes, 533 external source links, and 2 entries with unverified play links. All 536 publisher and distributor pages were checked for matching game metadata. |
+| Game availability | 13 built-in entries, 2 publisher-provided embed routes, 534 external source links, and 2 entries with unverified play links. Browser tests verify the arcade opens documented app and game embeds and keeps Miniplay out of Proxy Gemini. |
 | Library | All navigation routes, title and punctuation search, categories, sort, pagination, favorites persistence, recently played, trending from device launch totals, and random game. |
 | Player | All 13 built-in games launched in Chromium. Checked native fullscreen, restart, keyboard interaction, standalone click-to-score behavior, and correct embed and external fallback links. Local engine smoke tests also covered canvas input and animation, timers, and solvable puzzle states. |
 | Viewer and Play Hub | Checked tabs, history, refresh, local game, native fullscreen, navigation inside a website preview, a browser-enforced frame restriction, optional external links, saved device checks, and JSON report export. Preview responses were controlled in the browser tests. |

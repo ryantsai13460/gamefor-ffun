@@ -43,7 +43,7 @@ test('catalog records have distinct sources, correct status, and safe relative a
     }
     if (typeof game.local === 'string') await readFile(new URL(game.local, new URL('../', import.meta.url)));
   }
-  assert.deepEqual(statusCounts, { local: 13, embed: 3, external: 533, unverified: 2 });
+  assert.deepEqual(statusCounts, { local: 13, embed: 2, external: 534, unverified: 2 });
 });
 
 test('search spans titles, punctuated names, legacy aliases, categories and availability', () => {
@@ -76,8 +76,9 @@ test('Proxy Gemini resolves website previews, official embeds, local play and re
   assert.equal(resolveBrowserAddress('catch-the-star.html', site).url, 'https://ryantsai13460.github.io/gamefor-ffun/catch-the-star.html');
   assert.equal(resolveBrowserAddress('wikipedia.org', site).embed, 'https://wikipedia.org/');
   assert.equal(resolveBrowserAddress('wikipedia.org', site).kind, 'website');
-  assert.equal(resolveBrowserAddress('https://www.miniplay.com/game/snow-rider-3d', site).embed, 'https://www.miniplay.com/embed/snow-rider-3d');
-  assert.equal(resolveBrowserAddress('https://www.miniplay.com/embed/unlisted-game', site).kind, 'website');
+  assert.equal(resolveBrowserAddress('https://www.miniplay.com/game/snow-rider-3d', site).kind, 'miniplay');
+  assert.equal(resolveBrowserAddress('https://www.miniplay.com/embed/unlisted-game', site).embed, undefined);
+  assert.equal(resolveBrowserAddress('https://play.fancade.com/5BEC8352E4E078B1', site).kind, 'game');
   assert.equal(resolveBrowserAddress('https://proxy-arcade-play.base44.app/browse/', site).kind, 'unavailable');
   assert.equal(resolveBrowserAddress('my next game', site).kind, 'search');
   assert.equal(resolveBrowserAddress('https://www.youtube.com/shorts/aqz-KE-bpKQ', site).embed, 'https://www.youtube-nocookie.com/embed/aqz-KE-bpKQ');

@@ -26,7 +26,7 @@ The brief referenced a ZIP containing 548 entries. The attachment was the writte
 
 ## Links and artwork
 
-External entries link to reachable HTTPS publisher or distributor pages checked against the game title. Miniplay publishes reusable iframe URLs for Snow Rider 3D, Tennis Masters, and Crazy Roll 3D. Their embed responses matched the corresponding games and allowed framing. External gameplay can require a download, purchase, account, device capability, or supported region. Resent Client retains its original listing with a related link to the official Minecraft Classic game. Blash.io retains its listing and links to the publisher’s notice.
+External entries link to HTTPS publisher or distributor pages checked against the game title. Fancade and Stacktris use [Fancade’s documented embeddable player](https://www.fancade.com/wiki/Fancade_Web#Embedding). The previously featured Miniplay titles, Snow Rider 3D, Tennis Masters, and Crazy Roll 3D, have a separate set of publisher links on Home. External gameplay can require a download, purchase, account, device capability, or supported region. Resent Client retains its original listing with a related link to the official Minecraft Classic game. Blash.io retains its listing and links to the publisher’s notice.
 
 Artwork comes from game-specific metadata on the matched publisher or distributor page or a screenshot from this site's local games. Where available, the catalog uses the same provider's smaller image size. Thumbnails keep their source attribution. Games without a verified image use the site's title-card treatment.
 
