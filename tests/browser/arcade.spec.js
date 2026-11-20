@@ -266,3 +266,19 @@ test('layout and mobile menu fit desktop, tablet and phone widths', async ({ pag
     }
   }
 });
+
+test('Web Search sends queries to the selected provider in a separate tab', async ({ page }) => {
+  await page.context().route('https://**/*', route => route.fulfill({ body: 'Search results' }));
+  await page.goto('/');
+  await go(page, 'Web Search');
+  const query = page.getByRole('searchbox', { name: 'Search the web' });
+  await query.fill('arcade & games');
+  for (const [name, host] of [['DuckDuckGo', 'duckduckgo.com'], ['Google', 'www.google.com']]) {
+    const popupPromise = page.context().waitForEvent('page');
+    await page.getByRole('button', { name: 'Search ' + name }).click();
+    const popup = await popupPromise;
+    await popup.waitForURL(url => url.hostname === host && url.searchParams.get('q') === 'arcade & games');
+    await popup.close();
+  }
+  await expect(page).toHaveURL(/#web-search$/);
+});

@@ -312,3 +312,13 @@ select.field { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
 }
+
+.web-search-form {
+  max-width: 42rem;
+  justify-items: stretch;
+}
+
+.web-search-form .field {
+  min-width: 0;
+  width: 100%;
+}

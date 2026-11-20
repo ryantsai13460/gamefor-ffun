@@ -15,11 +15,11 @@ const mainCatalogCount = games.filter(game => game.collection === 'github' || ga
 const categories = [...library.categoryCounts.keys()].sort((a, b) => a.localeCompare(b));
 const altFeatured = ['2048', 'subway', 'ffun-skyline-v1', 'minecraft-classic', 'snake', 'retrobowl', 'stickman', 'drivemad', 'memory-match', 'pong'];
 const drawerMedia = matchMedia('(max-width: 860px)');
-const routes = new Set(['home', 'games', 'categories', 'trending', 'new', 'favorites', 'recent', 'youtube', 'movies', 'browse', 'play-hub', 'settings', 'credits', 'play']);
+const routes = new Set(['home', 'games', 'categories', 'trending', 'new', 'favorites', 'recent', 'youtube', 'movies', 'browse', 'web-search', 'play-hub', 'settings', 'credits', 'play']);
 const routeNames = {
   home: 'Home', games: 'All Games', categories: 'Categories', trending: 'Trending',
   new: 'New Games', favorites: 'Favorites', recent: 'Recently Played',
-  youtube: 'YouTube', movies: 'Movies', browse: 'Proxy Gemini', 'play-hub': 'Play Hub',
+  youtube: 'YouTube', movies: 'Movies', browse: 'Proxy Gemini', 'web-search': 'Web Search', 'play-hub': 'Play Hub',
   settings: 'Settings', credits: 'Credits'
 };
 const labels = { local: 'Built in', embed: 'In-page player', external: 'External', unverified: 'Link unverified' };
@@ -485,6 +485,31 @@ function renderCategories(target) {
   target.append(list);
 }
 
+function renderWebSearch(target) {
+  const form = element('form', 'info-panel web-search-form');
+  form.action = 'https://duckduckgo.com/';
+  form.target = '_blank';
+  form.rel = 'noopener noreferrer';
+  form.setAttribute('role', 'search');
+  form.setAttribute('aria-label', 'Web search');
+
+  const label = element('label', '', 'Search the web');
+  const query = element('input', 'field');
+  query.type = 'search';
+  query.name = 'q';
+  query.id = 'web-search-query';
+  query.required = true;
+  label.htmlFor = query.id;
+  const actions = element('div', 'interaction-row');
+  const duckDuckGo = element('button', 'button primary', 'Search DuckDuckGo');
+  const google = element('button', 'button', 'Search Google');
+  duckDuckGo.type = google.type = 'submit';
+  google.formAction = 'https://www.google.com/search';
+  actions.append(duckDuckGo, google);
+  form.append(label, query, actions);
+  target.append(heading('Web Search', 'Search from the arcade. Results open on the selected search engine in a new tab.'), form);
+}
+
 function renderSettings(target) {
   target.append(heading('Settings', 'Your changes are saved in this browser.'));
   const row = element('div', 'settings-grid');
@@ -720,6 +745,9 @@ async function renderRoute(focus = true) {
         }
         break;
       }
+      case 'web-search':
+        renderWebSearch(target);
+        break;
       case 'browse': {
         if (!browserModule) target.append(element('p', 'boot-note', 'Loading Proxy Gemini…'));
         browserModule = await import('./browser.js');
