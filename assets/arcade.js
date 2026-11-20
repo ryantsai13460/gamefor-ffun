@@ -485,6 +485,25 @@ function renderCategories(target) {
   target.append(list);
 }
 
+const searchDemo = {
+  Web: [
+    ['Getting started with browser arcade games', 'Learn how built-in games and publisher-provided players run in a web browser.'],
+    ['Arcade game controls', 'Compare keyboard, touch, and gamepad controls for puzzle and racing games.']
+  ],
+  YouTube: [
+    ['Five browser arcade games to try', 'Sample video result covering racing games and puzzles.'],
+    ['How to beat your arcade racing time', 'Sample video walkthrough for practicing racing game controls.']
+  ],
+  News: [
+    ['Community arcade tournament announced', 'Sample news story about a weekend racing and puzzle competition.'],
+    ['Browser arcade update adds touch controls', 'Sample news story about mobile support for puzzle games.']
+  ],
+  Shopping: [
+    ['Compact arcade-style controller', 'Sample product for browser racing and arcade games.'],
+    ['Portable arcade gamepad', 'Sample product for puzzle games and travel.']
+  ]
+};
+
 function renderWebSearch(target) {
   const form = element('form', 'info-panel web-search-form');
   form.action = 'https://duckduckgo.com/';
@@ -501,13 +520,66 @@ function renderWebSearch(target) {
   query.required = true;
   label.htmlFor = query.id;
   const actions = element('div', 'interaction-row');
+  const preview = element('button', 'button primary', 'Search demo');
   const duckDuckGo = element('button', 'button primary', 'Search DuckDuckGo');
   const google = element('button', 'button', 'Search Google');
-  duckDuckGo.type = google.type = 'submit';
+  preview.type = duckDuckGo.type = google.type = 'submit';
+  duckDuckGo.classList.remove('primary');
   google.formAction = 'https://www.google.com/search';
-  actions.append(duckDuckGo, google);
+  actions.append(preview, duckDuckGo, google);
   form.append(label, query, actions);
-  target.append(heading('Web Search', 'Search from the arcade. Results open on the selected search engine in a new tab.'), form);
+
+  const tabs = element('div', 'interaction-row');
+  tabs.setAttribute('role', 'group');
+  tabs.setAttribute('aria-label', 'Demo result categories');
+  const results = element('section', 'info-panel search-demo-results');
+  results.setAttribute('aria-label', 'Sample search results');
+  results.setAttribute('aria-live', 'polite');
+  const summary = element('p');
+  const list = element('ul', 'search-demo-list');
+  results.append(element('h2', '', 'Sample AI-style summary'), summary, list);
+  let activeCategory = 'Web';
+  let submitted = 'arcade';
+  query.value = submitted;
+
+  function draw() {
+    const words = submitted.toLowerCase().split(/\s+/);
+    const matches = searchDemo[activeCategory].filter(entry =>
+      words.every(word => entry.join(' ').toLowerCase().includes(word)));
+    summary.textContent = matches.length
+      ? `This demo found ${matches.length} sample ${activeCategory.toLowerCase()} results for “${submitted}”. ${matches[0][1]}`
+      : `No sample results for “${submitted}”. Try arcade, racing, or puzzle.`;
+    list.replaceChildren(...matches.map(([title, detail]) => {
+      const item = element('li');
+      item.append(element('h3', '', title), element('p', '', detail));
+      return item;
+    }));
+    [...tabs.children].forEach(button => {
+      button.setAttribute('aria-pressed', String(button.textContent === activeCategory));
+    });
+  }
+
+  for (const category of Object.keys(searchDemo)) {
+    tabs.append(action(category, () => {
+      activeCategory = category;
+      draw();
+    }));
+  }
+  form.addEventListener('submit', event => {
+    if (event.submitter === duckDuckGo || event.submitter === google) return;
+    event.preventDefault();
+    submitted = query.value.trim() || 'arcade';
+    draw();
+  });
+  const players = element('section', 'info-panel search-demo-results');
+  const gameLinks = element('div', 'interaction-row');
+  for (const game of games.filter(entry => entry.embed)) {
+    gameLinks.append(link(game.title, hashFor('browse', { address: game.embed }), 'button'));
+  }
+  players.append(element('h2', '', 'Try official game embeds'), gameLinks);
+  draw();
+  target.append(heading('Web Search', 'Demo results and summaries use sample data. Live searches open on Google or DuckDuckGo.'),
+    form, tabs, results, players);
 }
 
 function renderSettings(target) {

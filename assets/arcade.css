@@ -322,3 +322,26 @@ select.field { cursor: pointer; }
   min-width: 0;
   width: 100%;
 }
+
+.web-search-form {
+  margin-bottom: 1rem;
+}
+
+.search-demo-results {
+  margin-top: 1rem;
+  max-width: 42rem;
+}
+
+.search-demo-list {
+  list-style: none;
+  display: grid;
+  gap: .75rem;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.search-demo-list li {
+  border-top: 1px solid var(--line);
+  padding-top: .65rem;
+}

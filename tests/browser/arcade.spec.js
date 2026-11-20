@@ -282,3 +282,17 @@ test('Web Search sends queries to the selected provider in a separate tab', asyn
   }
   await expect(page).toHaveURL(/#web-search$/);
 });
+
+test('Web Search displays local demo results and opens official players in Proxy Gemini', async ({ page }) => {
+  await page.goto('/#web-search');
+  const results = page.getByRole('region', { name: 'Sample search results' });
+  for (const category of ['Web', 'YouTube', 'News', 'Shopping']) {
+    await page.getByRole('button', { name: category, exact: true }).click();
+    await expect(results.locator('li')).toHaveCount(2);
+  }
+  await page.getByRole('searchbox', { name: 'Search the web' }).fill('racing');
+  await page.getByRole('button', { name: 'Search demo', exact: true }).click();
+  await expect(results.locator('li')).toHaveCount(1);
+  await page.getByRole('link', { name: 'Snow Rider 3D', exact: true }).click();
+  await expect(page.locator('.proxy-frame')).toHaveAttribute('src', 'https://www.miniplay.com/embed/snow-rider-3d');
+});
