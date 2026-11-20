@@ -227,6 +227,9 @@ test('video and film search, official fallback, playback review, catalog report'
 
 test('the curated YouTube tabs have at least 50 items each and page through the library', async ({ page }) => {
   await page.goto('/#youtube');
+  await page.getByRole('button', { name: 'Play featured video', exact: true }).click();
+  await expect(page.getByRole('dialog').locator('iframe')).toHaveAttribute('src', /embed\/NWjkbAQOGY8/);
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
   const count = page.locator('.media-result-count');
   const watch = page.getByRole('button', { name: /^Watch / });
   for (const [tab, destination] of [['Shorts', '/shorts/'], ['Full videos', '/watch']]) {
@@ -243,6 +246,8 @@ test('the curated YouTube tabs have at least 50 items each and page through the 
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(dialog).not.toBeVisible();
   }
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
 });
 
 test('every built-in player mounts and publisher embeds retain a direct source', async ({ page }) => {

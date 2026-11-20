@@ -649,6 +649,7 @@ function youtubePage(target) {
   const filters = node('div', '', 'media-filters');
   const views = node('div', '', 'media-tabs');
   const input = search('Search titles, creators, or topics');
+  root.classList.add('youtube-page');
   const topics = [...new Set([...SHORTS, ...CREATOR_VIDEOS, ...addedShorts, ...addedVideos]
     .flatMap(video => video.tags))].sort();
   const category = filter('Video topic', ['All topics', ...topics]);
@@ -729,8 +730,19 @@ function youtubePage(target) {
     }
   });
   filters.append(input, category, creator);
-  root.append(heading('YouTube', 'Browse curated gaming Shorts and full videos without an API key.'),
-    views, filters, count, grid, controls, linkTools, notice, importer.section, connectedSearch);
+  const featured = addedVideos.find(video => video.id === 'NWjkbAQOGY8') || addedVideos[0];
+  const feature = node('section', '', 'youtube-feature');
+  const featureCopy = node('div', '', 'youtube-feature-copy');
+  featureCopy.append(node('p', 'Featured video', 'youtube-feature-label'),
+    node('h2', featured.title), node('p', featured.creator, 'media-meta'),
+    button('Play featured video', () => showVideo(featured), 'button primary'));
+  const featureArt = image(`https://i.ytimg.com/vi/${featured.id}/hqdefault.jpg`, featured.title);
+  featureArt.querySelector('img').loading = 'eager';
+  feature.append(featureCopy, featureArt);
+  const tools = node('div', '', 'youtube-library-tools');
+  tools.append(views, filters);
+  root.append(heading('YouTube', 'Gaming Shorts, gameplay, and creator videos.'),
+    feature, tools, count, grid, controls, linkTools, notice, importer.section, connectedSearch);
   target.replaceChildren(root);
 
   function allVideos() {
