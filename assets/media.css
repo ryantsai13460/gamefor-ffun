@@ -483,3 +483,32 @@
 .youtube-feature .media-image:not(:has(img)) {
   display: none;
 }
+
+.youtube-page .media-video .media-image {
+  background: var(--panel-deep);
+}
+
+.youtube-page .media-video .media-image-fallback {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--panel);
+  font-size: 0;
+}
+
+.youtube-page .media-video .media-image-fallback::before {
+  content: "";
+  width: .75rem;
+  height: .85rem;
+  margin-inline-start: .12rem;
+  background: var(--accent);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+
+.youtube-page .media-image:has(img.is-ready) .media-image-fallback {
+  visibility: hidden;
+}

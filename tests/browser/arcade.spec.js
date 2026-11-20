@@ -225,16 +225,16 @@ test('video and film search, official fallback, playback review, catalog report'
   expect((await report).suggestedFilename()).toMatch(/\.json$/);
 });
 
-test('the curated YouTube tabs have at least 50 items each and page through the library', async ({ page }) => {
+test('the expanded YouTube tabs show the curated catalog and support pagination', async ({ page }) => {
   await page.goto('/#youtube');
   await page.getByRole('button', { name: 'Play featured video', exact: true }).click();
   await expect(page.getByRole('dialog').locator('iframe')).toHaveAttribute('src', /embed\/NWjkbAQOGY8/);
   await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
   const count = page.locator('.media-result-count');
   const watch = page.getByRole('button', { name: /^Watch / });
-  for (const [tab, destination] of [['Shorts', '/shorts/'], ['Full videos', '/watch']]) {
+  for (const [tab, destination, minimum] of [['Shorts', '/shorts/', 350], ['Full videos', '/watch', 170]]) {
     await page.getByRole('button', { name: tab, exact: true }).click();
-    expect(parseInt(await count.textContent(), 10)).toBeGreaterThanOrEqual(50);
+    expect(parseInt(await count.textContent(), 10)).toBeGreaterThanOrEqual(minimum);
     const firstTitle = await watch.first().getAttribute('aria-label');
     await page.getByRole('button', { name: 'Next page', exact: true }).click();
     await expect(watch.first()).not.toHaveAttribute('aria-label', firstTitle);
@@ -288,6 +288,13 @@ test('layout and mobile menu fit desktop, tablet and phone widths', async ({ pag
       await page.getByRole('button', { name: 'Open navigation' }).click();
       await page.keyboard.press('Escape');
       await expect(page.getByRole('button', { name: 'Open navigation' })).toBeFocused();
+
+      for (const [route, title] of [['youtube', 'YouTube'], ['browse', 'Proxy Gemini'], ['play-hub', 'Play Hub']]) {
+        await page.goto('/#' + route, { waitUntil: 'domcontentloaded' });
+        await expect(page.getByRole('heading', { name: title, level: 1, exact: true })).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+        await recordScreenshot(page, info, `${route}-${width}`);
+      }
     }
   }
 });

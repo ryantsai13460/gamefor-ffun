@@ -4,25 +4,29 @@
 }
 
 .proxy-heading {
-  margin-bottom: 1.4rem;
+  margin-bottom: 1.375rem;
 }
 
 .proxy-heading h1 {
   margin: 0;
-  font-size: clamp(1.95rem, 4vw, 3rem);
-  letter-spacing: -.045em;
+  font-size: clamp(2rem, 3.7vw, 3.4rem);
+  font-weight: 830;
+  line-height: 1.05;
+  letter-spacing: -.05em;
 }
 
 .proxy-heading p {
-  margin: .35rem 0 0;
+  max-width: 42rem;
+  margin: .5rem 0 0;
   color: var(--muted, #a6a9b1);
+  line-height: 1.55;
 }
 
 .proxy-window {
   overflow: hidden;
   background: var(--panel, #151822);
   border: 1px solid var(--line, #303441);
-  border-radius: 1rem;
+  border-radius: .875rem;
 }
 
 .proxy-tab-row,
@@ -37,9 +41,9 @@
 }
 
 .proxy-tab-row {
-  padding: .5rem .6rem;
-  border-bottom: 1px solid var(--line, #303441);
-  background: var(--bg, #101219);
+  padding: .4rem .625rem;
+  border-bottom: 1px solid var(--line-soft, #26262e);
+  background: var(--panel-deep, #121217);
 }
 
 .proxy-tabs {
@@ -50,6 +54,7 @@
   min-width: 0;
   padding: .2rem;
   overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .proxy-tab {
@@ -58,14 +63,15 @@
   align-items: center;
   max-width: min(11rem, 55vw);
   border: 1px solid var(--line, #303441);
-  border-radius: .6rem;
+  border-radius: .5rem;
+  background: var(--panel, #19191f);
   color: var(--muted, #a6a9b1);
 }
 
 .proxy-tab[data-active="true"] {
-  background: var(--panel, #151822);
-  color: var(--text, #f4f4f6);
-  border-color: color-mix(in srgb, var(--accent, #f4c542) 38%, var(--line, #303441));
+  background: var(--accent-wash, #302619);
+  color: var(--accent, #ffc361);
+  border-color: color-mix(in srgb, var(--accent, #ffc361) 34%, var(--line, #303441));
 }
 
 .proxy-tab-name,
@@ -90,10 +96,15 @@
   font-weight: 650;
 }
 
+.proxy-tab-name:focus-visible,
+.proxy-tab-close:focus-visible {
+  outline-offset: -3px;
+}
+
 .proxy-control {
   flex: 0 0 auto;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.625rem;
+  height: 2.625rem;
   padding: 0;
   border: 1px solid transparent;
   border-radius: .55rem;
@@ -102,13 +113,13 @@
 }
 
 .proxy-control:not(:disabled):hover {
-  background: var(--bg, #101219);
+  background: var(--panel-hover, #23232b);
   border-color: var(--line, #303441);
   color: var(--accent, #f4c542);
 }
 
 .proxy-control:disabled {
-  opacity: .36;
+  opacity: .48;
   cursor: default;
 }
 
@@ -119,7 +130,7 @@
 }
 
 .proxy-toolbar {
-  padding: .65rem;
+  padding: .65rem .75rem;
   border-bottom: 1px solid var(--line, #303441);
 }
 
@@ -137,7 +148,7 @@
   min-height: 2.6rem;
   padding: .55rem .8rem;
   color: var(--text, #f4f4f6);
-  background: var(--bg, #101219);
+  background: var(--panel-deep, #121217);
   border: 1px solid var(--line, #303441);
   border-radius: .55rem;
   font: inherit;
@@ -164,35 +175,41 @@
   white-space: nowrap;
 }
 
-.proxy-action:hover {
-  filter: brightness(1.09);
+.proxy-viewer .proxy-action:not(:disabled):hover {
+  background: #ffd28d;
+  border-color: #ffd28d;
 }
 
 .proxy-stage {
   min-height: 16rem;
-  background: var(--bg, #101219);
+  background: var(--panel-deep, #121217);
 }
 
 .proxy-start,
 .proxy-direct {
-  max-width: 46rem;
+  max-width: 59rem;
   margin: auto;
-  padding: clamp(1.5rem, 5vw, 3.5rem) clamp(1rem, 4vw, 2rem);
-  text-align: center;
+  padding: clamp(1.5rem, 4vw, 2.75rem) clamp(1rem, 4vw, 2.5rem);
   overflow-wrap: anywhere;
+}
+
+.proxy-direct {
+  text-align: center;
 }
 
 .proxy-start h2,
 .proxy-direct h2 {
   margin: 0 0 .45rem;
   font-size: clamp(1.3rem, 3vw, 1.75rem);
-  letter-spacing: -.025em;
+  font-weight: 800;
+  letter-spacing: -.04em;
 }
 
 .proxy-start p,
 .proxy-direct p {
   margin: 0 0 1.35rem;
   color: var(--muted, #a6a9b1);
+  line-height: 1.55;
 }
 
 .proxy-direct-actions {
@@ -210,7 +227,8 @@
 }
 
 .proxy-shortcut {
-  padding: .8rem;
+  min-height: 4.625rem;
+  padding: .85rem .9rem;
   border: 1px solid var(--line, #303441);
   border-radius: .65rem;
   background: var(--panel, #151822);
@@ -219,7 +237,9 @@
 
 .proxy-shortcut:hover,
 .proxy-bookmark:hover {
-  border-color: var(--accent, #f4c542);
+  color: var(--text, #f5f3f5);
+  background: var(--panel-hover, #23232b);
+  border-color: color-mix(in srgb, var(--accent, #ffc361) 52%, var(--line, #303441));
 }
 
 .proxy-shortcut strong,
@@ -234,19 +254,20 @@
 }
 
 .proxy-playable {
-  margin-top: 1.75rem;
+  margin-top: 1.5rem;
   padding-top: 1.25rem;
-  border-top: 1px solid var(--line, #303441);
-  text-align: left;
+  border-top: 1px solid var(--line-soft, #26262e);
 }
 
 .proxy-playable-group {
-  margin-top: .9rem;
+  margin-top: 1rem;
 }
 
 .proxy-playable-group h3 {
   margin: 0 0 .4rem;
-  font-size: 1rem;
+  color: var(--accent, #ffc361);
+  font-size: .9rem;
+  font-weight: 750;
 }
 
 .proxy-playable-group p {
@@ -265,18 +286,23 @@
 
 .proxy-bookmarks {
   display: flex;
-  justify-content: center;
   flex-wrap: wrap;
   gap: .5rem;
   margin-top: .9rem;
 }
 
 .proxy-bookmark {
-  padding: .4rem .65rem;
+  min-height: 2.375rem;
+  padding: .4rem .7rem;
   border: 1px solid var(--line, #303441);
-  border-radius: 2rem;
+  border-radius: .45rem;
   color: var(--muted, #a6a9b1);
+  background: var(--panel, #19191f);
   font-size: .875rem;
+}
+
+.proxy-playable .proxy-bookmark {
+  color: var(--text, #f5f3f5);
 }
 
 .proxy-frame {
@@ -313,6 +339,7 @@
   justify-content: space-between;
   padding: .65rem .85rem;
   border-bottom: 1px solid var(--line, #303441);
+  background: var(--sidebar, #141418);
   font-size: .875rem;
 }
 
@@ -323,12 +350,17 @@
 .proxy-status {
   margin: 0;
   color: var(--muted, #a6a9b1);
+  line-height: 1.45;
 }
 
 .proxy-source {
   color: var(--accent, #f4c542);
   text-underline-offset: .17em;
   flex: none;
+}
+
+.proxy-source:hover {
+  text-decoration: underline;
 }
 
 .proxy-legacy {
@@ -339,7 +371,12 @@
 
 .proxy-legacy summary {
   width: fit-content;
+  padding-block: .25rem;
   cursor: pointer;
+}
+
+.proxy-legacy summary:hover {
+  color: var(--text, #f5f3f5);
 }
 
 .proxy-legacy a {
@@ -377,10 +414,6 @@
 
   .proxy-shortcuts {
     grid-template-columns: 1fr;
-  }
-
-  .proxy-bookmarks {
-    justify-content: flex-start;
   }
 
   .proxy-status-row {

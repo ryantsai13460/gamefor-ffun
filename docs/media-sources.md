@@ -6,7 +6,9 @@ The YouTube section preserves the 24 original Unstable SMP and Minecraft creator
 | --- | --- |
 | Minecraft Shorts | [camman18](https://www.youtube.com/@camman18/shorts), [Minecraft Wiki's Mojang Shorts index](https://minecraft.wiki/w/Mojang_shorts) |
 | Expanded Roblox Shorts | Official YouTube upload metadata for Robert Noob, GaminGO X 001, and Frozen Liquid |
+| More gaming Shorts | [camman18](https://www.youtube.com/@camman18/shorts), [KreekCraft](https://www.youtube.com/@KreekCraft/shorts), and creators and publishers covering Apex Legends, Among Us, Brawl Stars, Clash, Fortnite, Pokémon, Rocket League, Subway Surfers, and Valorant. Candidate Shorts came from creator indexes and were checked against YouTube oEmbed. |
 | Expanded full videos | Official YouTube video links from [Minecraft](https://www.minecraft.net/en-us/articles), [Roblox](https://corp.roblox.com/newsroom), [Fortnite](https://www.fortnite.com/news), and [Nintendo](https://www.nintendo.com/us/whatsnew/), verified against YouTube oEmbed |
+| More creator videos | Gaming uploads discovered through creator indexes and checked against YouTube oEmbed, including Fortnite, Minecraft, Roblox, Valorant, and Rocket League |
 | Roblox Shorts | [Shedletsky's Roblox HQ Short](https://www.youtube.com/shorts/ftnaXStTPBY), [Bloxify's Roblox moments](https://www.youtube.com/shorts/WILeRgKUUvk), [WarmBlox's Roblox Obby Escape](https://www.youtube.com/shorts/JFl6u1rsFLw) |
 | Unstable SMP and creator picks | [Wemmbu](https://www.youtube.com/@wemmbumc), [Parrot](https://www.youtube.com/@ParrotX2), [Spoke](https://www.youtube.com/@SpokeIsHere), [FlameFrags](https://www.youtube.com/@FlameFragsMC) |
 | A Minecraft Movie | [Mojang's official artwork](https://www.minecraft.net/en-us/article/a-minecraft-movie-out-now), [Warner Bros. trailer](https://www.youtube.com/watch?v=wJO_vIDZn-I), [Apple TV listing](https://tv.apple.com/us/movie/a-minecraft-movie/umc.cmc.1od4a1ayyjqn43uz8fel7ei5e) |

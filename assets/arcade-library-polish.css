@@ -1,0 +1,402 @@
+.route-home {
+  container: arcade-home / inline-size;
+}
+
+.route-home .hero-feature {
+  --hero-surface: #101b23;
+  grid-template-columns: minmax(0, .95fr) minmax(0, 1.5fr);
+  min-height: clamp(19rem, 32cqi, 25rem);
+  background: var(--hero-surface);
+  border-color: #39404a;
+  border-radius: 16px;
+}
+
+.route-home .hero-feature:has(.hero-art.has-no-art) {
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+}
+
+.route-home .hero-copy {
+  min-width: 0;
+  padding: clamp(1.5rem, 4.2cqi, 3.25rem) 0 clamp(1.5rem, 4.2cqi, 3.25rem) clamp(1.5rem, 4.2cqi, 3.25rem);
+}
+
+.route-home .hero-kicker {
+  margin-bottom: .85rem;
+  line-height: 1.25;
+  letter-spacing: .09em;
+}
+
+.route-home .hero-copy h1 {
+  font-size: clamp(2.55rem, 6.35cqi, 5rem);
+  line-height: .98;
+  letter-spacing: -.059em;
+  overflow-wrap: anywhere;
+}
+
+.route-home .hero-copy p {
+  max-width: 30ch;
+  margin: .9rem 0 1.35rem;
+  color: #d0d5d9;
+  line-height: 1.52;
+  text-wrap: pretty;
+}
+
+.route-home .hero-copy .button {
+  padding-inline: 1.1rem;
+  font-weight: 740;
+}
+
+.route-home .hero-art {
+  background: var(--hero-surface);
+}
+
+.route-home .hero-art.has-no-art {
+  display: none;
+}
+
+.route-home .hero-art .art-image {
+  object-fit: contain;
+  object-position: center;
+}
+
+.route-home .hero-art::after {
+  background: linear-gradient(90deg, var(--hero-surface), transparent 15%);
+}
+
+.route-home .hero-credit {
+  right: .85rem;
+  bottom: .7rem;
+  padding: .25rem .45rem;
+  color: #d2d8dc;
+  background: #10171de8;
+}
+
+.route-home .quick-filters {
+  gap: .5rem;
+  margin: 1rem 0 1.75rem;
+}
+
+.route-home .quick-filters .chip {
+  min-height: 2.45rem;
+  padding-inline: .78rem;
+  border-radius: 999px;
+  transition: color .16s, border-color .16s, background-color .16s;
+}
+
+.route-home .quick-filters .chip:hover {
+  background: var(--panel-hover);
+}
+
+.route-home .quick-filters .chip.is-active:hover {
+  background: #3d2f1a;
+}
+
+.route-home .section-heading {
+  margin-bottom: .8rem;
+}
+
+.route-home .section-heading h2 {
+  font-size: clamp(1.25rem, 2.7cqi, 1.75rem);
+  letter-spacing: -.039em;
+  line-height: 1.15;
+}
+
+.route-home .section-heading .text-action {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  min-height: 2rem;
+}
+
+.route-home .section-block + .section-block {
+  margin-top: clamp(1.65rem, 3.5cqi, 2.7rem);
+}
+
+.route .game-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 10.5rem), 1fr));
+  gap: clamp(.6rem, 1.12vw, 1rem);
+}
+
+.route-home .game-grid.shelf {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.route-home .game-grid.shelf .game-card:nth-child(n) {
+  display: block;
+}
+
+.route .game-grid .game-card {
+  border-color: var(--line-soft);
+  border-radius: 10px;
+  transition: border-color .16s, background-color .16s, transform .16s, box-shadow .16s;
+}
+
+.route .game-grid .game-card:is(:hover, :focus-within) {
+  border-color: #68543a;
+  box-shadow: 0 6px 14px #0003;
+}
+
+.route .game-grid .card-art {
+  aspect-ratio: 16 / 11;
+  border-bottom: 1px solid #ffffff12;
+}
+
+.compact .route .game-grid .card-art {
+  aspect-ratio: 2 / 1;
+}
+
+.route .game-grid .art-image {
+  transition: transform .22s ease-out, opacity .16s ease-out;
+}
+
+.route .game-grid .card-art:has(.art-image.is-ready) .art-placeholder {
+  visibility: hidden;
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .route .game-grid .card-link:hover .art-image {
+    transform: scale(1.035);
+  }
+}
+
+.route .game-grid .art-placeholder {
+  padding: .8rem 16%;
+  font-size: clamp(.78rem, 1.2vw, 1rem);
+}
+
+.route .game-grid .card-copy {
+  gap: .35rem;
+  padding: .7rem .7rem .78rem;
+}
+
+.compact .route .game-grid .card-copy {
+  padding-block: .5rem .55rem;
+}
+
+.route .game-grid .card-copy h3 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.24;
+}
+
+.route .game-grid .card-meta {
+  column-gap: .25rem;
+  row-gap: .18rem;
+  font-size: .74rem;
+}
+
+.route .game-grid .favorite-button {
+  inset: .45rem .45rem auto auto;
+  background: #161419eb;
+  border-color: #eee7fa55;
+}
+
+.route .game-grid .favorite-button[aria-pressed="true"] {
+  border-color: #ffc3619c;
+  background: #332614ed;
+}
+
+.route .game-grid .favorite-button:focus-visible {
+  outline-offset: 2px;
+}
+
+:is(.route-games, .route-new, .route-trending, .route-favorites, .route-recent) {
+  container: arcade-library / inline-size;
+}
+
+:is(.route-games, .route-new, .route-trending, .route-favorites, .route-recent, .route-categories) .page-heading {
+  gap: .6rem;
+  margin-bottom: 1.4rem;
+}
+
+:is(.route-games, .route-new, .route-trending, .route-favorites, .route-recent, .route-categories) .page-heading h1 {
+  letter-spacing: -.05em;
+  line-height: 1.02;
+}
+
+.route .library-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1.9fr) repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: .7rem;
+  margin: 0;
+  padding: .9rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--panel-deep);
+  scroll-margin-top: 1rem;
+}
+
+.route .library-controls:has(> :nth-child(4)) {
+  grid-template-columns: minmax(0, 1.9fr) repeat(3, minmax(0, 1fr));
+}
+
+.route .library-controls label {
+  min-width: 0;
+  gap: .4rem;
+}
+
+.route .library-controls .field {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.8rem;
+  border-color: var(--line);
+  font-size: .88rem;
+}
+
+.route .library-results {
+  margin-block: 1rem .6rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.route .pagination {
+  margin-top: 1.4rem;
+  gap: clamp(.55rem, 2vw, .85rem);
+}
+
+.route .pagination .button {
+  min-width: 5.5rem;
+}
+
+.route .pagination-output {
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.route-games, .route-new, .route-trending, .route-favorites, .route-recent) .empty-state {
+  align-content: center;
+  gap: .55rem;
+  min-height: 9.5rem;
+  padding: clamp(1rem, 4cqi, 2rem);
+  border-color: var(--line);
+  background: var(--panel-deep);
+}
+
+:is(.route-games, .route-new, .route-trending, .route-favorites, .route-recent) .empty-state .button {
+  margin-top: .35rem;
+}
+
+.route-categories .category-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
+}
+
+.route-categories .category-card {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: center;
+  align-items: center;
+  gap: .23rem .7rem;
+  min-height: 5rem;
+  padding: .75rem;
+}
+
+.route-categories .category-card .icon {
+  grid-row: span 2;
+  box-sizing: content-box;
+  padding: .5rem;
+  background: var(--accent-wash);
+  border: 1px solid #664c2c;
+  border-radius: 8px;
+}
+
+.route-categories .category-card strong {
+  overflow-wrap: anywhere;
+}
+
+@container arcade-home (max-width: 60rem) {
+  .route-home .game-grid.shelf {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container arcade-library (max-width: 44rem) {
+  .route .library-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .route .library-controls:has(> :nth-child(4)) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .route .library-controls .library-query {
+    grid-column: 1 / -1;
+  }
+}
+
+@container arcade-library (max-width: 31rem) {
+  .route .game-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container arcade-library (max-width: 27rem) {
+  .route .library-controls:has(> :nth-child(4)) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .route .library-controls > :nth-child(4) {
+    grid-column: 1 / -1;
+  }
+}
+
+@container arcade-home (max-width: 34rem) {
+  .route-home .hero-feature {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+    border-radius: 13px;
+  }
+
+  .route-home .hero-art {
+    position: relative;
+    order: -1;
+    aspect-ratio: 2 / 1;
+  }
+
+  .route-home .hero-art::after {
+    background: linear-gradient(0deg, var(--hero-surface), transparent 38%);
+  }
+
+  .route-home .hero-copy {
+    padding: .65rem 1rem 1.1rem;
+  }
+
+  .route-home .hero-feature:has(.hero-art.has-no-art) .hero-copy {
+    padding-block-start: 1.1rem;
+  }
+
+  .route-home .hero-copy h1 {
+    max-width: none;
+    font-size: clamp(2.1rem, 9.1cqi, 3.15rem);
+  }
+
+  .route-home .hero-kicker {
+    margin-bottom: .48rem;
+  }
+
+  .route-home .hero-copy p {
+    margin: .7rem 0 1rem;
+  }
+
+  .route-home .game-grid.shelf {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 32rem) {
+  .route .game-grid .favorite-button {
+    width: 2.65rem;
+    height: 2.65rem;
+    min-height: 2.65rem;
+  }
+
+  .route .game-grid .card-copy {
+    padding-inline: .55rem;
+  }
+
+  .route .library-controls .field {
+    font-size: 1rem;
+  }
+}
