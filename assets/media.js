@@ -735,7 +735,7 @@ function youtubePage(target) {
 
   function allVideos() {
     return new Map([...state.channels.flatMap(({items}) => items), ...state.extra,
-      ...CREATOR_VIDEOS, ...addedVideos, ...SHORTS, ...addedShorts].map((video) => [video.id, video]));
+      ...addedVideos, ...CREATOR_VIDEOS, ...SHORTS, ...addedShorts].map((video) => [video.id, video]));
   }
 
   function rememberOnlineVideo(video) {
