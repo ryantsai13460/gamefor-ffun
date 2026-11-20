@@ -4,17 +4,17 @@ The previous GitHub entry page contained duplicate document markup and ended ins
 
 ## Passed
 
-The suite includes eight Node tests and 16 Chromium browser tests. Separate DOM smoke tests exercised game rules and media imports.
+The suite includes ten Node tests and 18 Chromium browser tests. Separate DOM smoke tests exercised game rules, media imports, and assistant behavior.
 
 | Area | Checks |
 | --- | --- |
-| Catalog integrity | 553 unique IDs and normalized titles, including 548 reconciled from the two main libraries. Checked category and availability counts, stable aliases, local asset paths, and HTTPS source links. |
-| Game availability | 15 built-in entries, 2 publisher-provided embed routes, 534 external source links, and 2 entries with unverified play links. Browser tests verify the arcade opens documented app and game embeds and keeps Miniplay out of Proxy Gemini. |
+| Catalog integrity | 556 unique IDs and normalized titles, including 548 reconciled from the two main libraries. Checked category and availability counts, stable aliases, local asset paths, and HTTPS source links. |
+| Game availability | 18 built-in entries, 2 publisher-provided embed routes, 534 external source links, and 2 entries with unverified play links. Browser tests verify the arcade opens documented app and game embeds and keeps Miniplay out of Proxy Gemini. |
 | Library | All navigation routes, title and punctuation search, categories, sort, pagination, favorites persistence, recently played, trending from device launch totals, and random game. |
-| Player | All 15 built-in games launched in Chromium. Checked native fullscreen, restart, keyboard interaction, standalone click-to-score behavior, and puzzle progression in Pattern Pulse and Sum Trail. Local engine smoke tests also covered canvas input and animation, timers, and solvable puzzle states. |
+| Player | All 18 built-in games launch in Chromium. Checked fullscreen, restart, keyboard interaction, standalone click-to-score, and puzzle progression. Targeted game tests covered scoring, touch and keyboard input, and completion of Comet Courier, Pinpoint Putt, and Beat Beacon. |
 | Viewer and Play Hub | Checked tabs, history, refresh, local game, native fullscreen, navigation inside a website preview, a browser-enforced frame restriction, optional external links, saved device checks, and JSON report export. Preview responses were controlled in the browser tests. |
-| Media | Verified official metadata for 31 YouTube entries and HTTP reachability for 29 film URLs. Browser tests covered search, player dialog, close controls, distinct trailer and full-film destinations, and direct links. |
-| Shorts and Web Search | Verified the new violin listings through YouTube metadata. Browser tests cover wheel and keyboard navigation, a single active Shorts frame, tab state, 116 violin results with filters and pagination, and model setup and answers with a simulated browser model. |
+| Media | Verified the additional 500 videos through official YouTube oEmbed metadata and public creator indexes. Tests check 1,153 unique total entries, ten populated topics, and 48 cinema listings. Browser tests cover collection navigation, playback dialog controls, and official YouTube and NFB player routes. |
+| Shorts and Web Search | Browser tests cover wheel and keyboard navigation, a single active Shorts frame, tab state, 116 violin results with filters and pagination, on-device setup with a simulated model, a local unit conversion, and Google category links. |
 | Layout and accessibility | Chromium at 1440px, 768px, and 390px. Checked horizontal overflow, mobile drawer dismissal and keyboard focus, and image placeholders with third-party images blocked. |
 
 ## Limits

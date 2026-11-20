@@ -31,10 +31,10 @@ test('navigation, catalog pagination, filtering, favorites, play history and set
   await expect(page.locator('.hero-art .art-image.is-ready')).toBeVisible();
 
   await go(page, 'All Games');
-  await expect(page.locator('.library-results')).toHaveText('1–24 of 553 games');
+  await expect(page.locator('.library-results')).toHaveText('1–24 of 556 games');
   await expect(page.locator('.game-card')).toHaveCount(24);
   await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(page.locator('.library-results')).toHaveText('25–48 of 553 games');
+  await expect(page.locator('.library-results')).toHaveText('25–48 of 556 games');
   await page.getByRole('button', { name: 'Previous', exact: true }).click();
   await expect(page.locator('.pagination-output')).toHaveText('Page 1 of 24');
 
@@ -77,7 +77,7 @@ test('navigation, catalog pagination, filtering, favorites, play history and set
   await go(page, 'New Games');
   await expect(page.locator('.game-card').first()).toBeVisible();
   await go(page, 'Built-in Games');
-  await expect(page.locator('.game-card')).toHaveCount(15);
+  await expect(page.locator('.game-card')).toHaveCount(18);
 
   const global = page.getByRole('searchbox', { name: 'Search the arcade' });
   await global.fill('slither.io');
@@ -166,7 +166,7 @@ test('Proxy Gemini respects frame blocking and keeps links and search explicit',
     body: '<h1>Restricted preview content</h1>'
   }));
   await page.goto('/#browse');
-  await expect(page.locator('.proxy-playable-group').nth(0).getByRole('button')).toHaveCount(15);
+  await expect(page.locator('.proxy-playable-group').nth(0).getByRole('button')).toHaveCount(18);
   await expect(page.locator('.proxy-playable-group').nth(1).getByRole('button')).toHaveCount(2);
   for (const app of browserApps) {
     await page.getByRole('button', { name: 'Open ' + app.title, exact: true }).click();
@@ -261,6 +261,40 @@ test('the expanded YouTube tabs show the curated catalog and support pagination'
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
 });
 
+test('Explore connects the new videos, collections, cinema, arcade and tools', async ({ page }) => {
+  await page.goto('/');
+  await go(page, 'Explore', 'Explore the arcade');
+  await expect(page.getByRole('heading', { name: 'Watch', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Video collections', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Play', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Search and tools', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Comet Courier Play the space delivery game$/ })).toBeVisible();
+
+  await page.getByRole('link', { name: 'Browse new videos' }).click();
+  await expect(page.getByRole('button', { name: 'New additions' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.media-result-count')).toHaveText('500 videos');
+  await page.getByRole('navigation', { name: 'Browse video topics' }).getByRole('link', { name: 'Science' }).click();
+  await expect(page.getByRole('combobox', { name: 'Video topic' })).toHaveValue('Science');
+  await expect(page.locator('.media-result-count')).toHaveText('83 videos');
+
+  await go(page, 'Explore', 'Explore the arcade');
+  await page.getByRole('link', { name: /^Cinema \d+ films and trailers$/ }).click();
+  await expect(page.getByRole('heading', { name: 'Movies', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Open films', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Animated shorts', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Studio trailers', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Studio trailers', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Studio trailers', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Watch trailer', exact: true }).first()).toBeVisible();
+
+  await page.goto('/#movies?collection=shorts');
+  await page.getByRole('searchbox', { name: 'Search films' }).fill('The Cat Came Back');
+  await page.getByRole('button', { name: 'Play full short', exact: true }).click();
+  const film = page.getByRole('dialog', { name: 'The Cat Came Back' });
+  await expect(film.locator('iframe')).toHaveAttribute('src', 'https://www.nfb.ca/film/the-cat-came-back/embed/player/');
+  await expect(film.getByRole('link', { name: 'Watch on NFB' })).toHaveAttribute('href', 'https://www.nfb.ca/film/the-cat-came-back/');
+});
+
 test('every built-in player mounts and publisher embeds retain a direct source', async ({ page }) => {
   await page.goto('/');
   for (const game of games.filter(({ local }) => local === true)) {
@@ -343,7 +377,10 @@ test('layout and mobile menu fit desktop, tablet and phone widths', async ({ pag
       await page.keyboard.press('Escape');
       await expect(page.getByRole('button', { name: 'Open navigation' })).toBeFocused();
 
-      for (const [route, title] of [['youtube', 'YouTube'], ['browse', 'Proxy Gemini'], ['web-search', 'Web Search'], ['play-hub', 'Play Hub']]) {
+      for (const [route, title] of [
+        ['explore', 'Explore the arcade'], ['youtube', 'YouTube'], ['movies', 'Movies'],
+        ['browse', 'Proxy Gemini'], ['web-search', 'Web Search'], ['play-hub', 'Play Hub']
+      ]) {
         await page.goto('/#' + route, { waitUntil: 'domcontentloaded' });
         await expect(page.getByRole('heading', { name: title, level: 1, exact: true })).toBeVisible();
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
@@ -417,6 +454,24 @@ test('Web Search can enable the on-device model and labels its answer', async ({
   expect(page.context().pages()).toHaveLength(1);
 });
 
+test('AI Help opens directly and converts units without a model or external search', async ({ page }) => {
+  let wikipediaQueries = 0;
+  await page.route(url => url.hostname === 'en.wikipedia.org', route => {
+    wikipediaQueries++;
+    return route.abort();
+  });
+  await page.goto('/#web-search?mode=ai');
+  await expect(page.getByRole('button', { name: 'AI Mode', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Convert units', exact: true }).click();
+  await expect(page.getByRole('searchbox', { name: 'Ask AI' })).toHaveValue('Convert 5 miles to km');
+  await page.getByRole('button', { name: 'Ask AI', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Unit converter', exact: true })).toBeVisible();
+  await expect(page.getByText('5 mi = 8.04672 km')).toBeVisible();
+  expect(wikipediaQueries).toBe(0);
+  await page.getByRole('button', { name: 'New search tab', exact: true }).click();
+  await expect(page.getByRole('searchbox', { name: 'Search the web' })).toBeVisible();
+});
+
 test('search tabs keep paged violin results with separate Shorts and videos', async ({ page }) => {
   await page.goto('/#web-search');
   const input = page.getByRole('searchbox', { name: 'Search the web' });
@@ -478,6 +533,8 @@ test('Web Search uses configured Google results and opens Shopping only when cho
   await page.goto('/#web-search');
   await page.getByRole('button', { name: 'Google & Shopping', exact: true }).click();
   await page.getByRole('searchbox', { name: 'Google query' }).fill('arcade controller');
+  await expect(page.getByRole('link', { name: 'Open Google Images' })).toHaveAttribute('href', 'https://www.google.com/search?q=arcade+controller&udm=2');
+  await expect(page.getByRole('link', { name: 'Open Google News' })).toHaveAttribute('href', 'https://news.google.com/search?q=arcade+controller');
   await page.getByRole('button', { name: 'Search Google', exact: true }).click();
   await expect(page.getByText(/Enter a valid public Google Search Engine ID/)).toBeVisible();
   await page.getByRole('textbox', { name: 'Public Search Engine ID' }).fill('public_sample_123');

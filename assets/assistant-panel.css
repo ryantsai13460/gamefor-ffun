@@ -1,0 +1,98 @@
+.assistant-panel {
+  display: grid;
+  align-content: start;
+  gap: .8rem;
+  min-width: 0;
+  padding: clamp(1rem, 3vw, 1.5rem);
+  background: var(--panel-deep, #121217);
+}
+
+.assistant-title {
+  font-size: clamp(1.3rem, 3vw, 1.75rem);
+  font-weight: 800;
+  letter-spacing: -.0375em;
+}
+
+.assistant-intro,
+.assistant-panel .muted,
+.assistant-result-text {
+  line-height: 1.55;
+}
+
+.assistant-form,
+.assistant-examples,
+.assistant-credits,
+.google-direct-links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.assistant-field {
+  flex: 1 1 15rem;
+  min-width: 0;
+}
+
+.assistant-field .field {
+  width: 100%;
+}
+
+.assistant-options,
+.assistant-result {
+  min-width: 0;
+  padding: .85rem 1rem;
+  border: 1px solid var(--line-soft, #26262e);
+  border-radius: .7rem;
+  background: var(--panel, #19191f);
+}
+
+.assistant-options summary {
+  width: fit-content;
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.assistant-settings {
+  display: grid;
+  justify-items: start;
+  gap: .5rem;
+  margin-top: .7rem;
+}
+
+.assistant-settings p {
+  font-size: .875rem;
+}
+
+.assistant-status:empty,
+.assistant-credits:empty {
+  display: none;
+}
+
+.assistant-result {
+  display: grid;
+  justify-items: start;
+  gap: .7rem;
+  overflow-wrap: anywhere;
+}
+
+.assistant-result-title {
+  font-size: 1.12rem;
+  font-weight: 750;
+}
+
+.assistant-result-text {
+  white-space: pre-wrap;
+}
+
+.assistant-credits {
+  gap: .5rem .85rem;
+}
+
+.assistant-copy {
+  min-height: 2.3rem;
+}
+
+.google-direct-links > a:focus-visible {
+  outline-offset: 2px;
+}

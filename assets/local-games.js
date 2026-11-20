@@ -1,3 +1,5 @@
+import { createBeatBeacon, createCometCourier, createPinpointPutt } from "./bonus-arcade.js";
+
 const storageKey = "ffun-original-games-v1";
 const directions = {
   arrowleft: "left", a: "left",
@@ -1667,7 +1669,7 @@ function playCanvas(context, createGame) {
   const controlsBar = element("div", "local-game__canvas-tools");
   const toggle = button("Start", () => pause(!paused));
   toggle.classList.add("local-game__button--primary");
-  const reset = button(game.reset ? "Restart stage" : "Restart", () => {
+  const reset = button(game.resetLabel || (game.reset ? "Restart stage" : "Restart"), () => {
     if (game.reset) game.reset();
     else game = createGame();
     started = false;
@@ -1677,7 +1679,7 @@ function playCanvas(context, createGame) {
   let next;
 
   if (game.canNext) {
-    next = button("Next stage", () => {
+    next = button(game.nextLabel || "Next stage", () => {
       game.next();
       started = false;
       pause(true);
@@ -1761,6 +1763,14 @@ function playCanvas(context, createGame) {
     }
   }
 
+  function inputFor(event) {
+    if (game.spaceAction && event.key === " " && !event.altKey && !event.ctrlKey && !event.metaKey &&
+        !event.target.closest("button")) {
+      return game.spaceAction;
+    }
+    return preferDirection(event, game.title === "Skyline Sprint");
+  }
+
   root.addEventListener("keydown", event => {
     if (event.key.toLowerCase() === "p" && !event.repeat && !event.altKey && !event.ctrlKey && !event.metaKey) {
       if (game.done()) return;
@@ -1768,14 +1778,14 @@ function playCanvas(context, createGame) {
       pause(!paused);
       return;
     }
-    const direction = preferDirection(event, game.title === "Skyline Sprint");
+    const direction = inputFor(event);
     if (!direction || paused || game.done()) return;
     event.preventDefault();
     if (!event.repeat) game.input(direction);
     held.add(direction);
   }, { signal });
   root.addEventListener("keyup", event => {
-    held.delete(preferDirection(event, game.title === "Skyline Sprint"));
+    held.delete(inputFor(event));
   }, { signal });
   root.addEventListener("focusout", event => {
     if (!root.contains(event.relatedTarget)) held.clear();
@@ -1815,6 +1825,9 @@ const localGames = {
     run: sumTrail,
     help: "Select four neighboring tiles that add up to the target. Move up, down, left, or right without reusing a tile. Use arrow keys and Enter, or tap."
   },
+  "comet-courier": { title: "Comet Courier", run: context => playCanvas(context, createCometCourier) },
+  "pinpoint-putt": { title: "Pinpoint Putt", run: context => playCanvas(context, createPinpointPutt) },
+  "beat-beacon": { title: "Beat Beacon", run: context => playCanvas(context, createBeatBeacon) },
   ...Object.fromEntries(Object.entries(classicGames).map(([id, { title }]) => [
     id, { title, run: context => playCanvas(context, () => classicArcade(id)) }
   ])),

@@ -1,4 +1,6 @@
 import { addedShorts, addedVideos } from './media-curated.js';
+import { expansionVideos } from './media-expansion.js';
+import { videoLibraryLink, videoTopics } from './video-topics.js';
 
 const SHORTS = [
   ['80VtSQHvWBo', 'Minecraft, But I Shrunk', 'camman18', ['Minecraft', 'Challenges']],
@@ -38,70 +40,32 @@ const CREATOR_VIDEOS = [
   ['h68WUZ8b0O0', 'FlameFrags', "Searching for a Vault that Doesn't Exist"]
 ].map(([id, creator, title]) => ({id, title, creator, tags: ['Minecraft']}));
 
-const CURATED_VIDEOS = new Map([...addedVideos, ...CREATOR_VIDEOS, ...SHORTS, ...addedShorts]
+const previousVideos = [...addedVideos, ...CREATOR_VIDEOS, ...SHORTS, ...addedShorts].map(video => ({
+  ...video, tags: [video.tags.includes('Violin') ? 'Music' : 'Gaming', ...video.tags]
+}));
+const CURATED_VIDEOS = new Map([...previousVideos, ...expansionVideos]
   .map((video) => [video.id, video]));
+const expandedIds = new Set(expansionVideos.map(video => video.id));
+const videoFormats = new Map([
+  ['shorts', 'Shorts'], ['videos', 'Full videos'], ['all', 'All videos'], ['new', 'New additions'],
+  ['favorites', 'Favorites'], ['recent', 'Recently opened']
+]);
+
+export function getVideoCollections() {
+  const videos = [...CURATED_VIDEOS.values()];
+  return {
+    count: videos.length,
+    added: expandedIds.size,
+    topics: videoTopics.map(topic => {
+      const matches = videos.filter(video => video.tags.includes(topic));
+      const cover = expansionVideos.find(video => !video.short && video.tags.includes(topic)) || matches[0];
+      return { topic, count: matches.length, cover };
+    })
+  };
+}
 const VIDEO_QUERY_FILLER = new Set(
-  'a about an and any are as best can clip clips could did do does find for from game games gaming get give how i in is it like list me my of on or please play recommend search see show some tell than that the them to top video videos watch what when where which who why with would you your youtube'.split(' ')
+  'a about an and any are as best can clip clips could did do does find for from game games get give how i in is it like list me my of on or please play recommend search see show some tell than that the them to top video videos watch what when where which who why with would you your youtube'.split(' ')
 );
-
-const blender = 'https://studio.blender.org';
-const blenderProject = (slug) => `${blender}/projects/${slug}/`;
-const blenderArt = (path) => `${blender}/files/public/thumbnail/${path}`;
-
-const MOVIES = [
-  {
-    title: 'A Minecraft Movie', year: 2025, tags: ['Adventure', 'Fantasy'],
-    description: 'Four unlikely friends step into the Overworld and team up with Steve to find their way home.',
-    art: 'https://www.minecraft.net/content/dam/minecraftnet/community/events/cy2025/sandstorm/2-27-25/MNCRFT_MAIN_Mojang_1170X500_TEXTLESS.jpg',
-    source: 'https://www.minecraft.net/en-us/article/a-minecraft-movie-out-now',
-    credit: 'Warner Bros. Pictures and Mojang Studios',
-    trailer: 'wJO_vIDZn-I', full: 'https://tv.apple.com/us/movie/a-minecraft-movie/umc.cmc.1od4a1ayyjqn43uz8fel7ei5e'
-  },
-  {
-    title: 'Wing It!', year: 2023, tags: ['Animation', 'Comedy'],
-    description: 'An aspiring pilot and a meticulous engineer end up in a runaway shuttle together.',
-    art: blenderArt('d7/08/d708026f351c8040518cf0331851005d_o_xs.webp'),
-    source: `${blenderProject('wing-it')}3c402f7c9ab362/?asset=7022`, short: true, fullVideo: 'u9lj-c29dxI'
-  },
-  {
-    title: 'Charge', year: 2022, tags: ['Animation', 'Sci-fi'],
-    description: 'A desperate man breaks into a battery factory and encounters its relentless security droid.',
-    art: blenderArt('34/b0/34b00ffed48256e3a873c31c574e8f08_o_xs.webp'),
-    source: blenderProject('charge'), short: true, fullVideo: 'UXqq0ZvbOnk',
-    trailerLink: `${blenderProject('charge')}?asset=6233`
-  },
-  {
-    title: 'Sprite Fright', year: 2021, tags: ['Animation', 'Horror', 'Comedy'],
-    description: 'A party of hikers underestimates the tiny mushroom creatures that live in a remote forest.',
-    art: blenderArt('59/27/5927dc487d457a39f4439d0423675c7c_o_xs.webp'),
-    source: blenderProject('sprite-fright'), short: true, fullVideo: '_cMxraX_5RE'
-  },
-  {
-    title: 'Sintel', year: 2010, tags: ['Animation', 'Fantasy', 'Adventure'],
-    description: 'A young traveler sets out across a harsh world in search of a dragon she once rescued.',
-    art: blenderArt('03/f7/03f7b0d15c55b428680d4c6bb313f742_m.webp'),
-    source: blenderProject('sintel'), short: true, trailer: 'HOfdboHvshg', fullVideo: 'eRsGyueVLvQ'
-  },
-  {
-    title: 'Caminandes: Llamigos', year: 2016, tags: ['Animation', 'Comedy'],
-    description: 'Koro the llama races a curious penguin to reach a coveted berry in the Patagonian winter.',
-    art: blenderArt('6e/84/6e84fd08dda59d66aeb2152cb879f160_m.webp'),
-    source: blenderProject('caminandes-3'), short: true, trailer: '6U1bsPCLLEg', fullVideo: 'SkVqJ1SGeL0'
-  },
-  {
-    title: 'Spring', year: 2019, tags: ['Animation', 'Fantasy'],
-    description: 'A shepherd and her dog venture into the mountains to help bring a new season to their valley.',
-    art: blenderArt('ea/65/ea65feaacf95911f39844e2ea97e68b5_m.webp'),
-    source: blenderProject('spring'), short: true, fullVideo: 'WhWc3b3KhnY'
-  },
-  {
-    title: 'Big Buck Bunny', year: 2008, tags: ['Animation', 'Comedy'],
-    description: 'A peace-loving rabbit takes action after three woodland troublemakers spoil his afternoon.',
-    art: blenderArt('92/96/9296b1255fff3ef0e25da43f70616349_m.webp'),
-    source: blenderProject('big-buck-bunny'), short: true, fullVideo: 'aqz-KE-bpKQ',
-    trailerLink: `${blenderProject('big-buck-bunny')}564c6dc7c379cf0d22a81f6c/?asset=271`
-  }
-].map((film) => ({credit: 'Blender Studio', ...film}));
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const CHANNEL_ID = /^UC[A-Za-z0-9_-]{22}$/;
@@ -298,7 +262,7 @@ function playEmbedded(stage, status, video, isOpen, hasDirectLink, autoplay = fa
   };
 }
 
-function watchDialog(target, {title, subtitle, description, video, external, directLabel, details, short}) {
+export function watchDialog(target, {title, subtitle, description, video, external, directLabel, details, short}) {
   const dialog = node('dialog', '', 'media-dialog');
   dialog.setAttribute('aria-label', title);
   const top = node('header', '', 'media-dialog-header');
@@ -490,7 +454,10 @@ function search(label) {
 }
 
 function matches(value, ...fields) {
-  return fields.join(' ').toLowerCase().includes(value.trim().toLowerCase());
+  const terms = videoWords(value);
+  if (!terms.length) return true;
+  const searchable = videoWords(fields.join(' ')).join(' ');
+  return terms.every(term => searchable.includes(term));
 }
 
 function videoWords(value) {
@@ -560,69 +527,6 @@ function heading(title, description) {
   const header = node('div', '', 'media-heading');
   header.append(node('h1', title), node('p', description, 'media-meta'));
   return header;
-}
-
-function moviePage(target) {
-  const root = node('section', '', 'media-page');
-  const tools = node('div', '', 'media-filters');
-  const input = search('Search films');
-  const genre = filter('Film genre', ['All genres', ...new Set(MOVIES.flatMap(({tags}) => tags))].sort((a, b) => {
-    if (a === 'All genres') return -1;
-    if (b === 'All genres') return 1;
-    return a.localeCompare(b);
-  }));
-  const count = node('p', '', 'media-meta media-result-count');
-  count.setAttribute('aria-live', 'polite');
-  const grid = node('div', '', 'media-grid media-movies');
-  let closeDialog;
-  tools.append(input, genre);
-  root.append(heading('Movies', 'Animated shorts and official trailers.'), tools, count, grid);
-  target.replaceChildren(root);
-
-  const showMovie = (movie, trailer) => {
-    closeDialog?.();
-    const id = trailer ? movie.trailer : movie.fullVideo;
-    const destination = lookup(id);
-    const detail = link(`Artwork and film credits · ${movie.credit}`, movie.source, 'media-credit');
-    closeDialog = watchDialog(root, {
-      title: movie.title,
-      subtitle: trailer ? 'Official trailer' : 'Full animated short',
-      description: movie.description,
-      video: {id, title: trailer ? `${movie.title} trailer` : movie.title},
-      external: destination,
-      directLabel: 'Watch on YouTube',
-      details: detail
-    });
-  };
-
-  function draw() {
-    const results = MOVIES.filter((movie) => (genre.selectedIndex === 0 || movie.tags.includes(genre.value)) &&
-      matches(input.value, movie.title, movie.year, movie.description, ...movie.tags));
-    count.textContent = `${results.length} ${results.length === 1 ? 'film' : 'films'}`;
-    grid.replaceChildren();
-    if (!results.length) grid.append(node('p', 'No films match your search.', 'media-empty'));
-    for (const movie of results) {
-      const card = node('article', '', 'media-card media-movie');
-      const art = image(movie.art, movie.title);
-      const info = node('div', '', 'media-card-body');
-      const actions = node('div', '', 'media-actions');
-      info.append(node('h2', movie.title), node('p', `${movie.year} · ${movie.tags.join(' · ')}`, 'media-meta'),
-        node('p', movie.description, 'media-description'));
-      if (movie.trailer) actions.append(button('Watch trailer', () => showMovie(movie, true)));
-      if (movie.trailerLink) actions.append(link('Official teaser', movie.trailerLink));
-      if (movie.fullVideo) actions.append(button('Play full short', () => showMovie(movie, false), 'button primary'));
-      if (movie.full) actions.append(link('Where to watch', movie.full));
-      const credit = link(`Artwork · ${movie.credit}`, movie.source, 'media-credit');
-      info.append(actions, credit);
-      card.append(art, info);
-      grid.append(card);
-    }
-  }
-
-  input.addEventListener('input', draw);
-  genre.addEventListener('change', draw);
-  draw();
-  return () => closeDialog?.();
 }
 
 function creatorHandles(input) {
@@ -847,7 +751,7 @@ async function identifyVideo(video, signal) {
   return sanitizeVideo({...video, title: result.title, creator: result.author_name});
 }
 
-function youtubePage(target) {
+function youtubePage(target, params) {
   const store = preference(VIDEO_STORE);
   const channelStore = preference(CHANNEL_STORE);
   const ids = (values) => Array.isArray(values) ? [...new Set(values.filter((id) => VIDEO_ID.test(id)))].slice(0, 100) : [];
@@ -867,9 +771,11 @@ function youtubePage(target) {
   const views = node('div', '', 'media-tabs');
   const input = search('Search titles, creators, or topics');
   root.classList.add('youtube-page');
-  const topics = [...new Set([...SHORTS, ...CREATOR_VIDEOS, ...addedShorts, ...addedVideos]
-    .flatMap(video => video.tags))].sort();
+  const { count: catalogCount, topics: collections } = getVideoCollections();
+  const topics = [...new Set([...CURATED_VIDEOS.values()].flatMap(video => video.tags))].sort();
   const category = filter('Video topic', ['All topics', ...topics]);
+  const initialTopic = params.get('topic');
+  if (topics.includes(initialTopic)) category.value = initialTopic;
   const creator = filter('Video creator', ['All creators']);
   const count = node('p', '', 'media-meta media-result-count');
   const notice = node('p', '', 'media-meta media-notice');
@@ -888,7 +794,7 @@ function youtubePage(target) {
   play.type = 'submit';
   addressForm.append(address, play);
   const externalSearch = link('Search on YouTube', 'https://www.youtube.com/', 'button');
-  let view = 'Shorts';
+  let view = videoFormats.get(params.get('format')) || 'Shorts';
   let page = 0;
   let closeDialog;
   let active = true;
@@ -908,20 +814,19 @@ function youtubePage(target) {
   });
 
   const viewButtons = new Map();
-  for (const tab of ['Shorts', 'Full videos', 'Favorites', 'Recently opened']) {
+  for (const tab of videoFormats.values()) {
     const choice = button(tab, () => {
       onlineRequest?.abort();
       notice.textContent = '';
       view = tab;
       page = 0;
-      category.selectedIndex = 0;
-      creator.selectedIndex = 0;
       draw();
     }, 'button media-tab');
     viewButtons.set(tab, choice);
     views.append(choice);
   }
   views.append(scrollShorts);
+  views.setAttribute('role', 'group');
   views.setAttribute('aria-label', 'Video collections');
   const linkTools = node('div', '', 'media-link-tools');
   linkTools.append(addressForm, externalSearch);
@@ -964,9 +869,18 @@ function youtubePage(target) {
   featureArt.querySelector('img').loading = 'eager';
   feature.append(featureCopy, featureArt);
   const tools = node('div', '', 'youtube-library-tools');
+  const topicLinks = node('nav', '', 'media-topic-nav');
+  topicLinks.setAttribute('aria-label', 'Browse video topics');
+  for (const { topic, count } of collections.filter(collection => collection.count > 0)) {
+    const topicLink = node('a', topic, 'chip');
+    topicLink.href = videoLibraryLink(topic);
+    topicLink.dataset.topic = topic;
+    topicLink.title = `${count.toLocaleString()} videos`;
+    topicLinks.append(topicLink);
+  }
   tools.append(views, filters);
-  root.append(heading('YouTube', 'Gaming Shorts, gameplay, and creator videos.'),
-    feature, tools, count, grid, controls, linkTools, notice, importer.section, connectedSearch);
+  root.append(heading('YouTube', `${catalogCount.toLocaleString()} videos and Shorts across gaming, music, science, and more.`),
+    feature, topicLinks, tools, count, grid, controls, linkTools, notice, importer.section, connectedSearch);
   target.replaceChildren(root);
 
   function allVideos() {
@@ -1040,13 +954,19 @@ function youtubePage(target) {
 
   function draw() {
     for (const [name, choice] of viewButtons) choice.setAttribute('aria-pressed', String(view === name));
+    for (const topicLink of topicLinks.children) {
+      if (topicLink.dataset.topic === category.value) topicLink.setAttribute('aria-current', 'true');
+      else topicLink.removeAttribute('aria-current');
+    }
     category.disabled = creator.disabled = view === 'Connected search';
     const library = allVideos();
     let videos;
     if (view === 'Favorites') videos = state.favorites.map((id) => library.get(id)).filter(Boolean);
     else if (view === 'Recently opened') videos = state.recent.map((id) => library.get(id)).filter(Boolean);
     else if (view === 'Connected search') videos = onlineResults;
-    else videos = [...library.values()].filter((video) => Boolean(video.short) === (view === 'Shorts'));
+    else if (view === 'New additions') videos = [...library.values()].filter(video => expandedIds.has(video.id));
+    else if (view === 'All videos') videos = [...library.values()];
+    else videos = [...library.values()].filter(video => Boolean(video.short) === (view === 'Shorts'));
     const results = view === 'Connected search' ? videos : videos.filter((video) =>
       (category.selectedIndex === 0 || video.tags.includes(category.value)) &&
       (creator.selectedIndex === 0 || video.creator === creator.value) && matches(input.value, video.title, video.creator, ...video.tags));
@@ -1160,6 +1080,6 @@ function youtubePage(target) {
   };
 }
 
-export function renderMedia(target, page) {
-  return page === 'movies' ? moviePage(target) : youtubePage(target);
+export function renderVideoLibrary(target, params = new URLSearchParams()) {
+  return youtubePage(target, params);
 }

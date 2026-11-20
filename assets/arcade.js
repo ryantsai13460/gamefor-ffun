@@ -16,9 +16,9 @@ const mainCatalogCount = games.filter(game => game.collection === 'github' || ga
 const categories = [...library.categoryCounts.keys()].sort((a, b) => a.localeCompare(b));
 const altFeatured = ['2048', 'subway', 'ffun-skyline-v1', 'minecraft-classic', 'snake', 'retrobowl', 'stickman', 'drivemad', 'memory-match', 'pong'];
 const drawerMedia = matchMedia('(max-width: 860px)');
-const routes = new Set(['home', 'games', 'categories', 'trending', 'new', 'favorites', 'recent', 'youtube', 'movies', 'browse', 'web-search', 'play-hub', 'settings', 'credits', 'play']);
+const routes = new Set(['home', 'explore', 'games', 'categories', 'trending', 'new', 'favorites', 'recent', 'youtube', 'movies', 'browse', 'web-search', 'play-hub', 'settings', 'credits', 'play']);
 const routeNames = {
-  home: 'Home', games: 'All Games', categories: 'Categories', trending: 'Trending',
+  home: 'Home', explore: 'Explore', games: 'All Games', categories: 'Categories', trending: 'Trending',
   new: 'New Games', favorites: 'Favorites', recent: 'Recently Played',
   youtube: 'YouTube', movies: 'Movies', browse: 'Proxy Gemini', 'web-search': 'Web Search', 'play-hub': 'Play Hub',
   settings: 'Settings', credits: 'Credits'
@@ -325,6 +325,21 @@ function renderHome(target) {
   chips.append(link('Categories', '#categories', 'chip', 'layers'));
   target.append(chips);
 
+  const destinations = element('section', 'home-destinations');
+  const destinationGrid = element('div', 'home-destination-grid');
+  for (const [name, href, symbol, color] of [
+    ['Explore', '#explore', 'layers', 'games'],
+    ['Video library', '#youtube?format=all', 'video', 'video'],
+    ['Cinema', '#movies', 'film', 'film'],
+    ['AI Help', '#web-search?mode=ai', 'spark', 'ai']
+  ]) {
+    const destination = link(name, href, 'explore-tile', symbol);
+    destination.dataset.color = color;
+    destinationGrid.append(destination);
+  }
+  destinations.append(element('h2', '', 'Watch, learn, and play'), destinationGrid);
+  target.append(destinations);
+
   const artPicks = games.filter(game => game.art && gameAvailability(game) !== 'unverified');
   const picks = distinct([...records(altFeatured), ...artPicks]).filter(game => game !== hero);
   for (const section of [
@@ -495,9 +510,8 @@ function renderCategories(target) {
   target.append(list);
 }
 
-function mountSearchPanel(target, media, answers, { renderGoogleSearch }, { renderSearchMaps }, { setTitle }) {
+function mountSearchPanel(target, { media, searchWikipedia, renderGoogleSearch, renderSearchMaps, renderAssistantPanel }, { setTitle }, mode) {
   const { findCuratedVideos, openShortsFeed, openYouTubeSearchVideo, parseYouTubeVideo, searchConnectedVideos } = media;
-  const { searchWikipedia, generateSearchAnswer, searchModelAvailability, prepareSearchModel } = answers;
   const windowPanel = element('section', 'proxy-window web-search-window');
   const nav = element('div', 'proxy-tab-row web-search-tabs');
   nav.setAttribute('role', 'group');
@@ -564,48 +578,17 @@ function mountSearchPanel(target, media, answers, { renderGoogleSearch }, { rend
   stage.append(answer, webPanel, videosPanel);
   searchPanel.append(form, stage);
 
-  const aiForm = queryForm('Ask AI', 'Ask a question or describe what you need help with', 'Ask AI');
-  const aiStage = element('div', 'proxy-stage web-search-stage');
-  const aiAnswer = element('section', 'web-search-answer');
-  aiAnswer.setAttribute('aria-live', 'polite');
-  const aiTitle = element('h2', '', 'AI Mode');
-  const aiText = element('p', 'muted', 'Ask for help, an explanation, or ideas. Answers use your browser’s on-device model when available.');
-  const aiSources = element('div', 'web-search-sources');
-  const aiSetup = element('div', 'interaction-row');
-  aiSetup.hidden = true;
-  const aiSetupStatus = element('p', 'muted');
-  aiSetupStatus.setAttribute('role', 'status');
-  const enableAI = action('Enable on-device AI', async () => {
-    enableAI.disabled = true;
-    aiSetupStatus.textContent = 'Preparing the browser model…';
-    try {
-      await prepareSearchModel(lifetime.signal, fraction => {
-        aiSetupStatus.textContent = `Downloading the browser model · ${Math.round(fraction * 100)}%`;
-      });
-      enableAI.hidden = true;
-      aiSetupStatus.textContent = 'On-device AI is ready. Ask a question to use it.';
-    } catch {
-      if (lifetime.signal.aborted) return;
-      enableAI.disabled = false;
-      aiSetupStatus.textContent = 'The browser model could not be prepared. Try again or search Wikipedia.';
-    }
-  });
-  aiSetup.append(enableAI, aiSetupStatus);
-  aiAnswer.append(aiTitle, aiText, aiSources, aiSetup);
-  aiStage.append(aiAnswer);
-  aiPanel.append(aiForm.form, aiStage);
-
-  renderGoogleSearch(googlePanel, setTitle);
   windowPanel.append(nav, ...panels.values());
   target.append(windowPanel);
 
   let pending;
-  let pendingAi;
   let closeVideo;
   let disposeMap;
+  let disposeGoogle;
+  let disposeAssistant;
   let mapReady = false;
-  let checkedAi = false;
-  const lifetime = new AbortController();
+  let googleReady = false;
+  let aiReady = false;
   let matches = [];
   let videoDescription = '';
   let format = 'All';
@@ -619,18 +602,20 @@ function mountSearchPanel(target, media, answers, { renderGoogleSearch }, { rend
       disposeMap = renderSearchMaps(mapPanel);
       mapReady = true;
     }
-    if (name === 'AI Mode' && !checkedAi) {
-      checkedAi = true;
-      searchModelAvailability().then(availability => {
-        aiSetup.hidden = !['downloadable', 'downloading'].includes(availability);
-      }).catch(() => {});
+    if (name === 'Google & Shopping' && !googleReady) {
+      disposeGoogle = renderGoogleSearch(googlePanel, setTitle);
+      googleReady = true;
+    }
+    if (name === 'AI Mode' && !aiReady) {
+      disposeAssistant = renderAssistantPanel(aiPanel, { onQuery: setTitle, findVideos: findCuratedVideos });
+      aiReady = true;
     }
   }
 
   for (const name of panels.keys()) {
     nav.append(action(name, () => selectPanel(name), 'button web-search-tab'));
   }
-  selectPanel('Web & YouTube');
+  selectPanel(new Map([['ai', 'AI Mode'], ['google', 'Google & Shopping'], ['maps', 'Maps']]).get(mode) || 'Web & YouTube');
 
   function setSource(credits, source) {
     credits.replaceChildren();
@@ -744,33 +729,12 @@ function mountSearchPanel(target, media, answers, { renderGoogleSearch }, { rend
     }));
   });
 
-  aiForm.form.addEventListener('submit', async event => {
-    event.preventDefault();
-    pendingAi?.abort();
-    const question = aiForm.input.value.trim();
-    if (!question) return;
-    setTitle(question);
-    pendingAi = new AbortController();
-    const { signal } = pendingAi;
-    aiTitle.textContent = 'AI Mode';
-    aiText.textContent = 'Looking for an answer…';
-    setSource(aiSources);
-    const [source] = await searchWikipedia(question, AbortSignal.any([signal, AbortSignal.timeout(5000)]), 1).catch(() => []);
-    if (signal.aborted) return;
-    const text = await generateSearchAnswer(question, source, findCuratedVideos(question),
-      AbortSignal.any([signal, AbortSignal.timeout(10000)])).catch(() => '');
-    if (signal.aborted) return;
-    aiTitle.textContent = text ? 'On-device AI answer' : source ? 'Wikipedia excerpt' : 'AI unavailable';
-    aiText.textContent = text || source?.text || 'A ready on-device model and a Wikipedia excerpt are unavailable for this question.';
-    setSource(aiSources, source);
-  });
-
   return () => {
-    lifetime.abort();
     pending?.abort();
-    pendingAi?.abort();
     closeVideo?.();
     disposeMap?.();
+    disposeGoogle?.();
+    disposeAssistant?.();
   };
 }
 
@@ -978,7 +942,9 @@ async function renderRoute(focus = true) {
   document.title = `${route.name === 'play' ? resolveGame(route.id)?.title || 'Game' : routeNames[route.name]} · Gamefor Ffun`;
 
   document.querySelectorAll('[data-page]').forEach(item => {
-    const active = route.name === 'games' && route.params.get('local') === '1' ? 'offline' : route.name;
+    const offline = route.name === 'games' && route.params.get('local') === '1';
+    const assistant = route.name === 'web-search' && route.params.get('mode') === 'ai';
+    const active = offline ? 'offline' : assistant ? 'ai-help' : route.name;
     if (item.dataset.page === active) item.setAttribute('aria-current', 'page');
     else item.removeAttribute('aria-current');
   });
@@ -991,6 +957,19 @@ async function renderRoute(focus = true) {
       case 'home':
         renderHome(target);
         break;
+      case 'explore': {
+        target.append(element('p', 'boot-note', 'Loading collections…'));
+        const { renderExplore } = await import('./explore.js');
+        if (token === version) {
+          const newLocalGames = games.filter(game => game.local && game.collection === 'original').slice(-3);
+          renderExplore(target, {
+            gamesSection: shelf('New built-in games', newLocalGames, 'All built-in games', '#games?local=1'),
+            localCount,
+            arcadeFeature: library.byId.get('comet-courier')
+          });
+        }
+        break;
+      }
       case 'games':
       case 'favorites':
       case 'recent':
@@ -1004,25 +983,34 @@ async function renderRoute(focus = true) {
       case 'play':
         cleanup = renderGame(target, route.id);
         break;
-      case 'youtube':
+      case 'youtube': {
+        target.append(element('p', 'boot-note', 'Loading videos…'));
+        const { renderVideoLibrary } = await import('./media.js');
+        if (token === version) cleanup = renderVideoLibrary(target, route.params);
+        break;
+      }
       case 'movies': {
-        target.append(element('p', 'boot-note', 'Loading media…'));
-        const { renderMedia } = await import('./media.js');
-        if (token === version) {
-          target.replaceChildren();
-          const teardown = renderMedia(target, route.name);
-          if (typeof teardown === 'function') cleanup = teardown;
-        }
+        target.append(element('p', 'boot-note', 'Loading movies…'));
+        const [{ renderFilms }, { watchDialog }] = await Promise.all([
+          import('./film-library.js'), import('./media.js')
+        ]);
+        if (token === version) cleanup = renderFilms(target, { watchDialog, collection: route.params.get('collection') });
         break;
       }
       case 'web-search': {
-        const [media, answers, google, maps, { renderSearchTabs }] = await Promise.all([
+        const [media, { searchWikipedia }, { renderGoogleSearch }, { renderSearchMaps }, { renderAssistantPanel }, { renderSearchTabs }] = await Promise.all([
           import('./media.js'), import('./search-answer.js'), import('./search-google.js'),
-          import('./search-map.js'), import('./search-tabs.js')
+          import('./search-map.js'), import('./assistant-panel.js'), import('./search-tabs.js')
         ]);
         if (token === version) {
           target.append(heading('Web Search', 'Search, watch, and ask questions in separate tabs.'));
-          cleanup = renderSearchTabs(target, (panel, tools) => mountSearchPanel(panel, media, answers, google, maps, tools));
+          const modules = { media, searchWikipedia, renderGoogleSearch, renderSearchMaps, renderAssistantPanel };
+          let firstMode = route.params.get('mode');
+          cleanup = renderSearchTabs(target, (panel, tools) => {
+            const teardown = mountSearchPanel(panel, modules, tools, firstMode);
+            firstMode = null;
+            return teardown;
+          });
         }
         break;
       }

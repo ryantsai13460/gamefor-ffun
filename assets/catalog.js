@@ -553,5 +553,8 @@ export const games = [
   {"id": "skribbl-io", "title": "Skribbl.io", "category": "Puzzle", "collection": "base44-library", "aliases": ["6afe6ed032112dae96e535a9"], "url": "https://skribbl.io", "status": "external", "art": "https://skribbl.io/img/thumbnail.png", "artCredit": "skribbl.io"},
   {"id": "krunker-io", "title": "Krunker.io", "category": "Action", "collection": "base44-library", "aliases": ["6afe6ed032112dae96e535aa"], "url": "https://krunker.io", "status": "external", "art": "https://assets.krunker.io/promo/og_1200x630.jpg", "artCredit": "krunker.io"},
   {"id": "pattern-pulse", "title": "Pattern Pulse", "category": "Puzzle", "collection": "original", "status": "local", "local": true, "isNew": true},
-  {"id": "sum-trail", "title": "Sum Trail", "category": "Puzzle", "collection": "original", "status": "local", "local": true, "isNew": true}
+  {"id": "sum-trail", "title": "Sum Trail", "category": "Puzzle", "collection": "original", "status": "local", "local": true, "isNew": true},
+  {"id": "comet-courier", "title": "Comet Courier", "category": "Arcade", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/comet-courier.webp", "artCredit": "Gamefor Ffun gameplay"},
+  {"id": "pinpoint-putt", "title": "Pinpoint Putt", "category": "Sports", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/pinpoint-putt.webp", "artCredit": "Gamefor Ffun gameplay"},
+  {"id": "beat-beacon", "title": "Beat Beacon", "category": "Music", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/beat-beacon.webp", "artCredit": "Gamefor Ffun gameplay"}
 ];

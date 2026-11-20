@@ -1,5 +1,6 @@
 .media-page {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
 }
 
@@ -63,6 +64,18 @@
 .media-tab[aria-pressed="true"] {
   border-color: var(--accent, #baff60);
   color: var(--accent, #baff60);
+}
+
+.media-topic-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.media-topic-nav .chip[aria-current="true"] {
+  color: var(--accent);
+  border-color: var(--accent-border);
+  background: var(--accent-wash);
 }
 
 .media-grid {
@@ -414,6 +427,7 @@
 
 .youtube-library-tools {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: .65rem;
   padding: .75rem;
   background: var(--panel);

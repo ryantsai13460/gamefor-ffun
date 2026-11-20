@@ -1,0 +1,258 @@
+.films-page {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.film-heading h1 {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 3.4rem);
+  line-height: 1;
+  letter-spacing: -.045em;
+}
+
+.film-feature {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--panel);
+}
+
+.film-feature > .film-art {
+  height: 100%;
+  min-height: 15rem;
+  border-radius: 0;
+}
+
+.film-feature > .film-art img {
+  object-fit: cover;
+}
+
+.film-feature-copy {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: .65rem;
+  padding: clamp(1.2rem, 4vw, 2.3rem);
+  background: var(--panel);
+}
+
+.film-feature-copy h2 {
+  margin: 0;
+  font-size: clamp(1.7rem, 4vw, 2.9rem);
+  letter-spacing: -.035em;
+  line-height: 1.05;
+}
+
+.film-feature-copy p,
+.film-meta,
+.film-card-description {
+  margin: 0;
+}
+
+.film-feature-label {
+  color: var(--accent);
+  font-size: .875rem;
+  font-weight: 700;
+}
+
+.film-meta,
+.film-credit {
+  color: var(--muted);
+  font-size: .86rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.film-credit:hover {
+  color: var(--text);
+}
+
+.film-toolbar {
+  display: grid;
+  gap: .75rem;
+  padding: .8rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.film-tabs,
+.film-filters,
+.film-actions,
+.film-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .55rem;
+}
+
+.film-tabs .button[aria-pressed="true"] {
+  color: var(--accent-dark);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.film-filters .field {
+  min-width: 0;
+  min-height: 44px;
+  background: var(--bg);
+}
+
+.film-filters input {
+  flex: 1 1 15rem;
+}
+
+.film-results {
+  display: grid;
+  gap: 1.8rem;
+}
+
+.film-shelf {
+  display: grid;
+  gap: .7rem;
+}
+
+.film-shelf-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .7rem;
+}
+
+.film-shelf-heading h2 {
+  margin: 0;
+  font-size: clamp(1.18rem, 2.6vw, 1.7rem);
+  letter-spacing: -.02em;
+}
+
+.film-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr));
+  gap: .8rem;
+}
+
+.film-grid:has(> :only-child) {
+  grid-template-columns: minmax(min(100%, 235px), 340px);
+}
+
+.film-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.film-card:hover,
+.film-card:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--line));
+}
+
+.film-art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  width: 100%;
+  min-height: 0;
+  aspect-ratio: 16 / 9;
+  background: var(--panel-deep);
+  color: var(--muted);
+  text-align: center;
+}
+
+.film-art span {
+  padding: 1rem;
+}
+
+.film-art img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+}
+
+.film-art img.is-ready {
+  opacity: 1;
+}
+
+.film-card-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: .9rem;
+  gap: .7rem;
+}
+
+.film-card-info {
+  flex: 1;
+}
+
+.film-card-info h3 {
+  margin: 0 0 .22rem;
+  font-size: 1.05rem;
+  line-height: 1.25;
+}
+
+.film-card-description {
+  margin-top: .42rem;
+  line-height: 1.45;
+}
+
+.film-actions .button {
+  min-height: 44px;
+  padding-inline: .7rem;
+  font-size: .83rem;
+}
+
+.film-pagination {
+  justify-content: center;
+}
+
+.film-empty {
+  margin: 0;
+  padding: 1rem 0;
+  color: var(--muted);
+}
+
+@media (max-width: 690px) {
+  .film-feature {
+    grid-template-columns: 1fr;
+  }
+
+  .film-feature > .film-art {
+    min-height: 0;
+    max-height: 15rem;
+  }
+
+  .film-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .65rem;
+  }
+
+  .film-filters select {
+    flex: 1 1 9rem;
+  }
+
+  .film-card-body {
+    padding: .65rem;
+  }
+
+  .film-actions .button {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 350px) {
+  .film-grid {
+    grid-template-columns: 1fr;
+  }
+}

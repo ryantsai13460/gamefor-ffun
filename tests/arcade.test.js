@@ -4,17 +4,55 @@ import test from 'node:test';
 import { games } from '../assets/catalog.js';
 import { createLibrary, gameAvailability, normalize, queryLibrary, restorePreferences } from '../assets/library.js';
 import { resolveBrowserAddress } from '../assets/browser.js';
-import { parseYouTubeVideo } from '../assets/media.js';
+import { findCuratedVideos, getVideoCollections, parseYouTubeVideo } from '../assets/media.js';
+import { expansionVideos } from '../assets/media-expansion.js';
+import { featuredFilm, filmCatalog } from '../assets/film-catalog.js';
 
 const library = createLibrary(games);
 const site = 'https://ryantsai13460.github.io/gamefor-ffun/#browse';
 
-test('the catalog includes 548 main library games, three additional recovered games and two new originals', () => {
-  assert.equal(games.length, 553);
+test('the video expansion preserves the library and adds 500 unique official player IDs', () => {
+  const library = getVideoCollections();
+  assert.equal(library.count, 1153);
+  assert.equal(library.added, 500);
+  assert.equal(expansionVideos.length, 500);
+  assert.equal(expansionVideos.filter(({ short }) => short).length, 250);
+  for (const video of expansionVideos) {
+    assert.match(video.id, /^[A-Za-z0-9_-]{11}$/);
+    assert.ok(video.title && video.creator && video.tags.length);
+    const thumbnail = new URL(video.thumbnail);
+    assert.equal(thumbnail.origin, 'https://i.ytimg.com');
+    assert.ok(thumbnail.pathname.startsWith(`/vi/${video.id}/`));
+    assert.equal(findCuratedVideos(video.id)[0], video);
+  }
+  assert.equal(library.topics.filter(({ count }) => count > 0).length, 10);
+});
+
+test('the cinema catalog keeps 48 distinct films and uses official playback routes', () => {
+  assert.equal(filmCatalog.length, 48);
+  assert.equal(new Set(filmCatalog.map(({ id }) => id)).size, 48);
+  assert.ok(featuredFilm.fullVideo);
+  for (const film of filmCatalog) {
+    assert.ok(film.title && film.credit && film.genres.length);
+    assert.equal(new URL(film.source).protocol, 'https:');
+    assert.ok(film.trailer || film.fullVideo || film.embed);
+    for (const id of [film.trailer, film.fullVideo].filter(Boolean)) {
+      assert.match(id, /^[A-Za-z0-9_-]{11}$/);
+    }
+    if (film.embed) {
+      const embed = new URL(film.embed);
+      assert.equal(embed.origin, 'https://www.nfb.ca');
+      assert.ok(embed.pathname.endsWith('/embed/player/'));
+    }
+  }
+});
+
+test('the catalog includes 548 main library games, three additional recovered games and five originals', () => {
+  assert.equal(games.length, 556);
   assert.equal(games.filter(({ collection }) => collection === 'github' || collection === 'base44-library').length, 548);
   assert.equal(games.filter(({ collection }) => collection === 'base44-home').length, 2);
   assert.equal(games.filter(({ collection }) => collection === 'history').length, 1);
-  assert.equal(games.filter(({ collection }) => collection === 'original').length, 2);
+  assert.equal(games.filter(({ collection }) => collection === 'original').length, 5);
   assert.equal(new Set(games.map(({ id }) => id)).size, games.length);
   assert.equal(new Set(games.map(({ title }) => normalize(title))).size, games.length);
   assert.equal([...library.categoryCounts.values()].reduce((sum, count) => sum + count, 0), games.length);
@@ -44,7 +82,7 @@ test('catalog records have distinct sources, correct status, and safe relative a
     }
     if (typeof game.local === 'string') await readFile(new URL(game.local, new URL('../', import.meta.url)));
   }
-  assert.deepEqual(statusCounts, { local: 15, embed: 2, external: 534, unverified: 2 });
+  assert.deepEqual(statusCounts, { local: 18, embed: 2, external: 534, unverified: 2 });
 });
 
 test('search spans titles, punctuated names, legacy aliases, categories and availability', () => {
