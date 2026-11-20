@@ -149,7 +149,7 @@
   padding: .55rem .8rem;
   color: var(--text, #f4f4f6);
   background: var(--panel-deep, #121217);
-  border: 1px solid var(--line, #303441);
+  border: 1px solid var(--control-line, #6b81a0);
   border-radius: .55rem;
   font: inherit;
 }
@@ -167,7 +167,7 @@
   border: 1px solid var(--accent, #f4c542);
   border-radius: .55rem;
   background: var(--accent, #f4c542);
-  color: #121411;
+  color: var(--accent-dark);
   font: inherit;
   font-size: .875rem;
   font-weight: 750;
@@ -176,8 +176,8 @@
 }
 
 .proxy-viewer .proxy-action:not(:disabled):hover {
-  background: #ffd28d;
-  border-color: #ffd28d;
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 .proxy-stage {

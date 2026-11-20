@@ -145,7 +145,7 @@
   width: 100%;
   max-width: 100%;
   padding: .5rem .72rem;
-  border: 1px solid var(--ph-line);
+  border: 1px solid var(--control-line, #6b81a0);
   border-radius: .55rem;
   background: var(--ph-deep);
   color: var(--ph-text);
