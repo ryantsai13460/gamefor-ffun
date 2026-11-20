@@ -1,10 +1,12 @@
 # Media sources
 
-The YouTube section preserves the 24 original Unstable SMP and Minecraft creator videos. The creator, title, ID, and thumbnail for each curated entry were checked against YouTube oEmbed. Gaming Shorts are linked to their YouTube Shorts pages. Thumbnails load from YouTube's own CDN, with title placeholders when the browser cannot fetch an image.
+The YouTube section preserves the 24 original Unstable SMP and Minecraft creator videos and includes a larger static catalog of gaming Shorts and standard YouTube videos in `assets/media-curated.js`. The curated library requires no API key. Titles and creators were verified through YouTube's oEmbed metadata. Gaming Shorts link to their YouTube Shorts pages. Thumbnails load from YouTube's own CDN, with title placeholders when the browser cannot fetch an image.
 
 | Section | Sources |
 | --- | --- |
-| Minecraft Shorts | [camman18](https://www.youtube.com/@camman18/shorts) |
+| Minecraft Shorts | [camman18](https://www.youtube.com/@camman18/shorts), [Minecraft Wiki's Mojang Shorts index](https://minecraft.wiki/w/Mojang_shorts) |
+| Expanded Roblox Shorts | Official YouTube upload metadata for Robert Noob, GaminGO X 001, and Frozen Liquid |
+| Expanded full videos | Official YouTube video links from [Minecraft's publisher site](https://www.minecraft.net/en-us/articles), verified against YouTube oEmbed |
 | Roblox Shorts | [Shedletsky's Roblox HQ Short](https://www.youtube.com/shorts/ftnaXStTPBY), [Bloxify's Roblox moments](https://www.youtube.com/shorts/WILeRgKUUvk), [WarmBlox's Roblox Obby Escape](https://www.youtube.com/shorts/JFl6u1rsFLw) |
 | Unstable SMP and creator picks | [Wemmbu](https://www.youtube.com/@wemmbumc), [Parrot](https://www.youtube.com/@ParrotX2), [Spoke](https://www.youtube.com/@SpokeIsHere), [FlameFrags](https://www.youtube.com/@FlameFragsMC) |
 | A Minecraft Movie | [Mojang's official artwork](https://www.minecraft.net/en-us/article/a-minecraft-movie-out-now), [Warner Bros. trailer](https://www.youtube.com/watch?v=wJO_vIDZn-I), [Apple TV listing](https://tv.apple.com/us/movie/a-minecraft-movie/umc.cmc.1od4a1ayyjqn43uz8fel7ei5e) |

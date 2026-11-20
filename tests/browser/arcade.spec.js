@@ -196,7 +196,7 @@ test('Proxy Gemini respects frame blocking and keeps links and search explicit',
 
 test('video and film search, official fallback, playback review, catalog report', async ({ page }) => {
   await page.goto('/');
-  await go(page, 'YouTube', 'YouTube Shorts');
+  await go(page, 'YouTube');
   await page.getByRole('searchbox', { name: 'Search titles, creators, or topics' }).fill('minecraft');
   await page.getByRole('button', { name: /^Watch / }).first().click();
   const dialog = page.getByRole('dialog');
@@ -223,6 +223,26 @@ test('video and film search, official fallback, playback review, catalog report'
   const report = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export report' }).click();
   expect((await report).suggestedFilename()).toMatch(/\.json$/);
+});
+
+test('the curated YouTube tabs have at least 50 items each and page through the library', async ({ page }) => {
+  await page.goto('/#youtube');
+  const count = page.locator('.media-result-count');
+  const watch = page.getByRole('button', { name: /^Watch / });
+  for (const [tab, destination] of [['Shorts', '/shorts/'], ['Full videos', '/watch']]) {
+    await page.getByRole('button', { name: tab, exact: true }).click();
+    expect(parseInt(await count.textContent(), 10)).toBeGreaterThanOrEqual(50);
+    const firstTitle = await watch.first().getAttribute('aria-label');
+    await page.getByRole('button', { name: 'Next page', exact: true }).click();
+    await expect(watch.first()).not.toHaveAttribute('aria-label', firstTitle);
+
+    await watch.first().click();
+    const dialog = page.getByRole('dialog');
+    const href = await dialog.getByRole('link', { name: 'Watch on YouTube' }).getAttribute('href');
+    expect(new URL(href).pathname.startsWith(destination)).toBe(true);
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+  }
 });
 
 test('every built-in player mounts and publisher embeds retain a direct source', async ({ page }) => {

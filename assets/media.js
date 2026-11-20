@@ -1,3 +1,5 @@
+import { addedShorts, addedVideos } from './media-curated.js';
+
 const SHORTS = [
   ['80VtSQHvWBo', 'Minecraft, But I Shrunk', 'camman18', ['Minecraft', 'Challenges']],
   ['ftnaXStTPBY', '@KreekCraft visits Roblox HQ 🤣 #kreekcraft #roblox #shorts #funny #meme', 'Shedletsky', ['Roblox', 'Funny']],
@@ -647,7 +649,9 @@ function youtubePage(target) {
   const filters = node('div', '', 'media-filters');
   const views = node('div', '', 'media-tabs');
   const input = search('Search titles, creators, or topics');
-  const category = filter('Video topic', ['All topics', 'Minecraft', 'Roblox', 'Challenges', 'Funny']);
+  const topics = [...new Set([...SHORTS, ...CREATOR_VIDEOS, ...addedShorts, ...addedVideos]
+    .flatMap(video => video.tags))].sort();
+  const category = filter('Video topic', ['All topics', ...topics]);
   const creator = filter('Video creator', ['All creators']);
   const count = node('p', '', 'media-meta media-result-count');
   const notice = node('p', '', 'media-meta media-notice');
@@ -680,7 +684,7 @@ function youtubePage(target) {
   });
 
   const viewButtons = new Map();
-  for (const tab of ['Shorts', 'Creator library', 'Favorites', 'Recently opened']) {
+  for (const tab of ['Shorts', 'Full videos', 'Favorites', 'Recently opened']) {
     const choice = button(tab, () => {
       onlineRequest?.abort();
       notice.textContent = '';
@@ -725,13 +729,13 @@ function youtubePage(target) {
     }
   });
   filters.append(input, category, creator);
-  root.append(heading('YouTube Shorts', 'Gaming clips and the Unstable SMP creator library.'),
+  root.append(heading('YouTube', 'Browse curated gaming Shorts and full videos without an API key.'),
     views, filters, count, grid, controls, linkTools, notice, importer.section, connectedSearch);
   target.replaceChildren(root);
 
   function allVideos() {
     return new Map([...state.channels.flatMap(({items}) => items), ...state.extra,
-      ...CREATOR_VIDEOS, ...SHORTS].map((video) => [video.id, video]));
+      ...CREATOR_VIDEOS, ...addedVideos, ...SHORTS, ...addedShorts].map((video) => [video.id, video]));
   }
 
   function rememberOnlineVideo(video) {
@@ -767,7 +771,7 @@ function youtubePage(target) {
     const item = node('article', '', 'media-card media-video');
     const watch = button('', () => showVideo(video), 'media-card-launch');
     watch.setAttribute('aria-label', `Watch ${video.title}`);
-    const art = image(`https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`, video.title);
+    const art = image(video.thumbnail || `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`, video.title);
     const info = node('span', '', 'media-card-body');
     info.append(node('strong', video.title, 'media-card-title'), node('span', video.creator, 'media-meta'));
     watch.append(art, info);
@@ -809,7 +813,8 @@ function youtubePage(target) {
     const pages = Math.max(1, Math.ceil(results.length / PAGE_SIZE));
     page = Math.min(page, pages - 1);
     const prefs = view === 'Favorites' || view === 'Recently opened';
-    count.textContent = `${results.length} ${results.length === 1 ? 'video' : 'videos'}`;
+    const resultType = view === 'Shorts' ? 'Short' : 'video';
+    count.textContent = `${results.length} ${resultType}${results.length === 1 ? '' : 's'}`;
     grid.classList.toggle('media-shorts', view === 'Shorts');
     grid.replaceChildren(...results.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(card));
     if (!results.length) {
