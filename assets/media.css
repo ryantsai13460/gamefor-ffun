@@ -430,6 +430,83 @@
   color: var(--accent-dark);
 }
 
+.youtube-library-tools .shorts-feed-launch {
+  margin-inline-start: auto;
+}
+
+.shorts-feed-dialog {
+  inline-size: min(43rem, calc(100% - 24px));
+  block-size: min(53rem, calc(100dvh - 24px));
+  overflow: hidden;
+}
+
+.shorts-feed-dialog[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.shorts-feed-viewport {
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable both-edges;
+  touch-action: pan-y;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-deep);
+  container-type: size;
+}
+
+.shorts-feed-viewport:focus-visible {
+  outline-offset: 2px;
+}
+
+.shorts-feed-slot {
+  display: grid;
+  place-items: center;
+  block-size: 100%;
+  padding-inline: 18px;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.shorts-feed-slot > :is(.media-player, .media-image) {
+  inline-size: min(100%, 56.25cqh);
+  max-block-size: 100%;
+  aspect-ratio: 9 / 16;
+  margin: 0;
+}
+
+.shorts-feed-slot > .media-image {
+  border-radius: 8px;
+}
+
+.shorts-feed-footer {
+  display: grid;
+  gap: 8px;
+  margin-block-start: 11px;
+}
+
+.shorts-feed-caption h3 {
+  display: -webkit-box;
+  margin: 0 0 3px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.shorts-feed-controls {
+  gap: 7px;
+}
+
+.shorts-feed-controls .button {
+  min-block-size: 44px;
+}
+
 .youtube-page .media-video {
   transition: border-color .18s ease, background-color .18s ease;
 }
@@ -446,6 +523,21 @@
 }
 
 @media (max-width: 600px) {
+  .youtube-library-tools .shorts-feed-launch {
+    margin-inline-start: 0;
+  }
+
+  .shorts-feed-dialog {
+    inline-size: calc(100% - 14px);
+    block-size: calc(100dvh - 14px);
+    max-block-size: calc(100dvh - 14px);
+    padding: 10px;
+  }
+
+  .shorts-feed-slot {
+    padding-inline: 16px;
+  }
+
   .youtube-feature {
     grid-template-columns: 1fr;
   }

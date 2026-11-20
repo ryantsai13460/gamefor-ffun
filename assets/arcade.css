@@ -398,6 +398,14 @@ select.field { cursor: pointer; }
   overflow-wrap: anywhere;
 }
 
+.web-search-video > .web-search-thumbnail {
+  flex: 0 0 auto;
+  inline-size: clamp(2.75rem, 12vw, 5.5rem);
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
 .web-search-results .muted {
   padding-inline: .25rem;
   font-size: .85rem;
@@ -414,6 +422,7 @@ select.field { cursor: pointer; }
 }
 
 .web-search-tab[aria-pressed="true"],
+.web-search-videos .button[aria-pressed="true"],
 .search-map-choice[aria-pressed="true"] {
   color: var(--accent);
   background: var(--accent-wash);

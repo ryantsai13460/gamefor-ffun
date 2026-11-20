@@ -267,6 +267,228 @@ function memoryMatch({ surface, status }) {
   return () => clearTimeout(timer);
 }
 
+function patternPulse({ root, surface, controls, status, signal }) {
+  const rounds = 6;
+  const counter = element("p", "local-game__puzzle-meta");
+  surface.append(counter);
+
+  const board = makeBoard(surface, 2);
+  board.classList.add("local-game__pulse-board");
+  const pads = Array.from({ length: 4 }, (_, index) => button(
+    String(index + 1), () => respond(index), "local-game__tile local-game__pulse-pad"
+  ));
+  board.append(...pads);
+
+  let round = 0;
+  let sequence = [];
+  let cursor = 0;
+  let phase = "ready";
+  let timer;
+
+  const action = button("Start", () => {
+    if (phase === "finished") {
+      round = 0;
+      sequence = [];
+      phase = "ready";
+    }
+    if (phase === "ready") {
+      round++;
+      while (sequence.length < round + 2) sequence.push(Math.floor(Math.random() * pads.length));
+    }
+    showPattern();
+  }, "local-game__button local-game__button--primary");
+  controls.append(action);
+
+  const labels = {
+    ready: "Next round", watching: "Watch the pattern", input: "Replay pattern",
+    retry: "Try this round again", finished: "Play again"
+  };
+
+  function updateControls() {
+    counter.textContent = "Round " + Math.max(round, 1) + " of " + rounds;
+    action.textContent = round === 0 ? "Start" : labels[phase];
+    action.disabled = phase === "watching";
+    pads.forEach(pad => { pad.disabled = phase !== "input"; });
+  }
+
+  function showPattern() {
+    root.focus({ preventScroll: true });
+    phase = "watching";
+    status.textContent = "Watch the signals.";
+    updateControls();
+    let next = 0;
+
+    function playSignal() {
+      if (next === sequence.length) {
+        cursor = 0;
+        phase = "input";
+        status.textContent = "Your turn · 0 of " + sequence.length;
+        updateControls();
+        return;
+      }
+
+      const index = sequence[next++];
+      const pad = pads[index];
+      pad.classList.add("is-lit");
+      status.textContent = "Signal " + (index + 1);
+      timer = setTimeout(() => {
+        pad.classList.remove("is-lit");
+        status.textContent = "Watch the signals.";
+        timer = setTimeout(playSignal, 260);
+      }, 680);
+    }
+    timer = setTimeout(playSignal, 350);
+  }
+
+  function respond(index) {
+    if (phase !== "input") return;
+    if (index !== sequence[cursor]) {
+      phase = "retry";
+      status.textContent = "Wrong signal. Replay the pattern and try again.";
+    } else {
+      cursor++;
+      if (cursor < sequence.length) {
+        status.textContent = "Your turn · " + cursor + " of " + sequence.length;
+        return;
+      }
+      phase = round === rounds ? "finished" : "ready";
+      status.textContent = round === rounds ? "All six rounds cleared!" : "Pattern matched!";
+    }
+    updateControls();
+    action.focus({ preventScroll: true });
+  }
+
+  root.addEventListener("keydown", event => {
+    if (phase !== "input" || event.repeat || event.altKey || event.ctrlKey || event.metaKey || !/^[1-4]$/.test(event.key)) return;
+    event.preventDefault();
+    respond(Number(event.key) - 1);
+  }, { signal });
+  status.textContent = "Ready to play.";
+  updateControls();
+  return () => clearTimeout(timer);
+}
+
+const trailBoards = [
+  { target: 13, values: [3, 9, 8, 3, 4, 1, 9, 6, 6, 9, 2, 9, 2, 7, 6, 8] },
+  { target: 25, values: [1, 7, 3, 7, 9, 1, 4, 2, 5, 7, 5, 3, 6, 8, 3, 4] },
+  { target: 27, values: [9, 4, 9, 7, 6, 5, 3, 6, 4, 7, 1, 2, 7, 5, 6, 1] },
+  { target: 12, values: [7, 1, 2, 4, 3, 6, 7, 6, 6, 5, 9, 2, 4, 6, 8, 4] }
+];
+
+function sumTrail({ surface, controls, status, signal }) {
+  const size = 4;
+  const roundSize = 4;
+  const summary = element("p", "local-game__puzzle-meta");
+  surface.append(summary);
+
+  const board = makeBoard(surface, size);
+  board.classList.add("local-game__trail-board");
+  const path = [];
+  let round = 0;
+  let solved = false;
+  let focusIndex = 0;
+  const tiles = trailBoards[round].values.map((_, index) => {
+    const tile = button("", () => choose(index), "local-game__tile local-game__trail-cell");
+    tile.dataset.trailCell = index;
+    tile.tabIndex = index === 0 ? 0 : -1;
+    return tile;
+  });
+  board.append(...tiles);
+
+  const undo = button("Undo", () => {
+    path.pop();
+    draw();
+  });
+  const reset = button("Clear trail", resetTrail);
+  const next = button("Next puzzle", () => {
+    round = (round + 1) % trailBoards.length;
+    resetTrail();
+    tiles[0].focus({ preventScroll: true });
+  }, "local-game__button local-game__button--primary");
+  controls.append(undo, reset, next);
+
+  function row(index) {
+    return Math.floor(index / size);
+  }
+
+  function column(index) {
+    return index % size;
+  }
+
+  function choose(index) {
+    if (solved) return;
+    if (path.includes(index)) {
+      status.textContent = "That tile is already on your trail.";
+      return;
+    }
+    if (path.length === roundSize) {
+      status.textContent = "Four tiles selected. Undo a step to try a different route.";
+      return;
+    }
+    const last = path.at(-1);
+    if (last !== undefined && Math.abs(row(last) - row(index)) + Math.abs(column(last) - column(index)) !== 1) {
+      status.textContent = "Choose a tile directly beside the end of the trail.";
+      return;
+    }
+    path.push(index);
+    draw();
+  }
+
+  function resetTrail() {
+    path.length = 0;
+    draw();
+  }
+
+  function draw() {
+    const { target, values } = trailBoards[round];
+    const total = path.reduce((sum, index) => sum + values[index], 0);
+    const filled = path.length === roundSize;
+    solved = filled && total === target;
+    summary.textContent = "Puzzle " + (round + 1) + " of " + trailBoards.length + " · Target " + target + " · Sum " + total;
+    tiles.forEach((tile, index) => {
+      const step = path.indexOf(index) + 1;
+      tile.textContent = values[index];
+      tile.setAttribute("aria-pressed", step > 0);
+      tile.setAttribute("aria-label", "Row " + (row(index) + 1) + ", column " + (column(index) + 1) + ": " +
+        values[index] + (step ? ", step " + step : ""));
+      if (step) tile.dataset.step = step;
+      else delete tile.dataset.step;
+    });
+    if (solved) {
+      status.textContent = round === trailBoards.length - 1 ? "All four puzzles solved!" : "Trail complete!";
+    } else if (filled) {
+      status.textContent = "The sum is " + total + ". Undo a step and try another route.";
+    } else {
+      status.textContent = path.length ? path.length + " of " + roundSize + " tiles selected." : "Choose a starting tile.";
+    }
+    undo.disabled = reset.disabled = solved || !path.length;
+    next.hidden = !solved;
+    next.textContent = round === trailBoards.length - 1 ? "Play again" : "Next puzzle";
+  }
+
+  board.addEventListener("focusin", event => {
+    const index = tiles.indexOf(event.target);
+    if (index < 0 || index === focusIndex) return;
+    tiles[focusIndex].tabIndex = -1;
+    tiles[index].tabIndex = 0;
+    focusIndex = index;
+  }, { signal });
+
+  board.addEventListener("keydown", event => {
+    const direction = preferDirection(event);
+    if (!direction) return;
+    event.preventDefault();
+    const offsets = { left: [0, -1], right: [0, 1], up: [-1, 0], down: [1, 0] };
+    const [vertical, horizontal] = offsets[direction];
+    const nextRow = row(focusIndex) + vertical;
+    const nextColumn = column(focusIndex) + horizontal;
+    if (nextRow >= 0 && nextRow < size && nextColumn >= 0 && nextColumn < size) {
+      tiles[nextRow * size + nextColumn].focus({ preventScroll: true });
+    }
+  }, { signal });
+  draw();
+}
+
 const classicGames = {
   snake: {
     title: "Snake",
@@ -1583,6 +1805,16 @@ const localGames = {
   switches: { title: "Switchboard", run: switchboard, help: "Each switch toggles itself and its two neighbors." },
   pixel: { title: "Pixel Logic", run: pixelLogic },
   "memory-match": { title: "Memory Match", run: memoryMatch, help: "Flip cards to find all eight matching pairs." },
+  "pattern-pulse": {
+    title: "Pattern Pulse",
+    run: patternPulse,
+    help: "Watch the numbered pads light up, then tap them in the same order or press 1–4. Each round adds a signal."
+  },
+  "sum-trail": {
+    title: "Sum Trail",
+    run: sumTrail,
+    help: "Select four neighboring tiles that add up to the target. Move up, down, left, or right without reusing a tile. Use arrow keys and Enter, or tap."
+  },
   ...Object.fromEntries(Object.entries(classicGames).map(([id, { title }]) => [
     id, { title, run: context => playCanvas(context, () => classicArcade(id)) }
   ])),

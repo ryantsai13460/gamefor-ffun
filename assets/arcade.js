@@ -495,56 +495,122 @@ function renderCategories(target) {
   target.append(list);
 }
 
-function renderWebSearch(target, media, answers, { renderGoogleSearch }, { renderSearchMaps }) {
-  const { findCuratedVideos, openYouTubeSearchVideo, parseYouTubeVideo, searchConnectedVideos } = media;
-  const { lookupWikipedia, generateSearchAnswer } = answers;
+function mountSearchPanel(target, media, answers, { renderGoogleSearch }, { renderSearchMaps }, { setTitle }) {
+  const { findCuratedVideos, openShortsFeed, openYouTubeSearchVideo, parseYouTubeVideo, searchConnectedVideos } = media;
+  const { searchWikipedia, generateSearchAnswer, searchModelAvailability, prepareSearchModel } = answers;
   const windowPanel = element('section', 'proxy-window web-search-window');
   const nav = element('div', 'proxy-tab-row web-search-tabs');
   nav.setAttribute('role', 'group');
   nav.setAttribute('aria-label', 'Web Search tools');
-  const answerPanel = element('div');
+  const searchPanel = element('div');
+  const aiPanel = element('div');
   const googlePanel = element('div', 'proxy-stage web-search-stage');
   const mapPanel = element('div', 'proxy-stage web-search-stage');
-  const panels = new Map([['Answers & YouTube', answerPanel], ['Google & Shopping', googlePanel], ['Maps', mapPanel]]);
-  const form = element('form', 'proxy-toolbar web-search-toolbar');
-  form.setAttribute('role', 'search');
-  form.setAttribute('aria-label', 'Answers and YouTube');
-  const address = element('div', 'proxy-address');
-  address.append(icon('search'));
-  const input = element('input', 'field');
-  input.type = 'search';
-  input.required = true;
-  input.maxLength = 200;
-  input.autocomplete = 'off';
-  input.placeholder = 'Ask a question or paste a YouTube link';
-  input.setAttribute('aria-label', 'Search the web');
-  address.append(input);
-  const submit = element('button', 'button primary', 'Search');
-  submit.type = 'submit';
-  form.append(address, submit);
+  const panels = new Map([
+    ['Web & YouTube', searchPanel], ['AI Mode', aiPanel], ['Google & Shopping', googlePanel], ['Maps', mapPanel]
+  ]);
 
+  function queryForm(label, placeholder, buttonLabel) {
+    const form = element('form', 'proxy-toolbar web-search-toolbar');
+    form.setAttribute('role', 'search');
+    form.setAttribute('aria-label', label);
+    const address = element('div', 'proxy-address');
+    address.append(icon('search'));
+    const input = element('input', 'field');
+    input.type = 'search';
+    input.required = true;
+    input.maxLength = 200;
+    input.autocomplete = 'off';
+    input.placeholder = placeholder;
+    input.setAttribute('aria-label', label);
+    address.append(input);
+    const submit = element('button', 'button primary', buttonLabel);
+    submit.type = 'submit';
+    form.append(address, submit);
+    return { form, input };
+  }
+
+  const { form, input } = queryForm('Search the web', 'Search topics or paste a YouTube link', 'Search');
   const stage = element('div', 'proxy-stage web-search-stage');
   const answer = element('section', 'web-search-answer');
   answer.setAttribute('aria-live', 'polite');
-  const answerTitle = element('h2', '', 'Answer');
-  const answerText = element('p', 'muted', 'Enter a search to see an answer and matching YouTube videos.');
+  const answerTitle = element('h2', '', 'Web & YouTube');
+  const answerText = element('p', 'muted', 'Search Wikipedia and the arcade’s video library, or open Google for results from your configured engine.');
   const sources = element('div', 'web-search-sources');
   answer.append(answerTitle, answerText, sources);
+  const webPanel = element('section', 'web-search-videos');
+  webPanel.hidden = true;
+  const webList = element('ul', 'web-search-results');
+  webPanel.append(element('h2', '', 'More from Wikipedia'), webList);
   const videosPanel = element('section', 'web-search-videos');
   videosPanel.hidden = true;
   const videoCount = element('p', 'muted');
+  const videoFilters = element('div', 'interaction-row');
+  videoFilters.setAttribute('role', 'group');
+  videoFilters.setAttribute('aria-label', 'Video format');
+  const scrollShorts = action('Scroll matching Shorts', () => {
+    closeVideo?.();
+    closeVideo = openShortsFeed(windowPanel, matches.filter(video => video.short));
+  });
+  scrollShorts.setAttribute('aria-haspopup', 'dialog');
+  const videoTools = element('div', 'interaction-row');
+  videoTools.append(videoFilters, scrollShorts);
   const list = element('ul', 'web-search-results');
-  videosPanel.append(element('h2', '', 'YouTube'), videoCount, list);
-  stage.append(answer, videosPanel);
-  answerPanel.append(form, stage);
-  renderGoogleSearch(googlePanel);
+  const videoPagination = element('div', 'interaction-row');
+  const previous = action('Previous video results', () => { page--; drawVideoPage(); });
+  const next = action('Next video results', () => { page++; drawVideoPage(); });
+  videoPagination.append(previous, next);
+  videosPanel.append(element('h2', '', 'YouTube'), videoTools, videoCount, list, videoPagination);
+  stage.append(answer, webPanel, videosPanel);
+  searchPanel.append(form, stage);
+
+  const aiForm = queryForm('Ask AI', 'Ask a question or describe what you need help with', 'Ask AI');
+  const aiStage = element('div', 'proxy-stage web-search-stage');
+  const aiAnswer = element('section', 'web-search-answer');
+  aiAnswer.setAttribute('aria-live', 'polite');
+  const aiTitle = element('h2', '', 'AI Mode');
+  const aiText = element('p', 'muted', 'Ask for help, an explanation, or ideas. Answers use your browser’s on-device model when available.');
+  const aiSources = element('div', 'web-search-sources');
+  const aiSetup = element('div', 'interaction-row');
+  aiSetup.hidden = true;
+  const aiSetupStatus = element('p', 'muted');
+  aiSetupStatus.setAttribute('role', 'status');
+  const enableAI = action('Enable on-device AI', async () => {
+    enableAI.disabled = true;
+    aiSetupStatus.textContent = 'Preparing the browser model…';
+    try {
+      await prepareSearchModel(lifetime.signal, fraction => {
+        aiSetupStatus.textContent = `Downloading the browser model · ${Math.round(fraction * 100)}%`;
+      });
+      enableAI.hidden = true;
+      aiSetupStatus.textContent = 'On-device AI is ready. Ask a question to use it.';
+    } catch {
+      if (lifetime.signal.aborted) return;
+      enableAI.disabled = false;
+      aiSetupStatus.textContent = 'The browser model could not be prepared. Try again or search Wikipedia.';
+    }
+  });
+  aiSetup.append(enableAI, aiSetupStatus);
+  aiAnswer.append(aiTitle, aiText, aiSources, aiSetup);
+  aiStage.append(aiAnswer);
+  aiPanel.append(aiForm.form, aiStage);
+
+  renderGoogleSearch(googlePanel, setTitle);
   windowPanel.append(nav, ...panels.values());
-  target.append(heading('Web Search', 'Find answers, watch YouTube, or look up a place.'), windowPanel);
+  target.append(windowPanel);
 
   let pending;
+  let pendingAi;
   let closeVideo;
   let disposeMap;
   let mapReady = false;
+  let checkedAi = false;
+  const lifetime = new AbortController();
+  let matches = [];
+  let videoDescription = '';
+  let format = 'All';
+  let page = 0;
+  const videosPerPage = 20;
 
   function selectPanel(name) {
     for (const [label, panel] of panels) panel.hidden = label !== name;
@@ -553,38 +619,79 @@ function renderWebSearch(target, media, answers, { renderGoogleSearch }, { rende
       disposeMap = renderSearchMaps(mapPanel);
       mapReady = true;
     }
+    if (name === 'AI Mode' && !checkedAi) {
+      checkedAi = true;
+      searchModelAvailability().then(availability => {
+        aiSetup.hidden = !['downloadable', 'downloading'].includes(availability);
+      }).catch(() => {});
+    }
   }
 
   for (const name of panels.keys()) {
     nav.append(action(name, () => selectPanel(name), 'button web-search-tab'));
   }
-  selectPanel('Answers & YouTube');
+  selectPanel('Web & YouTube');
 
-  function drawAnswer(title, text, source) {
-    answerTitle.textContent = title;
-    answerText.textContent = text;
-    sources.replaceChildren();
+  function setSource(credits, source) {
+    credits.replaceChildren();
     if (source) {
-      sources.append(
+      credits.append(
         link(`Wikipedia · ${source.title}`, source.url, 'text-action'),
         link('CC BY-SA 4.0', 'https://creativecommons.org/licenses/by-sa/4.0/', 'text-action')
       );
     }
   }
 
-  function drawVideos(matches, description) {
-    videosPanel.hidden = false;
-    videoCount.textContent = description;
-    list.replaceChildren(...matches.slice(0, 8).map(video => {
+  function drawAnswer(title, text, source) {
+    answerTitle.textContent = title;
+    answerText.textContent = text;
+    setSource(sources, source);
+  }
+
+  function drawVideoPage() {
+    const filtered = format === 'All' ? matches : matches.filter(video => Boolean(video.short) === (format === 'Shorts'));
+    const start = page * videosPerPage;
+    for (const item of videoFilters.children) item.setAttribute('aria-pressed', String(item.textContent === format));
+    scrollShorts.hidden = format === 'Videos' || !matches.some(video => video.short);
+    videoCount.textContent = filtered.length
+      ? `${videoDescription} Showing ${start + 1}–${Math.min(start + videosPerPage, filtered.length)} of ${filtered.length}.`
+      : (matches.length ? 'No results in this video format.' : 'No matches in the arcade’s YouTube library. You can paste a YouTube link to open it here.');
+    list.replaceChildren(...filtered.slice(start, start + videosPerPage).map(video => {
       const item = element('li');
       const play = action(video.title, () => {
         closeVideo?.();
         const path = video.short ? `https://www.youtube.com/shorts/${video.id}` : video.id;
         closeVideo = openYouTubeSearchVideo(windowPanel, path);
       }, 'button web-search-video', 'play');
+      const thumbnail = element('img', 'web-search-thumbnail');
+      thumbnail.alt = '';
+      thumbnail.loading = 'lazy';
+      thumbnail.decoding = 'async';
+      thumbnail.addEventListener('error', () => thumbnail.remove(), { once: true });
+      thumbnail.src = `https://i.ytimg.com/vi/${video.id}/mqdefault.jpg`;
+      play.prepend(thumbnail);
       item.append(play, element('span', 'muted', [video.creator, video.short ? 'Short' : 'Video'].filter(Boolean).join(' · ')));
       return item;
     }));
+    previous.disabled = page === 0;
+    next.disabled = start + videosPerPage >= filtered.length;
+    videoPagination.hidden = filtered.length <= videosPerPage;
+  }
+
+  for (const name of ['All', 'Videos', 'Shorts']) {
+    videoFilters.append(action(name, () => {
+      format = name;
+      page = 0;
+      drawVideoPage();
+    }));
+  }
+
+  function drawVideos(found, description) {
+    matches = found;
+    videoDescription = description;
+    page = 0;
+    videosPanel.hidden = false;
+    drawVideoPage();
   }
 
   form.addEventListener('submit', async event => {
@@ -592,47 +699,76 @@ function renderWebSearch(target, media, answers, { renderGoogleSearch }, { rende
     pending?.abort();
     const query = input.value.trim();
     if (!query) {
-      drawAnswer('Answer', 'Enter a search term.');
+      drawAnswer('Search', 'Enter a search term.');
       return;
     }
+    setTitle(query);
     closeVideo?.();
     pending = new AbortController();
     const { signal } = pending;
-    const matches = findCuratedVideos(query);
     const video = parseYouTubeVideo(query);
-    if (video && (query !== video.id || matches.some(item => item.id === video.id))) {
+    const searchQuery = query.replace(/\b(?:violion|violon)\b/gi, 'violin');
+    const localMatches = findCuratedVideos(searchQuery);
+    webPanel.hidden = true;
+    if (video && (query !== video.id || localMatches.some(item => item.id === video.id))) {
       videosPanel.hidden = true;
       drawAnswer('YouTube', 'The official YouTube player opens here when the video allows embedding.');
       closeVideo = openYouTubeSearchVideo(windowPanel, query);
       return;
     }
-    drawVideos(matches, matches.length
-      ? 'Matches from the arcade’s YouTube library.'
-      : 'No matching videos in the arcade’s YouTube library. You can paste a YouTube link to open it here.');
-    searchConnectedVideos(query, AbortSignal.any([signal, AbortSignal.timeout(6500)])).then(online => {
+    format = 'All';
+    drawVideos(localMatches, 'Arcade YouTube library.');
+    searchConnectedVideos(searchQuery, AbortSignal.any([signal, AbortSignal.timeout(6500)])).then(online => {
       if (signal.aborted || !online?.length) return;
       const onlineIds = new Set(online.map(item => item.id));
-      drawVideos([...online, ...matches.filter(item => !onlineIds.has(item.id))],
-        'Results from your connected YouTube search and the arcade’s library.');
+      matches = [...online, ...localMatches.filter(item => !onlineIds.has(item.id))];
+      videoDescription = 'Connected YouTube search and arcade library.';
+      drawVideoPage();
     }).catch(() => {
-      if (!signal.aborted) videoCount.textContent = 'Connected video search is unavailable. Showing arcade library matches.';
+      if (!signal.aborted) {
+        videoDescription = 'Connected search unavailable. Arcade library.';
+        drawVideoPage();
+      }
     });
-    const fallback = matches.length
-      ? `The arcade library has ${matches.length} matching video${matches.length === 1 ? '' : 's'}. Try “${matches[0].title}” below.`
-      : 'No matching answer was found. Try a topic or creator name.';
-    drawAnswer('Arcade summary', fallback);
-
-    const source = await lookupWikipedia(query, AbortSignal.any([signal, AbortSignal.timeout(5000)])).catch(() => null);
+    drawAnswer('Web results', 'Looking up Wikipedia…');
+    const found = await searchWikipedia(searchQuery, AbortSignal.any([signal, AbortSignal.timeout(5000)])).catch(() => []);
     if (signal.aborted) return;
+    const [source, ...more] = found;
     if (source) drawAnswer('Wikipedia excerpt', source.text, source);
+    else drawAnswer('Web results', 'No Wikipedia excerpt is available for this search.');
+    webPanel.hidden = !more.length;
+    webList.replaceChildren(...more.map(source => {
+      const item = element('li');
+      item.append(link(source.title, source.url, 'text-action'), element('p', 'muted', source.text));
+      return item;
+    }));
+  });
 
-    const generated = await generateSearchAnswer(query, source, matches,
-      AbortSignal.any([signal, AbortSignal.timeout(8000)])).catch(() => '');
-    if (!signal.aborted && generated) drawAnswer('On-device AI answer', generated, source);
+  aiForm.form.addEventListener('submit', async event => {
+    event.preventDefault();
+    pendingAi?.abort();
+    const question = aiForm.input.value.trim();
+    if (!question) return;
+    setTitle(question);
+    pendingAi = new AbortController();
+    const { signal } = pendingAi;
+    aiTitle.textContent = 'AI Mode';
+    aiText.textContent = 'Looking for an answer…';
+    setSource(aiSources);
+    const [source] = await searchWikipedia(question, AbortSignal.any([signal, AbortSignal.timeout(5000)]), 1).catch(() => []);
+    if (signal.aborted) return;
+    const text = await generateSearchAnswer(question, source, findCuratedVideos(question),
+      AbortSignal.any([signal, AbortSignal.timeout(10000)])).catch(() => '');
+    if (signal.aborted) return;
+    aiTitle.textContent = text ? 'On-device AI answer' : source ? 'Wikipedia excerpt' : 'AI unavailable';
+    aiText.textContent = text || source?.text || 'A ready on-device model and a Wikipedia excerpt are unavailable for this question.';
+    setSource(aiSources, source);
   });
 
   return () => {
+    lifetime.abort();
     pending?.abort();
+    pendingAi?.abort();
     closeVideo?.();
     disposeMap?.();
   };
@@ -880,10 +1016,14 @@ async function renderRoute(focus = true) {
         break;
       }
       case 'web-search': {
-        const [media, answers, google, maps] = await Promise.all([
-          import('./media.js'), import('./search-answer.js'), import('./search-google.js'), import('./search-map.js')
+        const [media, answers, google, maps, { renderSearchTabs }] = await Promise.all([
+          import('./media.js'), import('./search-answer.js'), import('./search-google.js'),
+          import('./search-map.js'), import('./search-tabs.js')
         ]);
-        if (token === version) cleanup = renderWebSearch(target, media, answers, google, maps);
+        if (token === version) {
+          target.append(heading('Web Search', 'Search, watch, and ask questions in separate tabs.'));
+          cleanup = renderSearchTabs(target, (panel, tools) => mountSearchPanel(panel, media, answers, google, maps, tools));
+        }
         break;
       }
       case 'browse': {

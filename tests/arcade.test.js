@@ -9,11 +9,12 @@ import { parseYouTubeVideo } from '../assets/media.js';
 const library = createLibrary(games);
 const site = 'https://ryantsai13460.github.io/gamefor-ffun/#browse';
 
-test('the two main sources reconcile to 548 games and three more are preserved', () => {
-  assert.equal(games.length, 551);
+test('the catalog includes 548 main library games, three additional recovered games and two new originals', () => {
+  assert.equal(games.length, 553);
   assert.equal(games.filter(({ collection }) => collection === 'github' || collection === 'base44-library').length, 548);
   assert.equal(games.filter(({ collection }) => collection === 'base44-home').length, 2);
   assert.equal(games.filter(({ collection }) => collection === 'history').length, 1);
+  assert.equal(games.filter(({ collection }) => collection === 'original').length, 2);
   assert.equal(new Set(games.map(({ id }) => id)).size, games.length);
   assert.equal(new Set(games.map(({ title }) => normalize(title))).size, games.length);
   assert.equal([...library.categoryCounts.values()].reduce((sum, count) => sum + count, 0), games.length);
@@ -43,7 +44,7 @@ test('catalog records have distinct sources, correct status, and safe relative a
     }
     if (typeof game.local === 'string') await readFile(new URL(game.local, new URL('../', import.meta.url)));
   }
-  assert.deepEqual(statusCounts, { local: 13, embed: 2, external: 534, unverified: 2 });
+  assert.deepEqual(statusCounts, { local: 15, embed: 2, external: 534, unverified: 2 });
 });
 
 test('search spans titles, punctuated names, legacy aliases, categories and availability', () => {

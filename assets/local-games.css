@@ -181,3 +181,52 @@
   color: #f4d174;
   line-height: 1.25;
 }
+
+.local-game__puzzle-meta {
+  margin: 0;
+  color: #d2deec;
+  text-align: center;
+  font-size: .9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.local-game__pulse-board {
+  width: min(100%, 16rem);
+}
+
+.local-game__pulse-pad {
+  --pulse-color: #9cbbff;
+  border-color: var(--pulse-color);
+  color: var(--pulse-color);
+  background: #182635;
+  font-size: clamp(1.2rem, 6vw, 2rem);
+}
+
+.local-game__pulse-pad:nth-child(2) { --pulse-color: #83e0cb; }
+.local-game__pulse-pad:nth-child(3) { --pulse-color: #f4bc82; }
+.local-game__pulse-pad:nth-child(4) { --pulse-color: #e8a8d2; }
+
+.local-game__pulse-pad:is(.is-lit, :active) {
+  background: var(--pulse-color);
+  color: #111d30;
+  border-color: var(--pulse-color);
+  box-shadow: inset 0 0 0 3px #111d30;
+}
+
+.local-game__trail-cell {
+  position: relative;
+  background: #182635;
+  font-variant-numeric: tabular-nums;
+}
+
+.local-game__trail-cell[data-step]::after {
+  content: attr(data-step);
+  position: absolute;
+  inset: .25rem auto auto .25rem;
+  padding-inline: .25rem;
+  border-radius: .25rem;
+  background: #443614;
+  color: #fff1cd;
+  font-size: .65rem;
+  line-height: 1.2;
+}

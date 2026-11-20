@@ -31,12 +31,12 @@ test('navigation, catalog pagination, filtering, favorites, play history and set
   await expect(page.locator('.hero-art .art-image.is-ready')).toBeVisible();
 
   await go(page, 'All Games');
-  await expect(page.locator('.library-results')).toHaveText('1–24 of 551 games');
+  await expect(page.locator('.library-results')).toHaveText('1–24 of 553 games');
   await expect(page.locator('.game-card')).toHaveCount(24);
   await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(page.locator('.library-results')).toHaveText('25–48 of 551 games');
+  await expect(page.locator('.library-results')).toHaveText('25–48 of 553 games');
   await page.getByRole('button', { name: 'Previous', exact: true }).click();
-  await expect(page.locator('.pagination-output')).toHaveText('Page 1 of 23');
+  await expect(page.locator('.pagination-output')).toHaveText('Page 1 of 24');
 
   await go(page, 'Categories');
   await page.getByRole('link', { name: /^Puzzle \d+ games$/ }).click();
@@ -77,7 +77,7 @@ test('navigation, catalog pagination, filtering, favorites, play history and set
   await go(page, 'New Games');
   await expect(page.locator('.game-card').first()).toBeVisible();
   await go(page, 'Built-in Games');
-  await expect(page.locator('.game-card')).toHaveCount(13);
+  await expect(page.locator('.game-card')).toHaveCount(15);
 
   const global = page.getByRole('searchbox', { name: 'Search the arcade' });
   await global.fill('slither.io');
@@ -166,7 +166,7 @@ test('Proxy Gemini respects frame blocking and keeps links and search explicit',
     body: '<h1>Restricted preview content</h1>'
   }));
   await page.goto('/#browse');
-  await expect(page.locator('.proxy-playable-group').nth(0).getByRole('button')).toHaveCount(13);
+  await expect(page.locator('.proxy-playable-group').nth(0).getByRole('button')).toHaveCount(15);
   await expect(page.locator('.proxy-playable-group').nth(1).getByRole('button')).toHaveCount(2);
   for (const app of browserApps) {
     await page.getByRole('button', { name: 'Open ' + app.title, exact: true }).click();
@@ -268,7 +268,7 @@ test('every built-in player mounts and publisher embeds retain a direct source',
     await page.getByRole('button', { name: 'Play game', exact: true }).click();
     await expect(page.getByRole('group', { name: `${game.title} controls`, exact: true })).toBeVisible();
     const start = page.getByRole('button', { name: 'Start', exact: true });
-    if (await start.isVisible()) {
+    if (await page.locator('.player-stage canvas').count() && await start.isVisible()) {
       await start.click();
       await expect(page.locator('.player-stage canvas')).toBeVisible();
     }
@@ -279,6 +279,49 @@ test('every built-in player mounts and publisher embeds retain a direct source',
     await expect(page.locator('.player-stage iframe')).toHaveAttribute('src', game.embed);
     await expect(page.getByRole('link', { name: 'Open game source' })).toHaveAttribute('href', game.url);
   }
+});
+
+test('Shorts scroll to the next filtered video and replace the active player', async ({ page }) => {
+  await page.goto('/#youtube');
+  await page.getByRole('combobox', { name: 'Video topic' }).selectOption('Violin');
+  await page.getByRole('button', { name: 'Scroll Shorts', exact: true }).click();
+  const feed = page.getByRole('dialog', { name: 'Shorts feed' });
+  const viewport = feed.locator('.shorts-feed-viewport');
+  const player = feed.locator('iframe');
+  await expect(feed.getByText('1 of 52')).toBeVisible();
+  await expect(player).toHaveCount(1);
+  const first = await player.getAttribute('src');
+  await viewport.hover({ position: { x: 15, y: 25 } });
+  await page.mouse.wheel(0, await viewport.evaluate(element => element.clientHeight));
+  await expect(feed.getByText('2 of 52')).toBeVisible();
+  await expect(player).toHaveCount(1);
+  await expect(player).not.toHaveAttribute('src', first);
+  await viewport.press('ArrowUp');
+  await expect(feed.getByText('1 of 52')).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 780 });
+  await expect(feed.getByRole('button', { name: 'Next Short', exact: true })).toBeInViewport();
+  await feed.getByRole('button', { name: 'Next Short', exact: true }).click();
+  await expect(feed.getByText('2 of 52')).toBeVisible();
+  await feed.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(feed).toHaveCount(0);
+});
+
+test('the new original puzzles play inside the arcade', async ({ page }) => {
+  await page.addInitScript(() => { Math.random = () => 0; });
+  await page.goto('/#play/pattern-pulse');
+  await page.getByRole('button', { name: 'Play game', exact: true }).click();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.getByText('Your turn · 0 of 3')).toBeVisible();
+  for (let count = 0; count < 3; count++) await page.keyboard.press('1');
+  await expect(page.getByText('Pattern matched!')).toBeVisible();
+
+  await page.goto('/#play/sum-trail');
+  await page.getByRole('button', { name: 'Play game', exact: true }).click();
+  for (const index of [5, 4, 8, 12]) await page.locator(`[data-trail-cell="${index}"]`).click();
+  await expect(page.getByText('Trail complete!')).toBeVisible();
+  await page.getByRole('button', { name: 'Next puzzle', exact: true }).click();
+  await expect(page.getByText('Puzzle 2 of 4 · Target 25 · Sum 0')).toBeVisible();
+  expect(page.context().pages()).toHaveLength(1);
 });
 
 test('layout and mobile menu fit desktop, tablet and phone widths', async ({ page }, info) => {
@@ -300,7 +343,7 @@ test('layout and mobile menu fit desktop, tablet and phone widths', async ({ pag
       await page.keyboard.press('Escape');
       await expect(page.getByRole('button', { name: 'Open navigation' })).toBeFocused();
 
-      for (const [route, title] of [['youtube', 'YouTube'], ['browse', 'Proxy Gemini'], ['play-hub', 'Play Hub']]) {
+      for (const [route, title] of [['youtube', 'YouTube'], ['browse', 'Proxy Gemini'], ['web-search', 'Web Search'], ['play-hub', 'Play Hub']]) {
         await page.goto('/#' + route, { waitUntil: 'domcontentloaded' });
         await expect(page.getByRole('heading', { name: title, level: 1, exact: true })).toBeVisible();
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
@@ -341,25 +384,63 @@ test('Web Search shows a sourced answer and opens matching YouTube videos in the
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
 });
 
-test('Web Search uses an available on-device model and labels the answer', async ({ page }) => {
+test('Web Search can enable the on-device model and labels its answer', async ({ page }) => {
   await page.addInitScript(() => {
+    let available = false;
     Object.defineProperty(globalThis, 'LanguageModel', {
       configurable: true,
       value: {
-        availability: async () => 'available',
-        create: async () => ({
-          prompt: async text => text.includes('Mario Kart') ? 'An answer produced by the test model.' : '',
-          destroy() {}
-        })
+        availability: async () => available ? 'available' : 'downloadable',
+        create: async ({ monitor }) => {
+          if (monitor) {
+            const progress = new EventTarget();
+            monitor(progress);
+            progress.dispatchEvent(new ProgressEvent('downloadprogress', { loaded: 1 }));
+            available = true;
+          }
+          return {
+            prompt: async text => text.includes('Mario Kart') ? 'An answer produced by the test model.' : '',
+            destroy() {}
+          };
+        }
       }
     });
   });
   await page.goto('/#web-search');
-  await page.getByRole('searchbox', { name: 'Search the web' }).fill('Mario Kart');
-  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await page.getByRole('button', { name: 'AI Mode', exact: true }).click();
+  await page.getByRole('button', { name: 'Enable on-device AI' }).click();
+  await expect(page.getByText('On-device AI is ready. Ask a question to use it.')).toBeVisible();
+  await page.getByRole('searchbox', { name: 'Ask AI' }).fill('Mario Kart');
+  await page.getByRole('button', { name: 'Ask AI', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'On-device AI answer' })).toBeVisible();
   await expect(page.getByText('An answer produced by the test model.')).toBeVisible();
-  await expect(page.locator('.web-search-video').first()).toBeVisible();
+  expect(page.context().pages()).toHaveLength(1);
+});
+
+test('search tabs keep paged violin results with separate Shorts and videos', async ({ page }) => {
+  await page.goto('/#web-search');
+  const input = page.getByRole('searchbox', { name: 'Search the web' });
+  await input.fill('violion');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.getByText(/Showing 1–20 of 116/)).toBeVisible();
+  await expect(page.locator('.web-search-video')).toHaveCount(20);
+  await page.getByRole('button', { name: 'Next video results' }).click();
+  await expect(page.getByText(/Showing 21–40 of 116/)).toBeVisible();
+  await page.getByRole('button', { name: 'New search tab' }).click();
+  await expect(input).toHaveValue('');
+  await page.getByRole('tab', { name: 'violion' }).click();
+  await expect(input).toHaveValue('violion');
+  await expect(page.getByText(/Showing 21–40 of 116/)).toBeVisible();
+  await page.getByRole('button', { name: 'Videos', exact: true }).click();
+  await expect(page.getByText(/Showing 1–20 of 64/)).toBeVisible();
+  await page.getByRole('button', { name: 'Shorts', exact: true }).click();
+  await expect(page.getByText(/Showing 1–20 of 52/)).toBeVisible();
+  await page.getByRole('button', { name: 'Scroll matching Shorts' }).click();
+  const feed = page.getByRole('dialog', { name: 'Shorts feed' });
+  await expect(feed.getByText('1 of 52')).toBeVisible();
+  await feed.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Close violion tab' }).click();
+  await expect(input).toHaveValue('');
   expect(page.context().pages()).toHaveLength(1);
 });
 

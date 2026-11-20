@@ -551,5 +551,7 @@ export const games = [
   {"id": "agar-io", "title": "Agar.io", "category": "Arcade", "collection": "base44-library", "aliases": ["6afe6ed032112dae96e535a4"], "url": "https://www.miniclip.com/games/agario/", "status": "external", "art": "https://static-prod-web.miniclip.com/assets/games/Agario/02_PageThumbnail/MN_Agario_PageThumbnail.png", "artCredit": "www.miniclip.com"},
   {"id": "diep-io", "title": "Diep.io", "category": "Arcade", "collection": "base44-library", "aliases": ["6afe6ed032112dae96e535a5"], "url": "https://diep.io", "status": "external"},
   {"id": "skribbl-io", "title": "Skribbl.io", "category": "Puzzle", "collection": "base44-library", "aliases": ["6afe6ed032112dae96e535a9"], "url": "https://skribbl.io", "status": "external", "art": "https://skribbl.io/img/thumbnail.png", "artCredit": "skribbl.io"},
-  {"id": "krunker-io", "title": "Krunker.io", "category": "Action", "collection": "base44-library", "aliases": ["6afe6ed032112dae96e535aa"], "url": "https://krunker.io", "status": "external", "art": "https://assets.krunker.io/promo/og_1200x630.jpg", "artCredit": "krunker.io"}
+  {"id": "krunker-io", "title": "Krunker.io", "category": "Action", "collection": "base44-library", "aliases": ["6afe6ed032112dae96e535aa"], "url": "https://krunker.io", "status": "external", "art": "https://assets.krunker.io/promo/og_1200x630.jpg", "artCredit": "krunker.io"},
+  {"id": "pattern-pulse", "title": "Pattern Pulse", "category": "Puzzle", "collection": "original", "status": "local", "local": true, "isNew": true},
+  {"id": "sum-trail", "title": "Sum Trail", "category": "Puzzle", "collection": "original", "status": "local", "local": true, "isNew": true}
 ];

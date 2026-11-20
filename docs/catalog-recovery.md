@@ -19,6 +19,8 @@ The catalog lives in `assets/catalog.js`. The library derives its counts from th
 | Two additional games from the Base44 homepage | 2 |
 | Memory Match from repository history | 1 |
 | **Total preserved in the searchable catalog** | **551** |
+| Original built-in puzzles, Pattern Pulse and Sum Trail | 2 |
+| **Current searchable catalog** | **553** |
 
 The GitHub source is commit [`4deda5c`](https://github.com/ryantsai13460/gamefor-ffun/tree/4deda5c1ce9058184123d85792198fee5bc09a7c). Memory Match came from commit [`41ea241`](https://github.com/ryantsai13460/gamefor-ffun/commit/41ea241). The [public Base44 library](https://proxy-arcade-play.base44.app/library/games) supplied 58 records, including six titles already in the GitHub catalog. Slither.io appears in both Base44 sources and counts once. The [Base44 homepage](https://proxy-arcade-play.base44.app/) also lists Minecraft Classic and Suika Game, which are absent from both main libraries. Suika Game is the commercial original, with a separate listing from Suika Game: Merge Fruits. Catch the Star is the standalone clicker, while Catch the Stars is the built-in falling-stars game.
 

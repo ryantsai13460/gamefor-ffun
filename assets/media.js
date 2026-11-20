@@ -247,7 +247,7 @@ function loadIframeApi() {
   return iframeApi;
 }
 
-function playEmbedded(stage, status, video, isOpen, hasDirectLink) {
+function playEmbedded(stage, status, video, isOpen, hasDirectLink, autoplay = false) {
   if (video.embeddable === false) {
     status.textContent = 'The creator has disabled embedded playback.' +
       (hasDirectLink ? ' Watch this video on YouTube.' : '');
@@ -273,11 +273,17 @@ function playEmbedded(stage, status, video, isOpen, hasDirectLink) {
     if (!api || !isOpen() || !frame.isConnected) return;
     player = new api.Player(frame, {
       events: {
-        onReady: () => {
+        onReady: (event) => {
+          if (!isOpen()) return;
           clearTimeout(timer);
           status.textContent = 'YouTube player ready.';
+          if (autoplay) {
+            event?.target?.mute();
+            event?.target?.playVideo();
+          }
         },
         onError: () => {
+          if (!isOpen()) return;
           clearTimeout(timer);
           status.textContent = 'YouTube could not play this video here.' +
             (hasDirectLink ? ' Open it on YouTube for details.' : '');
@@ -347,6 +353,120 @@ function watchDialog(target, {title, subtitle, description, video, external, dir
       if (outside) dialog.close();
     }
   });
+  return () => {
+    if (dialog.open) dialog.close();
+    remove();
+  };
+}
+
+export function openShortsFeed(target, videos, startIndex = 0, onVisit) {
+  if (!videos.length) return () => {};
+  const dialog = node('dialog', '', 'media-dialog shorts-feed-dialog');
+  dialog.setAttribute('aria-label', 'Shorts feed');
+  const header = node('header', '', 'media-dialog-header');
+  const heading = node('div');
+  const position = node('p', '', 'media-meta');
+  position.setAttribute('aria-live', 'polite');
+  heading.append(node('h2', 'Shorts feed'), position);
+  header.append(heading, button('Close', () => dialog.close()));
+
+  const viewport = node('div', '', 'shorts-feed-viewport');
+  viewport.tabIndex = 0;
+  viewport.setAttribute('role', 'region');
+  viewport.setAttribute('aria-label', 'Scroll Shorts. Use the Up and Down arrows to change videos.');
+  const slots = videos.map(() => node('div', '', 'shorts-feed-slot'));
+  viewport.append(...slots);
+
+  const footer = node('footer', '', 'shorts-feed-footer');
+  const caption = node('div', '', 'shorts-feed-caption');
+  const title = node('h3');
+  const creator = node('p', '', 'media-meta');
+  caption.setAttribute('aria-live', 'polite');
+  caption.append(title, creator);
+  const controls = node('div', '', 'media-actions shorts-feed-controls');
+  const previous = button('Previous Short', () => goTo(index - 1));
+  previous.setAttribute('aria-keyshortcuts', 'ArrowUp PageUp');
+  const next = button('Next Short', () => goTo(index + 1), 'button primary');
+  next.setAttribute('aria-keyshortcuts', 'ArrowDown PageDown');
+  const source = link('Watch on YouTube', lookup(videos[0].id, true));
+  const status = node('p', '', 'media-player-status');
+  status.setAttribute('role', 'status');
+  controls.append(previous, next, source);
+  footer.append(caption, status, controls);
+  dialog.append(header, viewport, footer);
+
+  let index = -1;
+  let visibleSlots = [];
+  let stopPlayback = () => {};
+  let scrollTimer;
+  let closed = false;
+  const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(align) : null;
+
+  function activate(nextIndex) {
+    if (nextIndex === index || closed) return;
+    stopPlayback();
+    for (const slot of visibleSlots) slot.replaceChildren();
+    index = nextIndex;
+    const video = videos[index];
+    visibleSlots = [slots[index - 1], slots[index], slots[index + 1]].filter(Boolean);
+    for (const neighbor of [index - 1, index + 1]) {
+      if (!slots[neighbor]) continue;
+      const preview = videos[neighbor];
+      slots[neighbor].append(image(preview.thumbnail || `https://i.ytimg.com/vi/${preview.id}/hqdefault.jpg`, preview.title));
+    }
+    const stage = node('div', '', 'media-player media-player-short');
+    slots[index].append(stage);
+    position.textContent = `${index + 1} of ${videos.length}`;
+    title.textContent = video.title;
+    creator.textContent = video.creator;
+    source.href = lookup(video.id, true);
+    previous.disabled = index === 0;
+    next.disabled = index === videos.length - 1;
+    onVisit?.(video);
+    stopPlayback = playEmbedded(stage, status, video, () => dialog.open && index === nextIndex, true, true);
+  }
+
+  function align() {
+    viewport.scrollTop = Math.max(0, index) * viewport.clientHeight;
+  }
+
+  function goTo(nextIndex) {
+    activate(Math.max(0, Math.min(nextIndex, videos.length - 1)));
+    align();
+  }
+
+  viewport.addEventListener('scroll', () => {
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(() => {
+      if (viewport.clientHeight > 0) {
+        const nearest = Math.round(viewport.scrollTop / viewport.clientHeight);
+        activate(Math.max(0, Math.min(nearest, videos.length - 1)));
+      }
+    }, 110);
+  }, {passive: true});
+  dialog.addEventListener('keydown', (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    const direction = ['ArrowUp', 'PageUp'].includes(event.key) ? -1 :
+      ['ArrowDown', 'PageDown'].includes(event.key) ? 1 : 0;
+    if (!direction) return;
+    event.preventDefault();
+    goTo(index + direction);
+  });
+
+  function remove() {
+    if (closed) return;
+    closed = true;
+    clearTimeout(scrollTimer);
+    resize?.disconnect();
+    stopPlayback();
+    dialog.remove();
+  }
+  dialog.addEventListener('close', remove, {once: true});
+  target.append(dialog);
+  dialog.showModal();
+  goTo(startIndex);
+  viewport.focus({preventScroll: true});
+  resize?.observe(viewport);
   return () => {
     if (dialog.open) dialog.close();
     remove();
@@ -775,6 +895,12 @@ function youtubePage(target) {
   let videoCheck;
   let onlineResults = [];
   let onlineRequest;
+  let currentShorts = [];
+  const scrollShorts = button('Scroll Shorts', () => {
+    closeDialog?.();
+    closeDialog = openShortsFeed(root, currentShorts, page * PAGE_SIZE, rememberVideo);
+  }, 'button primary shorts-feed-launch');
+  scrollShorts.setAttribute('aria-haspopup', 'dialog');
 
   const importer = creatorImport(state, () => {
     updateCreatorOptions();
@@ -795,6 +921,7 @@ function youtubePage(target) {
     viewButtons.set(tab, choice);
     views.append(choice);
   }
+  views.append(scrollShorts);
   views.setAttribute('aria-label', 'Video collections');
   const linkTools = node('div', '', 'media-link-tools');
   linkTools.append(addressForm, externalSearch);
@@ -853,11 +980,15 @@ function youtubePage(target) {
     }
   }
 
-  function showVideo(video) {
-    closeDialog?.();
+  function rememberVideo(video) {
     rememberOnlineVideo(video);
     state.recent = [video.id, ...state.recent.filter((id) => id !== video.id)].slice(0, 30);
     save();
+  }
+
+  function showVideo(video) {
+    closeDialog?.();
+    rememberVideo(video);
     if (view === 'Recently opened') draw();
     closeDialog = watchDialog(root, {
       title: video.title,
@@ -919,6 +1050,9 @@ function youtubePage(target) {
     const results = view === 'Connected search' ? videos : videos.filter((video) =>
       (category.selectedIndex === 0 || video.tags.includes(category.value)) &&
       (creator.selectedIndex === 0 || video.creator === creator.value) && matches(input.value, video.title, video.creator, ...video.tags));
+    currentShorts = view === 'Shorts' ? results : [];
+    scrollShorts.hidden = view !== 'Shorts';
+    scrollShorts.disabled = currentShorts.length === 0;
     const pages = Math.max(1, Math.ceil(results.length / PAGE_SIZE));
     page = Math.min(page, pages - 1);
     const prefs = view === 'Favorites' || view === 'Recently opened';

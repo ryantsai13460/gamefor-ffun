@@ -4,7 +4,7 @@ export function validEngineId(value) {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{5,80}(?::[A-Za-z0-9_-]{1,40})?$/.test(value);
 }
 
-export function renderGoogleSearch(target) {
+export function renderGoogleSearch(target, onSearch) {
   const root = document.createElement('section');
   root.className = 'web-search-google';
   root.innerHTML = `
@@ -46,6 +46,7 @@ export function renderGoogleSearch(target) {
       return;
     }
     try { localStorage.setItem(storageKey, id); } catch {}
+    onSearch?.(text);
     const url = new URL('./google-results.html', import.meta.url);
     url.search = new URLSearchParams({ cx: id, q: text });
     const frame = document.createElement('iframe');
