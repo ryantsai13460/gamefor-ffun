@@ -29,7 +29,7 @@ The GitHub Pages source is the root of `main`. The upgrade is on the separate `u
 
 The static site runs its built-in games, catalog filters, saved games, media library, and permitted-content viewer in the browser. Favorites, history, local launch totals, and preferences stay on the device. Creator imports can fetch public data through the YouTube Data API. The optional connected search can run on a Cloudflare Worker free plan with its API key stored as a Worker secret. Its API contract is documented in [Media sources](docs/media-sources.md). The local video library and link to search on YouTube are available on every deployment.
 
-Proxy Gemini uses supported embeds and opens other addresses on the original site. Its start page keeps a link to the existing Base44 viewer.
+Proxy Gemini previews public HTTPS pages inside a browser sandbox and uses official embeds for supported games and videos. The viewer respects publisher frame restrictions. An optional new-tab link is available when a page does not display. Text searches can open matching arcade games or use Google in a new tab. The existing Base44 viewer is available under the legacy viewer disclosure.
 
 ## Maintain the content
 

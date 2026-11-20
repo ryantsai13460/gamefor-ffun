@@ -1,10 +1,12 @@
+import { games } from "./catalog.js";
+
 const legacyViewer = "https://proxy-arcade-play.base44.app/browse";
 const home = { kind: "home", title: "Start page", address: "" };
 const localPage = "catch-the-star.html";
 const shortcuts = [
   ["Catch the Star", localPage, "Local arcade"],
-  ["Example Domain", "https://example.com/", "In-page preview"],
-  ["Wikipedia", "https://www.wikipedia.org/", "Original site"],
+  ["Snow Rider 3D", "https://www.miniplay.com/game/snow-rider-3d", "Game preview"],
+  ["Wikipedia", "https://www.wikipedia.org/", "Homepage preview"],
 ];
 const gameShortcuts = [
   ["Territorial.io", "https://territorial.io/"],
@@ -17,6 +19,9 @@ const youtubeHosts = new Set([
   "youtu.be", "www.youtu.be", "www.youtube-nocookie.com",
 ]);
 const browserViews = new WeakMap();
+const gameEmbeds = new Map(
+  games.filter(game => game.embed).flatMap(game => [[game.url, game], [game.embed, game]])
+);
 
 export function youtubeVideoId(url) {
   if (!youtubeHosts.has(url.hostname)) return "";
@@ -71,11 +76,16 @@ export function resolveBrowserAddress(input, pageUrl) {
     };
   }
 
-  if (["https://example.com/", "https://www.example.com/"].includes(url.href)) {
-    return { kind: "example", title: "Example Domain", address: url.href, url: url.href, embed: url.href };
+  const game = gameEmbeds.get(url.href);
+  if (game) {
+    return { kind: "game", title: game.title, address: url.href, url: game.url, embed: game.embed };
   }
 
-  return { kind: "external", title: url.hostname, address: url.href, url: url.href };
+  if (url.origin === new URL(legacyViewer).origin && url.pathname.replace(/\/$/, "") === "/browse") {
+    return { kind: "unavailable", title: "Base44 viewer", address: url.href, url: url.href };
+  }
+
+  return { kind: "website", title: url.hostname, address: url.href, url: url.href, embed: url.href };
 }
 
 function element(tag, className, text) {
@@ -106,7 +116,7 @@ function createBrowser() {
   const shell = element("section", "proxy-viewer");
   const heading = element("div", "proxy-heading");
   const title = element("h1", "", "Proxy Gemini");
-  const description = element("p", "", "Open supported games and videos, or use the address bar to search the web.");
+  const description = element("p", "", "Preview websites, games, and videos inside the arcade when their providers allow embedding.");
   heading.append(title, description);
 
   const windowPanel = element("div", "proxy-window");
@@ -123,7 +133,7 @@ function createBrowser() {
   const status = element("p", "proxy-status");
   status.setAttribute("role", "status");
   const statusRow = element("div", "proxy-status-row");
-  const source = external("", "Open original", "proxy-source");
+  const source = external("", "Open in new tab", "proxy-source");
   const progress = element("div", "proxy-progress");
   progress.setAttribute("role", "progressbar");
   progress.setAttribute("aria-label", "Loading preview");
@@ -227,7 +237,7 @@ function createBrowser() {
   function landing() {
     const content = element("div", "proxy-start");
     const headline = element("h2", "", "Start browsing");
-    const message = element("p", "", "Enter an address, paste a YouTube link, or try a shortcut.");
+    const message = element("p", "", "Enter an HTTPS address, paste a YouTube link, or try a shortcut.");
     const links = element("div", "proxy-shortcuts");
     for (const [label, url, type] of shortcuts) {
       const shortcut = control(`Open ${label}`, "", () => submit(url));
@@ -251,10 +261,16 @@ function createBrowser() {
     const content = element("div", "proxy-direct");
     const title = element("h2", "", search ? `Search for “${page.title}”` : page.title);
     const detail = element("p", "", search
-      ? "Web search results open on Google in a new tab."
-      : "This address opens on the original site. The viewer embeds supported content only.");
-    const link = external(page.url, search ? "Open Google results" : "Open original website", "button proxy-action");
-    content.append(title, detail, link);
+      ? "Find matching games in the arcade. Google results are available in a separate tab."
+      : "Base44 blocks embedding this viewer.");
+    const actions = element("div", "proxy-direct-actions");
+    if (search) {
+      const arcadeSearch = element("a", "button proxy-action", "Search arcade games");
+      arcadeSearch.href = `#games?${new URLSearchParams({ q: page.title })}`;
+      actions.append(arcadeSearch);
+    }
+    actions.append(external(page.url, search ? "Search Google in new tab" : "Open Base44 in new tab", "proxy-source"));
+    content.append(title, detail, actions);
     return content;
   }
 
@@ -270,14 +286,18 @@ function createBrowser() {
     if (youtube) {
       frame.allow = "fullscreen; encrypted-media; picture-in-picture";
       frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-presentation");
+    } else if (page.kind === "game") {
+      frame.allow = "fullscreen; gamepad";
+      frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-pointer-lock allow-presentation");
     } else if (!local) {
-      frame.setAttribute("sandbox", "");
+      frame.referrerPolicy = "no-referrer";
+      frame.setAttribute("sandbox", "allow-scripts");
     }
     progress.hidden = false;
     status.textContent = `Opening ${page.title}…`;
     stage.setAttribute("aria-busy", "true");
     source.href = page.url;
-    source.hidden = false;
+    source.hidden = local;
     const finish = message => {
       clearTimeout(timer);
       progress.hidden = true;
@@ -285,19 +305,21 @@ function createBrowser() {
       status.textContent = message;
     };
     const timer = setTimeout(() => {
-      finish("The preview is taking longer than expected. You can open the original directly.");
+      source.hidden = false;
+      finish("The preview is taking longer than expected. Try refreshing or opening it in a new tab.");
     }, 10000);
     frame.addEventListener("load", () => {
       if (local) {
-        finish(frame.contentDocument?.getElementById("star")
-          ? "The game is ready."
-          : "The local game could not be confirmed. Try refreshing or opening the original.");
+        const ready = Boolean(frame.contentDocument?.getElementById("star"));
+        source.hidden = ready;
+        finish(ready ? "The game is ready." : "The local game could not be confirmed. Try refreshing.");
       } else {
-        finish("If the preview is blank or the player reports an error, try opening the original directly.");
+        finish("If the preview is blank, the site may block embedding. Go back or open it in a new tab.");
       }
     }, listenerOptions);
     frame.addEventListener("error", () => {
-      finish("The preview failed to load. Try opening the original directly.");
+      source.hidden = false;
+      finish("The preview could not load. Try refreshing or opening it in a new tab.");
     }, listenerOptions);
     frame.src = page.embed || page.url;
     stage.append(frame);
@@ -362,7 +384,7 @@ function createBrowser() {
   const form = element("form", "proxy-address");
   const address = element("input", "field");
   address.type = "text";
-  address.placeholder = "Search the web or enter an HTTPS address";
+  address.placeholder = "Enter an HTTPS address or search games";
   address.autocapitalize = "off";
   address.autocomplete = "off";
   address.spellcheck = false;
@@ -379,8 +401,11 @@ function createBrowser() {
   tabsRow.append(tabs, add);
   toolbar.append(navigation, form, expand);
   statusRow.append(status, source);
-  windowPanel.append(tabsRow, toolbar, progress, stage, statusRow);
-  shell.append(heading, windowPanel, external(legacyViewer, "Open the original Base44 site viewer", "proxy-legacy"));
+  windowPanel.append(tabsRow, toolbar, statusRow, progress, stage);
+  const legacy = element("details", "proxy-legacy");
+  legacy.append(element("summary", "", "Legacy Base44 viewer"),
+    external(legacyViewer, "Open Base44 in new tab", "proxy-source"));
+  shell.append(heading, windowPanel, legacy);
 
   return {
     shell,

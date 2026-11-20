@@ -109,7 +109,15 @@ test('navigation, catalog pagination, filtering, favorites, play history and set
   expect(errors).toEqual([]);
 });
 
-test('standalone game and Proxy Gemini tabs, history and direct fallback', async ({ page }) => {
+test('standalone game and Proxy Gemini tabs, history and website previews', async ({ page }) => {
+  await page.route('https://wikipedia.org/', route => route.fulfill({
+    contentType: 'text/html',
+    body: '<h1>Wikipedia preview</h1><a href="/next">Read more</a>'
+  }));
+  await page.route('https://wikipedia.org/next', route => route.fulfill({
+    contentType: 'text/html',
+    body: '<h1>Next page inside the preview</h1>'
+  }));
   await page.goto('/#play/catch-the-star');
   await page.getByRole('button', { name: 'Play game', exact: true }).click();
   const game = page.frameLocator('.player-stage iframe');
@@ -133,13 +141,50 @@ test('standalone game and Proxy Gemini tabs, history and direct fallback', async
   const address = page.locator('.proxy-toolbar input');
   await address.fill('wikipedia.org');
   await address.press('Enter');
-  await expect(page.getByRole('link', { name: 'Open original website' })).toHaveAttribute('href', 'https://wikipedia.org/');
+  await expect(frame.getByRole('heading', { name: 'Wikipedia preview' })).toBeVisible();
+  await expect(page.locator('.proxy-frame')).toHaveAttribute('sandbox', 'allow-scripts');
+  await frame.getByRole('link', { name: 'Read more' }).click();
+  await expect(frame.getByRole('heading', { name: 'Next page inside the preview' })).toBeVisible();
+  const source = page.getByRole('link', { name: 'Open in new tab', exact: true });
+  await expect(source).toHaveAttribute('href', 'https://wikipedia.org/');
+  await expect(source).toHaveAttribute('target', '_blank');
+  await expect(page).toHaveURL(/#browse$/);
+  expect(page.context().pages()).toHaveLength(1);
   await expect(page.getByRole('tab')).toHaveCount(2);
   await go(page, 'Home', 'Pocket Circuit');
   await go(page, 'Proxy Gemini');
   await expect(page.getByRole('tab')).toHaveCount(2);
   await page.getByRole('button', { name: 'Close wikipedia.org tab' }).click();
   await expect(frame.locator('#star')).toBeVisible();
+});
+
+test('Proxy Gemini respects frame blocking and keeps links and search explicit', async ({ page }) => {
+  await page.route('https://example.com/blocked', route => route.fulfill({
+    contentType: 'text/html',
+    headers: { 'Content-Security-Policy': "frame-ancestors 'none'" },
+    body: '<h1>Restricted preview content</h1>'
+  }));
+  await page.goto('/#browse');
+  await page.getByRole('button', { name: 'Open Snow Rider 3D', exact: true }).click();
+  await expect(page.locator('.proxy-frame')).toHaveAttribute('src', 'https://www.miniplay.com/embed/snow-rider-3d');
+  const address = page.getByRole('textbox', { name: 'Address or search query' });
+  await address.fill('https://example.com/blocked');
+  await address.press('Enter');
+  await expect(page.getByText(/the site may block embedding/)).toBeVisible();
+  await expect(page.frameLocator('.proxy-frame').getByRole('heading', { name: 'Restricted preview content' })).not.toBeVisible();
+  await expect(page).toHaveURL(/#browse$/);
+
+  await address.fill('https://proxy-arcade-play.base44.app/browse');
+  await address.press('Enter');
+  await expect(page.getByText('Base44 blocks embedding this viewer.')).toBeVisible();
+  await expect(page.locator('.proxy-frame')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Open Base44 in new tab' })).toHaveAttribute('target', '_blank');
+  await address.fill('snow rider');
+  await address.press('Enter');
+  await expect(page.getByRole('link', { name: 'Search Google in new tab' })).toHaveAttribute('target', '_blank');
+  await page.getByRole('link', { name: 'Search arcade games' }).click();
+  await expect(page).toHaveURL(/#games\?q=snow\+rider$/);
+  await expect(page.getByRole('heading', { name: 'Snow Rider 3D', exact: true }).first()).toBeVisible();
 });
 
 test('video and film search, official fallback, playback review, catalog report', async ({ page }) => {

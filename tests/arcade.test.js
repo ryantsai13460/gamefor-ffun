@@ -72,9 +72,13 @@ test('legacy preferences migrate IDs, discard malformed data and sort by actual 
   assert.deepEqual(ranked.slice(0, 2).map(game => game.id), ['snake', 'pong']);
 });
 
-test('Proxy Gemini resolves local play, approved YouTube embeds, search and direct website links', () => {
+test('Proxy Gemini resolves website previews, official embeds, local play and restricted destinations', () => {
   assert.equal(resolveBrowserAddress('catch-the-star.html', site).url, 'https://ryantsai13460.github.io/gamefor-ffun/catch-the-star.html');
-  assert.equal(resolveBrowserAddress('wikipedia.org', site).kind, 'external');
+  assert.equal(resolveBrowserAddress('wikipedia.org', site).embed, 'https://wikipedia.org/');
+  assert.equal(resolveBrowserAddress('wikipedia.org', site).kind, 'website');
+  assert.equal(resolveBrowserAddress('https://www.miniplay.com/game/snow-rider-3d', site).embed, 'https://www.miniplay.com/embed/snow-rider-3d');
+  assert.equal(resolveBrowserAddress('https://www.miniplay.com/embed/unlisted-game', site).kind, 'website');
+  assert.equal(resolveBrowserAddress('https://proxy-arcade-play.base44.app/browse/', site).kind, 'unavailable');
   assert.equal(resolveBrowserAddress('my next game', site).kind, 'search');
   assert.equal(resolveBrowserAddress('https://www.youtube.com/shorts/aqz-KE-bpKQ', site).embed, 'https://www.youtube-nocookie.com/embed/aqz-KE-bpKQ');
   for (const input of ['javascript:alert(1)', 'http://example.com', 'https://127.0.0.1', 'https://username@example.com']) {
