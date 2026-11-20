@@ -514,30 +514,118 @@ const searchDemo = {
   ]
 };
 
+const webDestinations = {
+  Web: { action: 'https://www.google.com/search', label: 'Search Google', query: 'q' },
+  YouTube: { action: 'https://www.youtube.com/results', label: 'Search YouTube', query: 'search_query' },
+  News: { action: 'https://www.google.com/search', label: 'Search Google News', query: 'q', filter: 'nws' },
+  Shopping: { action: 'https://www.google.com/search', label: 'Search Google Shopping', query: 'q', filter: 'shop' },
+  Arcade: { label: 'Find games', query: 'q' }
+};
+
 function renderWebSearch(target) {
-  const form = element('form', 'info-panel web-search-form');
-  form.action = 'https://duckduckgo.com/';
+  const windowPanel = element('section', 'proxy-window web-search-window');
+  windowPanel.setAttribute('aria-label', 'Search browser');
+  const tabs = element('div', 'proxy-tab-row web-search-modes');
+  tabs.setAttribute('role', 'group');
+  tabs.setAttribute('aria-label', 'Search categories');
+  const form = element('form', 'proxy-toolbar web-search-toolbar');
   form.target = '_blank';
   form.rel = 'noopener noreferrer';
   form.setAttribute('role', 'search');
-  form.setAttribute('aria-label', 'Web search');
+  form.setAttribute('aria-label', 'Live and arcade search');
 
-  const label = element('label', '', 'Search the web');
+  const address = element('div', 'proxy-address');
+  address.append(icon('search'));
+  const input = element('input', 'field');
+  input.type = 'search';
+  input.required = true;
+  input.maxLength = 200;
+  input.autocomplete = 'off';
+  input.setAttribute('aria-label', 'Search the web');
+  address.append(input);
+  const filter = element('input');
+  filter.type = 'hidden';
+  filter.name = 'tbm';
+  const submit = element('button', 'button primary');
+  submit.type = 'submit';
+  const duckDuckGo = element('button', 'button', 'Search DuckDuckGo');
+  duckDuckGo.type = 'submit';
+  duckDuckGo.formAction = 'https://duckduckgo.com/';
+  form.append(address, filter, submit, duckDuckGo);
+
+  const stage = element('div', 'proxy-stage web-search-stage');
+  const status = element('p', 'muted');
+  status.setAttribute('role', 'status');
+  const results = element('div', 'web-search-results');
+  stage.append(status, results);
+  let mode = 'Web';
+
+  function selectMode(selected) {
+    mode = selected;
+    const destination = webDestinations[mode];
+    form.action = destination.action || location.href;
+    input.name = destination.query;
+    input.placeholder = mode === 'Arcade' ? 'Search game titles and genres' : 'Enter your search';
+    filter.value = destination.filter || '';
+    filter.disabled = !destination.filter;
+    submit.textContent = destination.label;
+    duckDuckGo.hidden = mode !== 'Web';
+    for (const button of tabs.children) {
+      button.setAttribute('aria-pressed', String(button.textContent === mode));
+    }
+    results.replaceChildren();
+    status.textContent = mode === 'Arcade'
+      ? 'Find games in the arcade library.'
+      : 'Live results open on the selected provider in a new tab.';
+  }
+
+  for (const category of Object.keys(webDestinations)) {
+    tabs.append(action(category, () => selectMode(category), 'button web-search-mode'));
+  }
+  form.addEventListener('submit', event => {
+    const query = input.value.trim();
+    if (!query) {
+      event.preventDefault();
+      status.textContent = 'Enter a search term.';
+      return;
+    }
+    input.value = query;
+    if (mode !== 'Arcade') return;
+    event.preventDefault();
+    const matches = queryLibrary(library, { search: query, sort: 'name' });
+    status.textContent = matches.length
+      ? `Showing ${Math.min(matches.length, 6)} of ${matches.length} matching games.`
+      : 'No matching arcade games.';
+    results.replaceChildren(...matches.slice(0, 6).map(game =>
+      link(game.title, gamePath(game), 'button')));
+    if (matches.length > 6) {
+      results.append(link('See all matches', hashFor('games', { q: query }), 'text-action'));
+    }
+  });
+
+  const players = element('section', 'info-panel search-demo-results');
+  const gameLinks = element('div', 'interaction-row');
+  for (const game of games.filter(arcadeEmbed)) {
+    gameLinks.append(link(game.title, hashFor('browse', { address: arcadeEmbed(game) }), 'button'));
+  }
+  players.append(element('h2', '', 'Official game players'), gameLinks);
+  selectMode(mode);
+  windowPanel.append(tabs, form, stage);
+  target.append(heading('Web Search'), windowPanel, players, createSearchDemo());
+}
+
+function createSearchDemo() {
+  const demo = element('details', 'info-panel search-demo-results web-search-demo');
+  demo.append(element('summary', '', 'Sample search demo'));
+  const form = element('form', 'web-search-demo-form');
+  const label = element('label', '', 'Demo query');
   const query = element('input', 'field');
   query.type = 'search';
-  query.name = 'q';
-  query.id = 'web-search-query';
-  query.required = true;
+  query.id = 'demo-search-query';
   label.htmlFor = query.id;
-  const actions = element('div', 'interaction-row');
-  const preview = element('button', 'button primary', 'Search demo');
-  const duckDuckGo = element('button', 'button primary', 'Search DuckDuckGo');
-  const google = element('button', 'button', 'Search Google');
-  preview.type = duckDuckGo.type = google.type = 'submit';
-  duckDuckGo.classList.remove('primary');
-  google.formAction = 'https://www.google.com/search';
-  actions.append(preview, duckDuckGo, google);
-  form.append(label, query, actions);
+  const preview = element('button', 'button', 'Search demo');
+  preview.type = 'submit';
+  form.append(label, query, preview);
 
   const tabs = element('div', 'interaction-row');
   tabs.setAttribute('role', 'group');
@@ -576,20 +664,13 @@ function renderWebSearch(target) {
     }));
   }
   form.addEventListener('submit', event => {
-    if (event.submitter === duckDuckGo || event.submitter === google) return;
     event.preventDefault();
     submitted = query.value.trim() || 'arcade';
     draw();
   });
-  const players = element('section', 'info-panel search-demo-results');
-  const gameLinks = element('div', 'interaction-row');
-  for (const game of games.filter(arcadeEmbed)) {
-    gameLinks.append(link(game.title, hashFor('browse', { address: arcadeEmbed(game) }), 'button'));
-  }
-  players.append(element('h2', '', 'Try official game embeds'), gameLinks);
   draw();
-  target.append(heading('Web Search', 'Demo results and summaries use sample data. Live searches open on Google or DuckDuckGo.'),
-    form, tabs, results, players);
+  demo.append(form, tabs, results);
+  return demo;
 }
 
 function renderSettings(target) {

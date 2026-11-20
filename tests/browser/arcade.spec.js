@@ -323,17 +323,38 @@ test('Web Search sends queries to the selected provider in a separate tab', asyn
     await popup.waitForURL(url => url.hostname === host && url.searchParams.get('q') === 'arcade & games');
     await popup.close();
   }
+  for (const [mode, buttonName, host, key, filter] of [
+    ['YouTube', 'Search YouTube', 'www.youtube.com', 'search_query', null],
+    ['News', 'Search Google News', 'www.google.com', 'q', 'nws'],
+    ['Shopping', 'Search Google Shopping', 'www.google.com', 'q', 'shop']
+  ]) {
+    await page.getByRole('button', { name: mode, exact: true }).click();
+    const popupPromise = page.context().waitForEvent('page');
+    await page.getByRole('button', { name: buttonName, exact: true }).click();
+    const popup = await popupPromise;
+    await popup.waitForURL(url => url.hostname === host &&
+      url.searchParams.get(key) === 'arcade & games' && url.searchParams.get('tbm') === filter);
+    await popup.close();
+  }
   await expect(page).toHaveURL(/#web-search$/);
+  await page.getByRole('button', { name: 'Arcade', exact: true }).click();
+  await query.fill('Pocket Circuit');
+  await page.getByRole('button', { name: 'Find games', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Pocket Circuit', exact: true })).toHaveAttribute('href', '#play/ffun-circuit-v1');
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
 });
 
 test('Web Search displays local demo results and opens official players in Proxy Gemini', async ({ page }) => {
   await page.goto('/#web-search');
+  await page.getByText('Sample search demo', { exact: true }).click();
   const results = page.getByRole('region', { name: 'Sample search results' });
+  const demoTabs = page.getByRole('group', { name: 'Demo result categories' });
   for (const category of ['Web', 'YouTube', 'News', 'Shopping']) {
-    await page.getByRole('button', { name: category, exact: true }).click();
+    await demoTabs.getByRole('button', { name: category, exact: true }).click();
     await expect(results.locator('li')).toHaveCount(2);
   }
-  await page.getByRole('searchbox', { name: 'Search the web' }).fill('racing');
+  await page.getByRole('searchbox', { name: 'Demo query' }).fill('racing');
   await page.getByRole('button', { name: 'Search demo', exact: true }).click();
   await expect(results.locator('li')).toHaveCount(1);
   await page.getByRole('link', { name: 'Stacktris', exact: true }).click();
