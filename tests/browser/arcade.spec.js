@@ -372,3 +372,59 @@ test('game details offer an in-arcade preview and Home collects Miniplay links',
   await expect(page.getByRole('heading', { name: 'Miniplay links' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Snow Rider 3D', exact: true })).toHaveAttribute('target', '_blank');
 });
+
+test('Web Search opens a pasted YouTube URL in the official player', async ({ page }) => {
+  await page.goto('/#web-search');
+  await page.getByRole('searchbox', { name: 'Search the web' }).fill('https://youtu.be/dQw4w9WgXcQ');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ/);
+  await expect(dialog.getByRole('link', { name: 'Watch on YouTube' })).toHaveCount(0);
+  expect(page.context().pages()).toHaveLength(1);
+});
+
+test('Web Search uses configured Google results and opens Shopping only when chosen', async ({ page }) => {
+  await page.route(url => url.hostname === 'cse.google.com' && url.pathname === '/cse.js', route => {
+    expect(new URL(route.request().url()).searchParams.get('cx')).toBe('public_sample_123');
+    return route.fulfill({ contentType: 'application/javascript', body: `
+      window.google = { search: { cse: { element: {
+        render() {},
+        getElement() { return { execute(query) { document.querySelector('#google-results').textContent = query; } }; }
+      } } } };
+      window.__gcse.initializationCallback();
+    ` });
+  });
+  await page.goto('/#web-search');
+  await page.getByRole('button', { name: 'Google & Shopping', exact: true }).click();
+  await page.getByRole('searchbox', { name: 'Google query' }).fill('arcade controller');
+  await page.getByRole('button', { name: 'Search Google', exact: true }).click();
+  await expect(page.getByText(/Enter a valid public Google Search Engine ID/)).toBeVisible();
+  await page.getByRole('textbox', { name: 'Public Search Engine ID' }).fill('public_sample_123');
+  await page.getByRole('button', { name: 'Search Google', exact: true }).click();
+  await expect(page.frameLocator('iframe[title="Google results"]').getByText('arcade controller')).toBeVisible();
+  await expect(page).toHaveURL(/#web-search$/);
+  expect(page.context().pages()).toHaveLength(1);
+  await page.getByRole('button', { name: 'Open Google Shopping', exact: true }).click();
+  await page.waitForURL(url => url.hostname === 'www.google.com' && url.searchParams.get('tbm') === 'shop'
+    && url.searchParams.get('q') === 'arcade controller');
+  expect(page.context().pages()).toHaveLength(1);
+});
+
+test('Web Search finds a place and opens the map in the same tab', async ({ page }) => {
+  await page.route(url => url.hostname === 'geocoding-api.open-meteo.com', route => {
+    expect(new URL(route.request().url()).searchParams.get('name')).toBe('Paris');
+    return route.fulfill({ headers: { 'Access-Control-Allow-Origin': '*' }, json: {
+      results: [{ name: 'Paris', admin1: 'Île-de-France', country: 'France', latitude: 48.8566, longitude: 2.3522 }]
+    } });
+  });
+  await page.goto('/#web-search');
+  await page.getByRole('button', { name: 'Maps', exact: true }).click();
+  await page.getByRole('searchbox', { name: 'City, postal code, or coordinates' }).fill('Paris');
+  await page.getByRole('button', { name: 'Find on map', exact: true }).click();
+  await expect(page.getByText('1 place found for “Paris”.')).toBeVisible();
+  await expect(page.locator('.search-map-frame')).toHaveAttribute('src', /openstreetmap\.org\/export\/embed\.html\?/);
+  const frame = new URL(await page.locator('.search-map-frame').getAttribute('src'));
+  expect(frame.searchParams.get('marker')).toBe('48.8566,2.3522');
+  await expect(page).toHaveURL(/#web-search$/);
+  expect(page.context().pages()).toHaveLength(1);
+});

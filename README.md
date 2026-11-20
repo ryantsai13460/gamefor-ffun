@@ -31,6 +31,8 @@ The static site runs its built-in games, catalog filters, saved games, media lib
 
 Proxy Gemini previews public HTTPS pages inside a browser sandbox and uses official embeds for supported games and videos. The viewer respects publisher frame restrictions. An optional new-tab link is available when a page does not display. Text searches can open matching arcade games or use Google in a new tab. The existing Base44 viewer is available under the legacy viewer disclosure.
 
+**Web Search** opens YouTube video links in the official player, searches the curated catalog, and uses the connected video endpoint when configured under **YouTube**. Answers use Wikipedia excerpts and the browser’s on-device model when available. **Google & Shopping** accepts a public [Google Programmable Search Engine ID](https://programmablesearchengine.google.com/controlpanel/all) for in-page search across the configured sites. Google Shopping opens separately in the current tab. **Maps** uses [Open-Meteo’s public geocoding API](https://open-meteo.com/en/docs/geocoding-api) for non-commercial place lookup and an OpenStreetMap embed, with direct coordinate entry also available.
+
 ## Maintain the content
 
 - [Game catalog and recovery](docs/catalog-recovery.md) explains the 548 entries accounted for in the main libraries and the three additional games preserved from the homepage and repository history.

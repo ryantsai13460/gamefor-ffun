@@ -414,12 +414,25 @@ export function findCuratedVideos(query) {
 
 export function openCuratedVideo(target, video) {
   const curated = CURATED_VIDEOS.get(video?.id);
-  if (!curated) return () => {};
+  return curated ? openSearchVideoDialog(target, curated) : () => {};
+}
+
+export function openYouTubeSearchVideo(target, input) {
+  const parsed = parseYouTubeVideo(input);
+  if (!parsed) return () => {};
+  const video = CURATED_VIDEOS.get(parsed.id) || {
+    ...parsed,
+    title: parsed.short ? 'YouTube Short' : 'YouTube video'
+  };
+  return openSearchVideoDialog(target, video);
+}
+
+function openSearchVideoDialog(target, video) {
   return watchDialog(target, {
-    title: curated.title,
-    subtitle: curated.creator,
-    video: curated,
-    short: curated.short
+    title: video.title,
+    subtitle: video.creator,
+    video,
+    short: video.short
   });
 }
 
@@ -521,6 +534,30 @@ function searchServiceUrl(input) {
     throw new Error('Enter an HTTPS search endpoint without a query or credentials.');
   }
   return url;
+}
+
+async function fetchConnectedVideos(endpoint, query, signal) {
+  const url = searchServiceUrl(endpoint);
+  url.search = new URLSearchParams({q: query, safeSearch: 'strict', videoEmbeddable: 'true'});
+  const timeout = AbortSignal.timeout(12000);
+  const response = await fetch(url, {
+    credentials: 'omit',
+    cache: 'no-store',
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    headers: {Accept: 'application/json'}
+  });
+  if (!response.ok) throw new Error('The connected search service is unavailable.');
+  const data = await response.json();
+  if (!Array.isArray(data.items)) throw new Error('The search service did not return a video list.');
+  return [...new Map(data.items.slice(0, 100).map(sanitizeVideo).filter(Boolean)
+    .map((video) => [video.id, video])).values()];
+}
+
+export async function searchConnectedVideos(query, signal) {
+  const endpoint = preference(VIDEO_STORE).endpoint;
+  if (typeof endpoint !== 'string' || !endpoint.trim()) return null;
+  const value = typeof query === 'string' ? query.trim().slice(0, 200) : '';
+  return value ? fetchConnectedVideos(endpoint.trim(), value, signal) : [];
 }
 
 async function youtubeData(endpoint, parameters, key, signal) {
@@ -920,16 +957,9 @@ function youtubePage(target) {
     const {signal} = request;
     notice.textContent = 'Searching the connected service…';
     try {
-      const url = searchServiceUrl(state.endpoint);
-      url.search = new URLSearchParams({q: query, safeSearch: 'strict', videoEmbeddable: 'true'});
-      const response = await fetch(url, {credentials: 'omit', cache: 'no-store',
-        signal: AbortSignal.any([signal, AbortSignal.timeout(12000)]), headers: {Accept: 'application/json'}});
-      if (!response.ok) throw new Error('The connected search service is unavailable.');
-      const data = await response.json();
-      if (!Array.isArray(data.items)) throw new Error('The search service did not return a video list.');
+      const results = await fetchConnectedVideos(state.endpoint, query, signal);
       if (signal.aborted) return;
-      onlineResults = [...new Map(data.items.slice(0, 100).map(sanitizeVideo).filter(Boolean)
-        .map((video) => [video.id, video])).values()];
+      onlineResults = results;
       view = 'Connected search';
       page = 0;
       notice.textContent = 'Results from the connected YouTube search service.';
