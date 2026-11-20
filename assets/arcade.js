@@ -495,45 +495,11 @@ function renderCategories(target) {
   target.append(list);
 }
 
-const searchDemo = {
-  Web: [
-    ['Getting started with browser arcade games', 'Learn how built-in games and publisher-provided players run in a web browser.'],
-    ['Arcade game controls', 'Compare keyboard, touch, and gamepad controls for puzzle and racing games.']
-  ],
-  YouTube: [
-    ['Five browser arcade games to try', 'Sample video result covering racing games and puzzles.'],
-    ['How to beat your arcade racing time', 'Sample video walkthrough for practicing racing game controls.']
-  ],
-  News: [
-    ['Community arcade tournament announced', 'Sample news story about a weekend racing and puzzle competition.'],
-    ['Browser arcade update adds touch controls', 'Sample news story about mobile support for puzzle games.']
-  ],
-  Shopping: [
-    ['Compact arcade-style controller', 'Sample product for browser racing and arcade games.'],
-    ['Portable arcade gamepad', 'Sample product for puzzle games and travel.']
-  ]
-};
-
-const webDestinations = {
-  Web: { action: 'https://www.google.com/search', label: 'Search Google', query: 'q' },
-  YouTube: { action: 'https://www.youtube.com/results', label: 'Search YouTube', query: 'search_query' },
-  News: { action: 'https://www.google.com/search', label: 'Search Google News', query: 'q', filter: 'nws' },
-  Shopping: { action: 'https://www.google.com/search', label: 'Search Google Shopping', query: 'q', filter: 'shop' },
-  Arcade: { label: 'Find games', query: 'q' }
-};
-
-function renderWebSearch(target) {
+function renderWebSearch(target, { findCuratedVideos, openCuratedVideo, parseYouTubeVideo }, { lookupWikipedia, generateSearchAnswer }) {
   const windowPanel = element('section', 'proxy-window web-search-window');
-  windowPanel.setAttribute('aria-label', 'Search browser');
-  const tabs = element('div', 'proxy-tab-row web-search-modes');
-  tabs.setAttribute('role', 'group');
-  tabs.setAttribute('aria-label', 'Search categories');
   const form = element('form', 'proxy-toolbar web-search-toolbar');
-  form.target = '_blank';
-  form.rel = 'noopener noreferrer';
   form.setAttribute('role', 'search');
-  form.setAttribute('aria-label', 'Live and arcade search');
-
+  form.setAttribute('aria-label', 'Answers and YouTube');
   const address = element('div', 'proxy-address');
   address.append(icon('search'));
   const input = element('input', 'field');
@@ -541,136 +507,88 @@ function renderWebSearch(target) {
   input.required = true;
   input.maxLength = 200;
   input.autocomplete = 'off';
+  input.placeholder = 'Ask a question or search for videos';
   input.setAttribute('aria-label', 'Search the web');
   address.append(input);
-  const filter = element('input');
-  filter.type = 'hidden';
-  filter.name = 'tbm';
-  const submit = element('button', 'button primary');
+  const submit = element('button', 'button primary', 'Search');
   submit.type = 'submit';
-  const duckDuckGo = element('button', 'button', 'Search DuckDuckGo');
-  duckDuckGo.type = 'submit';
-  duckDuckGo.formAction = 'https://duckduckgo.com/';
-  form.append(address, filter, submit, duckDuckGo);
+  form.append(address, submit);
 
   const stage = element('div', 'proxy-stage web-search-stage');
-  const status = element('p', 'muted');
-  status.setAttribute('role', 'status');
-  const results = element('div', 'web-search-results');
-  stage.append(status, results);
-  let mode = 'Web';
+  const answer = element('section', 'web-search-answer');
+  answer.setAttribute('aria-live', 'polite');
+  const answerTitle = element('h2', '', 'Answer');
+  const answerText = element('p', 'muted', 'Enter a search to see an answer and matching YouTube videos.');
+  const sources = element('div', 'web-search-sources');
+  answer.append(answerTitle, answerText, sources);
+  const videosPanel = element('section', 'web-search-videos');
+  videosPanel.hidden = true;
+  const videoCount = element('p', 'muted');
+  const list = element('ul', 'web-search-results');
+  videosPanel.append(element('h2', '', 'YouTube'), videoCount, list);
+  stage.append(answer, videosPanel);
+  windowPanel.append(form, stage);
+  target.append(heading('Web Search', 'Search Wikipedia and the arcade’s YouTube library. AI answers run on your device when supported.'), windowPanel);
 
-  function selectMode(selected) {
-    mode = selected;
-    const destination = webDestinations[mode];
-    form.action = destination.action || location.href;
-    input.name = destination.query;
-    input.placeholder = mode === 'Arcade' ? 'Search game titles and genres' : 'Enter your search';
-    filter.value = destination.filter || '';
-    filter.disabled = !destination.filter;
-    submit.textContent = destination.label;
-    duckDuckGo.hidden = mode !== 'Web';
-    for (const button of tabs.children) {
-      button.setAttribute('aria-pressed', String(button.textContent === mode));
+  let pending;
+  let closeVideo;
+
+  function drawAnswer(title, text, source) {
+    answerTitle.textContent = title;
+    answerText.textContent = text;
+    sources.replaceChildren();
+    if (source) {
+      sources.append(
+        link(`Wikipedia · ${source.title}`, source.url, 'text-action'),
+        link('CC BY-SA 4.0', 'https://creativecommons.org/licenses/by-sa/4.0/', 'text-action')
+      );
     }
-    results.replaceChildren();
-    status.textContent = mode === 'Arcade'
-      ? 'Find games in the arcade library.'
-      : 'Live results open on the selected provider in a new tab.';
   }
 
-  for (const category of Object.keys(webDestinations)) {
-    tabs.append(action(category, () => selectMode(category), 'button web-search-mode'));
-  }
-  form.addEventListener('submit', event => {
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    pending?.abort();
     const query = input.value.trim();
     if (!query) {
-      event.preventDefault();
-      status.textContent = 'Enter a search term.';
+      drawAnswer('Answer', 'Enter a search term.');
       return;
     }
-    input.value = query;
-    if (mode !== 'Arcade') return;
-    event.preventDefault();
-    const matches = queryLibrary(library, { search: query, sort: 'name' });
-    status.textContent = matches.length
-      ? `Showing ${Math.min(matches.length, 6)} of ${matches.length} matching games.`
-      : 'No matching arcade games.';
-    results.replaceChildren(...matches.slice(0, 6).map(game =>
-      link(game.title, gamePath(game), 'button')));
-    if (matches.length > 6) {
-      results.append(link('See all matches', hashFor('games', { q: query }), 'text-action'));
-    }
-  });
-
-  const players = element('section', 'info-panel search-demo-results');
-  const gameLinks = element('div', 'interaction-row');
-  for (const game of games.filter(arcadeEmbed)) {
-    gameLinks.append(link(game.title, hashFor('browse', { address: arcadeEmbed(game) }), 'button'));
-  }
-  players.append(element('h2', '', 'Official game players'), gameLinks);
-  selectMode(mode);
-  windowPanel.append(tabs, form, stage);
-  target.append(heading('Web Search'), windowPanel, players, createSearchDemo());
-}
-
-function createSearchDemo() {
-  const demo = element('details', 'info-panel search-demo-results web-search-demo');
-  demo.append(element('summary', '', 'Sample search demo'));
-  const form = element('form', 'web-search-demo-form');
-  const label = element('label', '', 'Demo query');
-  const query = element('input', 'field');
-  query.type = 'search';
-  query.id = 'demo-search-query';
-  label.htmlFor = query.id;
-  const preview = element('button', 'button', 'Search demo');
-  preview.type = 'submit';
-  form.append(label, query, preview);
-
-  const tabs = element('div', 'interaction-row');
-  tabs.setAttribute('role', 'group');
-  tabs.setAttribute('aria-label', 'Demo result categories');
-  const results = element('section', 'info-panel search-demo-results');
-  results.setAttribute('aria-label', 'Sample search results');
-  results.setAttribute('aria-live', 'polite');
-  const summary = element('p');
-  const list = element('ul', 'search-demo-list');
-  results.append(element('h2', '', 'Sample AI-style summary'), summary, list);
-  let activeCategory = 'Web';
-  let submitted = 'arcade';
-  query.value = submitted;
-
-  function draw() {
-    const words = submitted.toLowerCase().split(/\s+/);
-    const matches = searchDemo[activeCategory].filter(entry =>
-      words.every(word => entry.join(' ').toLowerCase().includes(word)));
-    summary.textContent = matches.length
-      ? `This demo found ${matches.length} sample ${activeCategory.toLowerCase()} results for “${submitted}”. ${matches[0][1]}`
-      : `No sample results for “${submitted}”. Try arcade, racing, or puzzle.`;
-    list.replaceChildren(...matches.map(([title, detail]) => {
+    closeVideo?.();
+    pending = new AbortController();
+    const { signal } = pending;
+    const matches = findCuratedVideos(query);
+    videosPanel.hidden = false;
+    videoCount.textContent = matches.length
+      ? 'Matches from the arcade’s YouTube library.'
+      : 'No matching videos in the arcade’s YouTube library.';
+    list.replaceChildren(...matches.slice(0, 8).map(video => {
       const item = element('li');
-      item.append(element('h3', '', title), element('p', '', detail));
+      const play = action(video.title, () => {
+        closeVideo?.();
+        closeVideo = openCuratedVideo(windowPanel, video);
+      }, 'button web-search-video', 'play');
+      item.append(play, element('span', 'muted', [video.creator, video.short ? 'Short' : 'Full video'].filter(Boolean).join(' · ')));
       return item;
     }));
-    [...tabs.children].forEach(button => {
-      button.setAttribute('aria-pressed', String(button.textContent === activeCategory));
-    });
-  }
+    const fallback = matches.length
+      ? `The arcade library has ${matches.length} matching video${matches.length === 1 ? '' : 's'}. Try “${matches[0].title}” below.`
+      : 'No matching answer was found. Try a topic or creator name.';
+    drawAnswer('Arcade summary', fallback);
 
-  for (const category of Object.keys(searchDemo)) {
-    tabs.append(action(category, () => {
-      activeCategory = category;
-      draw();
-    }));
-  }
-  form.addEventListener('submit', event => {
-    event.preventDefault();
-    submitted = query.value.trim() || 'arcade';
-    draw();
+    const source = parseYouTubeVideo(query) ? null
+      : await lookupWikipedia(query, AbortSignal.any([signal, AbortSignal.timeout(5000)])).catch(() => null);
+    if (signal.aborted) return;
+    if (source) drawAnswer('Wikipedia excerpt', source.text, source);
+
+    const generated = await generateSearchAnswer(query, source, matches,
+      AbortSignal.any([signal, AbortSignal.timeout(8000)])).catch(() => '');
+    if (!signal.aborted && generated) drawAnswer('On-device AI answer', generated, source);
   });
-  draw();
-  demo.append(form, tabs, results);
-  return demo;
+
+  return () => {
+    pending?.abort();
+    closeVideo?.();
+  };
 }
 
 function renderSettings(target) {
@@ -914,9 +832,11 @@ async function renderRoute(focus = true) {
         }
         break;
       }
-      case 'web-search':
-        renderWebSearch(target);
+      case 'web-search': {
+        const [media, answers] = await Promise.all([import('./media.js'), import('./search-answer.js')]);
+        if (token === version) cleanup = renderWebSearch(target, media, answers);
         break;
+      }
       case 'browse': {
         if (!browserModule) target.append(element('p', 'boot-note', 'Loading Proxy Gemini…'));
         browserModule = await import('./browser.js');

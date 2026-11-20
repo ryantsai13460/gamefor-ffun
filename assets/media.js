@@ -38,6 +38,12 @@ const CREATOR_VIDEOS = [
   ['h68WUZ8b0O0', 'FlameFrags', "Searching for a Vault that Doesn't Exist"]
 ].map(([id, creator, title]) => ({id, title, creator, tags: ['Minecraft']}));
 
+const CURATED_VIDEOS = new Map([...addedVideos, ...CREATOR_VIDEOS, ...SHORTS, ...addedShorts]
+  .map((video) => [video.id, video]));
+const VIDEO_QUERY_FILLER = new Set(
+  'a about an and any are as best can clip clips could did do does find for from game games gaming get give how i in is it like list me my of on or please play recommend search see show some tell than that the them to top video videos watch what when where which who why with would you your youtube'.split(' ')
+);
+
 const blender = 'https://studio.blender.org';
 const blenderProject = (slug) => `${blender}/projects/${slug}/`;
 const blenderArt = (path) => `${blender}/files/public/thumbnail/${path}`;
@@ -241,15 +247,17 @@ function loadIframeApi() {
   return iframeApi;
 }
 
-function playEmbedded(stage, status, video, isOpen) {
+function playEmbedded(stage, status, video, isOpen, hasDirectLink) {
   if (video.embeddable === false) {
-    status.textContent = 'The creator has disabled embedded playback. Watch this video on YouTube.';
+    status.textContent = 'The creator has disabled embedded playback.' +
+      (hasDirectLink ? ' Watch this video on YouTube.' : '');
     return () => {};
   }
   const frame = node('iframe');
   frame.title = video.title;
   frame.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen';
   frame.allowFullscreen = true;
+  if (!hasDirectLink) frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation');
   frame.referrerPolicy = 'strict-origin-when-cross-origin';
   const url = new URL(`https://www.youtube-nocookie.com/embed/${video.id}`);
   url.search = new URLSearchParams({enablejsapi: '1', playsinline: '1', origin: location.origin});
@@ -258,7 +266,8 @@ function playEmbedded(stage, status, video, isOpen) {
   stage.replaceChildren(frame);
   let player;
   const timer = setTimeout(() => {
-    status.textContent = 'Embedded playback could not be confirmed. Open the video on YouTube if the player does not start.';
+    status.textContent = 'Embedded playback could not be confirmed.' +
+      (hasDirectLink ? ' Open the video on YouTube if the player does not start.' : '');
   }, 8500);
   loadIframeApi().then((api) => {
     if (!api || !isOpen() || !frame.isConnected) return;
@@ -270,7 +279,8 @@ function playEmbedded(stage, status, video, isOpen) {
         },
         onError: () => {
           clearTimeout(timer);
-          status.textContent = 'YouTube could not play this video here. Open it on YouTube for details.';
+          status.textContent = 'YouTube could not play this video here.' +
+            (hasDirectLink ? ' Open it on YouTube for details.' : '');
         }
       }
     });
@@ -320,7 +330,7 @@ function watchDialog(target, {title, subtitle, description, video, external, dir
   dialog.append(controls);
   target.append(dialog);
   dialog.showModal();
-  const release = video ? playEmbedded(stage, status, video, () => dialog.open) : () => {};
+  const release = video ? playEmbedded(stage, status, video, () => dialog.open, Boolean(external)) : () => {};
   let removed = false;
   const remove = () => {
     if (removed) return;
@@ -361,6 +371,56 @@ function search(label) {
 
 function matches(value, ...fields) {
   return fields.join(' ').toLowerCase().includes(value.trim().toLowerCase());
+}
+
+function videoWords(value) {
+  return value.toLowerCase().normalize('NFKD').replace(/\p{M}/gu, '')
+    .replace(/['’]s\b/g, '').match(/[\p{L}\p{N}]+/gu) || [];
+}
+
+export function findCuratedVideos(query) {
+  if (typeof query !== 'string' || !query.trim()) return [];
+  const id = parseYouTubeVideo(query)?.id;
+  if (id && CURATED_VIDEOS.has(id)) return [CURATED_VIDEOS.get(id)];
+
+  const words = videoWords(query);
+  const shortsOnly = words.includes('shorts');
+  const fullOnly = /\b(?:full(?:[- ]length)?|long[- ]form) videos?\b/i.test(query);
+  const terms = [...new Set(words.filter((word) => !VIDEO_QUERY_FILLER.has(word) &&
+    word !== 'shorts' && !(fullOnly && ['full', 'length', 'long', 'form'].includes(word))))];
+  if (!terms.length && !shortsOnly && !fullOnly) return [];
+
+  const ranked = [];
+  const phrase = terms.join(' ');
+  for (const video of CURATED_VIDEOS.values()) {
+    if ((shortsOnly && !video.short) || (fullOnly && video.short)) continue;
+    const title = videoWords(video.title);
+    const creator = videoWords(video.creator);
+    const topics = videoWords(video.tags.join(' '));
+    const scores = terms.map((term) => {
+      if (title.includes(term)) return 6;
+      if (creator.includes(term)) return 5;
+      if (topics.includes(term)) return 3;
+      if (term.length >= 4 && [...title, ...creator, ...topics].some((word) =>
+        word.startsWith(term) || (term.endsWith('s') && word === term.slice(0, -1)))) return 1;
+      return 0;
+    });
+    if (scores.includes(0)) continue;
+    const phraseBonus = phrase && title.join(' ').includes(phrase) ? 8 : 0;
+    ranked.push({video, score: scores.reduce((sum, score) => sum + score, phraseBonus)});
+  }
+  return ranked.sort((first, second) => second.score - first.score).map(({video}) => video);
+}
+
+export function openCuratedVideo(target, video) {
+  const curated = CURATED_VIDEOS.get(video?.id);
+  if (!curated) return () => {};
+  return watchDialog(target, {
+    title: curated.title,
+    subtitle: curated.creator,
+    video: curated,
+    short: curated.short
+  });
 }
 
 function heading(title, description) {
@@ -747,7 +807,7 @@ function youtubePage(target) {
 
   function allVideos() {
     return new Map([...state.channels.flatMap(({items}) => items), ...state.extra,
-      ...addedVideos, ...CREATOR_VIDEOS, ...SHORTS, ...addedShorts].map((video) => [video.id, video]));
+      ...CURATED_VIDEOS.values()].map((video) => [video.id, video]));
   }
 
   function rememberOnlineVideo(video) {

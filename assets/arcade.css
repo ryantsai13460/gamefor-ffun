@@ -329,95 +329,82 @@ select.field { cursor: pointer; }
   *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
 }
 
-.search-demo-results {
-  margin-top: 1rem;
-  max-width: 42rem;
-}
-
-.search-demo-list {
-  list-style: none;
-  display: grid;
-  gap: .75rem;
-  margin: 0;
-  padding: 0;
-  width: 100%;
-}
-
-.search-demo-list li {
-  border-top: 1px solid var(--line);
-  padding-top: .65rem;
-}
-
-.route-web-search [aria-label="Demo result categories"] [aria-pressed="true"] {
-  background: var(--accent-wash);
-  border-color: var(--accent-border);
-  color: var(--accent);
-}
-
 .web-search-window {
   max-width: 52rem;
 }
 
-.web-search-modes,
-.web-search-toolbar {
-  flex-wrap: wrap;
-}
-
-.web-search-modes .web-search-mode {
-  min-height: 2.25rem;
-}
-
-.web-search-mode[aria-pressed="true"] {
-  background: var(--accent-wash);
-  border-color: var(--accent-border);
-  color: var(--accent);
-}
-
 .web-search-toolbar .proxy-address {
-  flex: 1 1 16rem;
   order: 0;
   color: var(--muted);
-}
-
-@media (max-width: 540px) {
-  .web-search-toolbar .proxy-address {
-    flex-basis: 100%;
-  }
 }
 
 .web-search-stage {
   display: grid;
   align-content: start;
-  gap: 1rem;
+  gap: 1.25rem;
   min-height: 7rem;
-  padding: 1rem;
+  padding: clamp(1rem, 3vw, 1.5rem);
+}
+
+.web-search-answer,
+.web-search-videos {
+  display: grid;
+  gap: .65rem;
+  min-width: 0;
+}
+
+.web-search-answer h2,
+.web-search-videos h2 {
+  font-size: 1.25rem;
+}
+
+.web-search-answer p {
+  line-height: 1.6;
+}
+
+.web-search-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 1rem;
+}
+
+.web-search-videos {
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--line-soft);
 }
 
 .web-search-results {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: .5rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .65rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
-.web-search-results:empty {
-  display: none;
-}
-
-.web-search-demo summary {
-  cursor: pointer;
-  font-weight: 650;
-}
-
-.web-search-demo-form {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: .55rem;
-  margin-block: 1rem;
-}
-
-.web-search-demo-form input {
-  flex: 1 1 10rem;
+.web-search-results li {
+  display: grid;
+  gap: .45rem;
   min-width: 0;
+  padding: .65rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.web-search-video {
+  justify-content: flex-start;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.web-search-results .muted {
+  padding-inline: .25rem;
+  font-size: .85rem;
+}
+
+@media (max-width: 540px) {
+  .web-search-results {
+    grid-template-columns: 1fr;
+  }
 }

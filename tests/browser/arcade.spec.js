@@ -310,55 +310,57 @@ test('layout and mobile menu fit desktop, tablet and phone widths', async ({ pag
   }
 });
 
-test('Web Search sends queries to the selected provider in a separate tab', async ({ page }) => {
-  await page.context().route('https://**/*', route => route.fulfill({ body: 'Search results' }));
-  await page.goto('/');
-  await go(page, 'Web Search');
-  const query = page.getByRole('searchbox', { name: 'Search the web' });
-  await query.fill('arcade & games');
-  for (const [name, host] of [['DuckDuckGo', 'duckduckgo.com'], ['Google', 'www.google.com']]) {
-    const popupPromise = page.context().waitForEvent('page');
-    await page.getByRole('button', { name: 'Search ' + name }).click();
-    const popup = await popupPromise;
-    await popup.waitForURL(url => url.hostname === host && url.searchParams.get('q') === 'arcade & games');
-    await popup.close();
-  }
-  for (const [mode, buttonName, host, key, filter] of [
-    ['YouTube', 'Search YouTube', 'www.youtube.com', 'search_query', null],
-    ['News', 'Search Google News', 'www.google.com', 'q', 'nws'],
-    ['Shopping', 'Search Google Shopping', 'www.google.com', 'q', 'shop']
-  ]) {
-    await page.getByRole('button', { name: mode, exact: true }).click();
-    const popupPromise = page.context().waitForEvent('page');
-    await page.getByRole('button', { name: buttonName, exact: true }).click();
-    const popup = await popupPromise;
-    await popup.waitForURL(url => url.hostname === host &&
-      url.searchParams.get(key) === 'arcade & games' && url.searchParams.get('tbm') === filter);
-    await popup.close();
-  }
+test('Web Search shows a sourced answer and opens matching YouTube videos in the same tab', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(globalThis, 'LanguageModel', {
+      configurable: true, value: { availability: async () => 'unavailable' }
+    });
+  });
+  await page.route(url => url.hostname === 'en.wikipedia.org' && url.pathname === '/w/api.php', route => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get('gsrsearch')).toBe('Minecraft');
+    return route.fulfill({ headers: { 'Access-Control-Allow-Origin': '*' }, json: {
+      query: { pages: [{ pageid: 27815578, title: 'Minecraft', extract: 'Minecraft is a sandbox video game.' }] }
+    } });
+  });
+  await page.goto('/#web-search');
+  await page.getByRole('searchbox', { name: 'Search the web' }).fill('What is Minecraft');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Wikipedia excerpt' })).toBeVisible();
+  await expect(page.getByText('Minecraft is a sandbox video game.')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Wikipedia · Minecraft' })).toHaveAttribute('href', 'https://en.wikipedia.org/?curid=27815578');
+  await expect(page.getByRole('heading', { name: 'YouTube', exact: true })).toBeVisible();
+  await page.locator('.web-search-video').first().click();
+  const player = page.getByRole('dialog');
+  await expect(player.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\//);
+  await expect(player.getByRole('link', { name: 'Watch on YouTube' })).toHaveCount(0);
+  expect(page.context().pages()).toHaveLength(1);
   await expect(page).toHaveURL(/#web-search$/);
-  await page.getByRole('button', { name: 'Arcade', exact: true }).click();
-  await query.fill('Pocket Circuit');
-  await page.getByRole('button', { name: 'Find games', exact: true }).click();
-  await expect(page.getByRole('link', { name: 'Pocket Circuit', exact: true })).toHaveAttribute('href', '#play/ffun-circuit-v1');
+  await player.getByRole('button', { name: 'Close', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
 });
 
-test('Web Search displays local demo results and opens official players in Proxy Gemini', async ({ page }) => {
+test('Web Search uses an available on-device model and labels the answer', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(globalThis, 'LanguageModel', {
+      configurable: true,
+      value: {
+        availability: async () => 'available',
+        create: async () => ({
+          prompt: async text => text.includes('Mario Kart') ? 'An answer produced by the test model.' : '',
+          destroy() {}
+        })
+      }
+    });
+  });
   await page.goto('/#web-search');
-  await page.getByText('Sample search demo', { exact: true }).click();
-  const results = page.getByRole('region', { name: 'Sample search results' });
-  const demoTabs = page.getByRole('group', { name: 'Demo result categories' });
-  for (const category of ['Web', 'YouTube', 'News', 'Shopping']) {
-    await demoTabs.getByRole('button', { name: category, exact: true }).click();
-    await expect(results.locator('li')).toHaveCount(2);
-  }
-  await page.getByRole('searchbox', { name: 'Demo query' }).fill('racing');
-  await page.getByRole('button', { name: 'Search demo', exact: true }).click();
-  await expect(results.locator('li')).toHaveCount(1);
-  await page.getByRole('link', { name: 'Stacktris', exact: true }).click();
-  await expect(page.locator('.proxy-frame')).toHaveAttribute('src', 'https://play.fancade.com/5BEC8352E4E078B1');
+  await page.getByRole('searchbox', { name: 'Search the web' }).fill('Mario Kart');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'On-device AI answer' })).toBeVisible();
+  await expect(page.getByText('An answer produced by the test model.')).toBeVisible();
+  await expect(page.locator('.web-search-video').first()).toBeVisible();
+  expect(page.context().pages()).toHaveLength(1);
 });
 
 test('game details offer an in-arcade preview and Home collects Miniplay links', async ({ page }) => {
