@@ -1,0 +1,38 @@
+# Gamefor Ffun / Proxy Arcade
+
+Gamefor Ffun is a static arcade for built-in games, an external game directory, gaming videos, animated films, and the Proxy Gemini viewer. The site uses plain HTML, CSS, and JavaScript. It has no build step or production dependencies.
+
+## Run locally
+
+Use Python 3.9 or later and Node.js 20 or later.
+
+```sh
+npm run dev
+```
+
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Serving the project over HTTP allows the browser to load the JavaScript modules.
+
+## Test
+
+```sh
+npm ci
+npm test
+npx playwright install chromium
+npm run test:browser
+```
+
+The browser suite uses a local test server. You can set `ARCADE_CHROMIUM` to a compatible installed Chromium executable. See the [verification report](docs/qa.md) for coverage and third-party playback limits.
+
+## Deploy on GitHub Pages
+
+The GitHub Pages source is the root of `main`. The upgrade is on the separate `upgrade/proxy-arcade` branch. After review, merge that branch into `main` to release through the existing Pages workflow. The entry point is `index.html`, and `.nojekyll` enables direct static serving. Asset and game links use relative paths for the `/gamefor-ffun/` project URL.
+
+The static site runs its built-in games, catalog filters, saved games, media library, and permitted-content viewer in the browser. Favorites, history, local launch totals, and preferences stay on the device. Creator imports can fetch public data through the YouTube Data API. The optional connected search can run on a Cloudflare Worker free plan with its API key stored as a Worker secret. Its API contract is documented in [Media sources](docs/media-sources.md). The local video library and link to search on YouTube are available on every deployment.
+
+Proxy Gemini uses supported embeds and opens other addresses on the original site. Its start page keeps a link to the existing Base44 viewer.
+
+## Maintain the content
+
+- [Game catalog and recovery](docs/catalog-recovery.md) explains the 548 entries accounted for in the main libraries and the three additional games preserved from the homepage and repository history.
+- [Media sources](docs/media-sources.md) lists video and film sources, credits, and the optional search integration.
+- [Verification report](docs/qa.md) documents the tests and known limits.

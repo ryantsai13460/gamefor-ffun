@@ -1,0 +1,350 @@
+.proxy-viewer {
+  min-width: 0;
+  color: var(--text, #f4f4f6);
+}
+
+.proxy-heading {
+  margin-bottom: 1.4rem;
+}
+
+.proxy-heading h1 {
+  margin: 0;
+  font-size: clamp(1.95rem, 4vw, 3rem);
+  letter-spacing: -.045em;
+}
+
+.proxy-heading p {
+  margin: .35rem 0 0;
+  color: var(--muted, #a6a9b1);
+}
+
+.proxy-window {
+  overflow: hidden;
+  background: var(--panel, #151822);
+  border: 1px solid var(--line, #303441);
+  border-radius: 1rem;
+}
+
+.proxy-tab-row,
+.proxy-toolbar,
+.proxy-navigation,
+.proxy-address,
+.proxy-status-row {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  min-width: 0;
+}
+
+.proxy-tab-row {
+  padding: .5rem .6rem;
+  border-bottom: 1px solid var(--line, #303441);
+  background: var(--bg, #101219);
+}
+
+.proxy-tabs {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  gap: .35rem;
+  min-width: 0;
+  padding: .2rem;
+  overflow-x: auto;
+}
+
+.proxy-tab {
+  display: flex;
+  flex: none;
+  align-items: center;
+  max-width: min(11rem, 55vw);
+  border: 1px solid var(--line, #303441);
+  border-radius: .6rem;
+  color: var(--muted, #a6a9b1);
+}
+
+.proxy-tab[data-active="true"] {
+  background: var(--panel, #151822);
+  color: var(--text, #f4f4f6);
+  border-color: color-mix(in srgb, var(--accent, #f4c542) 38%, var(--line, #303441));
+}
+
+.proxy-tab-name,
+.proxy-control,
+.proxy-shortcut,
+.proxy-bookmark {
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  background: transparent;
+}
+
+.proxy-tab-name {
+  padding: .55rem 0 .55rem .65rem;
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: .4rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: .875rem;
+  font-weight: 650;
+}
+
+.proxy-control {
+  flex: 0 0 auto;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: .55rem;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.proxy-control:not(:disabled):hover {
+  background: var(--bg, #101219);
+  border-color: var(--line, #303441);
+  color: var(--accent, #f4c542);
+}
+
+.proxy-control:disabled {
+  opacity: .36;
+  cursor: default;
+}
+
+.proxy-tab-close {
+  width: 2.125rem;
+  height: 2.125rem;
+  font-size: 1.1rem;
+}
+
+.proxy-toolbar {
+  padding: .65rem;
+  border-bottom: 1px solid var(--line, #303441);
+}
+
+.proxy-navigation {
+  gap: .15rem;
+}
+
+.proxy-address {
+  flex: 1 1 auto;
+}
+
+.proxy-address input {
+  min-width: 0;
+  width: 100%;
+  min-height: 2.6rem;
+  padding: .55rem .8rem;
+  color: var(--text, #f4f4f6);
+  background: var(--bg, #101219);
+  border: 1px solid var(--line, #303441);
+  border-radius: .55rem;
+  font: inherit;
+}
+
+.proxy-address input[aria-invalid="true"] {
+  border-color: #ff8b86;
+}
+
+.proxy-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.6rem;
+  padding: .6rem .95rem;
+  border: 1px solid var(--accent, #f4c542);
+  border-radius: .55rem;
+  background: var(--accent, #f4c542);
+  color: #121411;
+  font: inherit;
+  font-size: .875rem;
+  font-weight: 750;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.proxy-action:hover {
+  filter: brightness(1.09);
+}
+
+.proxy-stage {
+  min-height: 16rem;
+  background: var(--bg, #101219);
+}
+
+.proxy-start,
+.proxy-direct {
+  max-width: 46rem;
+  margin: auto;
+  padding: clamp(1.5rem, 5vw, 3.5rem) clamp(1rem, 4vw, 2rem);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.proxy-start h2,
+.proxy-direct h2 {
+  margin: 0 0 .45rem;
+  font-size: clamp(1.3rem, 3vw, 1.75rem);
+  letter-spacing: -.025em;
+}
+
+.proxy-start p,
+.proxy-direct p {
+  margin: 0 0 1.35rem;
+  color: var(--muted, #a6a9b1);
+}
+
+.proxy-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .65rem;
+}
+
+.proxy-shortcut {
+  padding: .8rem;
+  border: 1px solid var(--line, #303441);
+  border-radius: .65rem;
+  background: var(--panel, #151822);
+  text-align: left;
+}
+
+.proxy-shortcut:hover,
+.proxy-bookmark:hover {
+  border-color: var(--accent, #f4c542);
+}
+
+.proxy-shortcut strong,
+.proxy-shortcut span {
+  display: block;
+}
+
+.proxy-shortcut span {
+  margin-top: .25rem;
+  color: var(--muted, #a6a9b1);
+  font-size: .875rem;
+}
+
+.proxy-bookmarks {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-top: .9rem;
+}
+
+.proxy-bookmark {
+  padding: .4rem .65rem;
+  border: 1px solid var(--line, #303441);
+  border-radius: 2rem;
+  color: var(--muted, #a6a9b1);
+  font-size: .875rem;
+}
+
+.proxy-frame {
+  display: block;
+  width: 100%;
+  height: clamp(16rem, 59vh, 42rem);
+  border: 0;
+  background: var(--bg, #101219);
+}
+
+.proxy-progress {
+  position: relative;
+  z-index: 1;
+  height: 2px;
+  margin-bottom: -2px;
+  overflow: hidden;
+}
+
+.proxy-progress::before {
+  content: "";
+  display: block;
+  width: 32%;
+  height: 100%;
+  background: var(--accent, #f4c542);
+  animation: proxy-progress 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes proxy-progress {
+  from { transform: translateX(-12%); }
+  to { transform: translateX(225%); }
+}
+
+.proxy-status-row {
+  justify-content: space-between;
+  padding: .65rem .85rem;
+  border-top: 1px solid var(--line, #303441);
+  font-size: .875rem;
+}
+
+.proxy-status-row:has(> .proxy-status:empty):not(:has(> a[href])) {
+  display: none;
+}
+
+.proxy-status {
+  margin: 0;
+  color: var(--muted, #a6a9b1);
+}
+
+.proxy-source,
+.proxy-legacy {
+  color: var(--accent, #f4c542);
+  text-underline-offset: .17em;
+}
+
+.proxy-source {
+  flex: none;
+}
+
+.proxy-legacy {
+  display: inline-block;
+  margin-top: .9rem;
+  font-size: .875rem;
+}
+
+.proxy-window:fullscreen {
+  display: flex;
+  flex-direction: column;
+  border: 0;
+  border-radius: 0;
+}
+
+.proxy-window:fullscreen .proxy-stage {
+  flex: 1;
+  min-height: 0;
+}
+
+.proxy-window:fullscreen .proxy-frame {
+  height: 100%;
+}
+
+@media (max-width: 540px) {
+  .proxy-toolbar {
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+
+  .proxy-address {
+    flex-basis: 100%;
+    order: 3;
+  }
+
+  .proxy-shortcuts {
+    grid-template-columns: 1fr;
+  }
+
+  .proxy-bookmarks {
+    justify-content: flex-start;
+  }
+
+  .proxy-status-row {
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .proxy-progress::before {
+    animation: none;
+  }
+}

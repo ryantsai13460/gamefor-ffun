@@ -1,0 +1,265 @@
+.ph-hub {
+  --ph-text: var(--text, #f5f5f8);
+  --ph-panel: var(--panel, #171921);
+  --ph-line: var(--line, #30323c);
+  --ph-muted: var(--muted, #a2a6b6);
+  --ph-accent: var(--accent, #ffc652);
+  color: var(--ph-text);
+}
+
+.ph-hub [hidden] {
+  display: none !important;
+}
+
+.ph-hub > h1 {
+  margin: 0 0 1rem;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.05;
+  letter-spacing: -.035em;
+}
+
+.ph-modes,
+.ph-toolbar,
+.ph-actions,
+.ph-pagination {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .55rem;
+}
+
+.ph-modes {
+  gap: .45rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--ph-line);
+}
+
+.ph-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: 2.65rem;
+  padding: .55rem .8rem;
+  background: transparent;
+  color: var(--ph-text);
+  border: 1px solid var(--ph-line);
+  border-radius: .55rem;
+  text-decoration: none;
+  font: inherit;
+  font-size: .84rem;
+  line-height: 1.24;
+  cursor: pointer;
+}
+
+.ph-button:hover {
+  border-color: var(--ph-accent);
+  color: var(--ph-accent);
+}
+
+.ph-button:focus-visible,
+.ph-field input:focus-visible,
+.ph-field select:focus-visible,
+.ph-copy:focus-visible {
+  outline: 2px solid var(--ph-accent);
+  outline-offset: 2px;
+}
+
+.ph-button:disabled {
+  opacity: .55;
+  cursor: default;
+}
+
+.ph-modes .ph-button {
+  padding-inline: 1rem;
+}
+
+.ph-modes .ph-button[aria-pressed="true"],
+.ph-favorite[aria-pressed="true"] {
+  color: var(--ph-accent);
+  border-color: var(--ph-accent);
+  background: color-mix(in srgb, var(--ph-accent) 9%, transparent);
+}
+
+.ph-intro,
+.ph-message,
+.ph-meta,
+.ph-results,
+.ph-pagination span {
+  color: var(--ph-muted);
+  line-height: 1.5;
+}
+
+.ph-intro {
+  margin: 1.1rem 0;
+}
+
+.ph-toolbar {
+  align-items: end;
+  gap: .75rem;
+  margin-bottom: .75rem;
+}
+
+.ph-field {
+  display: grid;
+  flex: 0 1 auto;
+  gap: .35rem;
+  max-width: 100%;
+  min-width: min(100%, 9rem);
+  color: var(--ph-muted);
+  font-size: .82rem;
+}
+
+.ph-search {
+  flex: 1 1 14rem;
+}
+
+.ph-field input,
+.ph-field select,
+.ph-copy {
+  min-height: 2.65rem;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  padding: .5rem .72rem;
+  border: 1px solid var(--ph-line);
+  border-radius: .55rem;
+  background: var(--ph-panel);
+  color: var(--ph-text);
+  font: inherit;
+}
+
+.ph-field select {
+  padding-inline-end: 1.75rem;
+  color-scheme: dark;
+}
+
+.ph-message {
+  margin: .7rem 0;
+}
+
+.ph-message:empty {
+  margin: 0;
+}
+
+.ph-copy {
+  display: block;
+  margin: .7rem 0;
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.ph-results {
+  margin: 1.2rem 0 .55rem;
+  font-size: .84rem;
+  scroll-margin-top: 6rem;
+}
+
+.ph-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  border: 1px solid var(--ph-line);
+  border-radius: .65rem;
+  background: var(--ph-panel);
+}
+
+.ph-list:empty {
+  display: none;
+}
+
+.ph-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .7rem 1.15rem;
+  padding: .75rem .9rem;
+}
+
+.ph-row + .ph-row {
+  border-top: 1px solid var(--ph-line);
+}
+
+.ph-row-title {
+  min-width: 0;
+}
+
+.ph-row h2 {
+  margin: 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.ph-meta {
+  margin: .19rem 0 0;
+  font-size: .79rem;
+  overflow-wrap: anywhere;
+}
+
+.ph-row .ph-actions {
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.ph-row .ph-links {
+  flex-direction: column;
+  align-items: end;
+}
+
+.ph-links .ph-button {
+  overflow-wrap: anywhere;
+}
+
+.ph-favorite {
+  min-width: 2.65rem;
+  padding: .35rem;
+  font-size: 1.05rem;
+}
+
+.ph-pagination {
+  margin-top: 1rem;
+  justify-content: space-between;
+}
+
+.ph-dialog {
+  max-width: min(100% - 2rem, 28rem);
+  max-height: calc(100% - 2rem);
+  overflow: auto;
+  padding: 1.25rem;
+  border: 1px solid var(--ph-line);
+  border-radius: .75rem;
+  color: var(--ph-text);
+  background: var(--ph-panel);
+}
+
+.ph-dialog::backdrop {
+  background: rgb(0 0 0 / .72);
+}
+
+.ph-dialog h2 {
+  margin: 0 0 .6rem;
+  font-size: 1.3rem;
+}
+
+.ph-dialog p {
+  margin: 0 0 .75rem;
+}
+
+.ph-dialog .ph-actions {
+  justify-content: flex-end;
+  margin-top: 1.1rem;
+}
+
+@media (max-width: 38rem) {
+  .ph-row {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .ph-row .ph-actions {
+    justify-content: flex-start;
+  }
+
+  .ph-row .ph-links {
+    align-items: start;
+  }
+}
