@@ -23,7 +23,9 @@ The cinema library has 17 Blender Open Movies, 19 animated shorts, and 12 studio
 
 ## Music library
 
-The chart lyrics catalog contains 550 distinct songs from the Billboard Hot 100 and Apple Music national Top Songs charts dated November 21, 2026. Each row displays the rank on its source chart. The Watch lyrics view includes 42 verified official uploads that show lyrics on screen, played through YouTube’s embedded player. Other rows link to a title-and-artist lyric video search on YouTube. Apple Music may require sign-in or a subscription to show song lyrics. [Billboard Hot 100](https://ca.billboard.com/charts/hot-100/2026-11-21) · [Apple Music chart feeds](https://rss.marketingtools.apple.com/)
+The chart lyrics catalog contains 550 distinct songs from the Billboard Hot 100 and Apple Music national Top Songs charts dated November 21, 2026. Each row displays the rank on its source chart. Matched songs open creator lyric videos, and other songs link to a title-and-artist video search. Apple Music may require sign-in or a subscription to show song lyrics. [Billboard Hot 100](https://ca.billboard.com/charts/hot-100/2026-11-21) · [Apple Music chart feeds](https://rss.marketingtools.apple.com/)
+
+Watch lyrics collects 45 videos from 7clouds and 24 from six other lyric channels. YouTube metadata verifies the videos’ titles and uploaders. The arcade supplies text-only artwork and uses YouTube’s embedded player. Video footage and lyrics are served by YouTube. [7clouds](https://www.youtube.com/@7clouds) · [Unique Vibes](https://www.youtube.com/@UniqueVibes) · [YouTube oEmbed](https://www.youtube-nocookie.com/oembed)
 
 The Music videos collection uses official artist and label uploads through YouTube’s embedded player.
 

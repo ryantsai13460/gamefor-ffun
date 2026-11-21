@@ -1,0 +1,27 @@
+// Dedicated lyric-channel uploads verified against YouTube oEmbed.
+export const otherChannelLyrics = [
+  {"id": "FkoEFXA9cdU", "title": "Housewife", "artist": "Tate McRae", "channel": "Unique Vibes", "channelUrl": "https://www.youtube.com/@itsUniqueVibes"},
+  {"id": "F0N7aNy-9tg", "title": "Dracula", "artist": "Tame Impala & JENNIE", "channel": "Arcade Music", "channelUrl": "https://www.youtube.com/@arcademusic6688"},
+  {"id": "GRSDXDKaNjw", "title": "Stop the Wedding!", "artist": "Ashe", "channel": "SyrebralVibes", "channelUrl": "https://www.youtube.com/@SyrebralVibes"},
+  {"id": "x9zS919J5y0", "title": "Risk It All", "artist": "Bruno Mars", "channel": "Taj Tracks", "channelUrl": "https://www.youtube.com/@TajTracks"},
+  {"id": "oPXqKIn8YCg", "title": "Beautiful Things", "artist": "Benson Boone", "channel": "AweLyrics", "channelUrl": "https://www.youtube.com/@AweLyrics"},
+  {"id": "YEwmFsKrXD0", "title": "Anything But Love (Clean)", "artist": "Tate McRae", "channel": "Cloudy Hits", "channelUrl": "https://www.youtube.com/@CloudyHits"},
+  {"id": "pHWM-pTO1MA", "title": "Breakeven", "artist": "The Script", "channel": "Unique Vibes", "channelUrl": "https://www.youtube.com/@itsUniqueVibes"},
+  {"id": "l_hu_WpbxNc", "title": "Complicated", "artist": "Avril Lavigne", "channel": "Unique Vibes", "channelUrl": "https://www.youtube.com/@itsUniqueVibes"},
+  {"id": "Y2W8fxeoXLI", "title": "Something Just Like This", "artist": "The Chainsmokers & Coldplay", "channel": "Unique Vibes", "channelUrl": "https://www.youtube.com/@itsUniqueVibes"},
+  {"id": "vykjRi7Yd7c", "title": "Jolene", "artist": "Dolly Parton", "channel": "Unique Vibes", "channelUrl": "https://www.youtube.com/@itsUniqueVibes"},
+  {"id": "GRwLL0F57lY", "title": "On & On", "artist": "Cartoon, Jéja & Daniel Levi", "channel": "Unique Vibes", "channelUrl": "https://www.youtube.com/@itsUniqueVibes"},
+  {"id": "sZNLfsxwdR4", "title": "Dance With Me", "artist": "Bruno Mars", "channel": "Arcade Music", "channelUrl": "https://www.youtube.com/@arcademusic6688"},
+  {"id": "cza1clZ1eWM", "title": "Tattoo", "artist": "Loreen", "channel": "Arcade Music", "channelUrl": "https://www.youtube.com/@arcademusic6688"},
+  {"id": "hOzejVIEJBo", "title": "Disfruto", "artist": "Carla Morrison", "channel": "Arcade Music", "channelUrl": "https://www.youtube.com/@arcademusic6688"},
+  {"id": "TNe4E3UIsbo", "title": "Tutu", "artist": "Camilo & Pedro Capó", "channel": "Arcade Music", "channelUrl": "https://www.youtube.com/@arcademusic6688"},
+  {"id": "n3SjQJ-mJMU", "title": "I Will Always Love You", "artist": "Whitney Houston", "channel": "SyrebralVibes", "channelUrl": "https://www.youtube.com/@SyrebralVibes"},
+  {"id": "GUXev3xj2os", "title": "Lovely Day", "artist": "Bill Withers", "channel": "SyrebralVibes", "channelUrl": "https://www.youtube.com/@SyrebralVibes"},
+  {"id": "PIf8T2cR0pc", "title": "Fight Song", "artist": "Rachel Platten", "channel": "SyrebralVibes", "channelUrl": "https://www.youtube.com/@SyrebralVibes"},
+  {"id": "YIyj1D34pP8", "title": "Angel", "artist": "Shaggy feat. Rayvon", "channel": "SyrebralVibes", "channelUrl": "https://www.youtube.com/@SyrebralVibes"},
+  {"id": "VJVox78xuxo", "title": "Talk", "artist": "Khalid feat. Disclosure", "channel": "SyrebralVibes", "channelUrl": "https://www.youtube.com/@SyrebralVibes"},
+  {"id": "-KRSsVt8XFc", "title": "Trying on Shoes (Clean)", "artist": "Tate McRae", "channel": "Cloudy Hits", "channelUrl": "https://www.youtube.com/@CloudyHits"},
+  {"id": "Z3zoL0PXiTI", "title": "Eternity", "artist": "Alex Warren", "channel": "Cloudy Hits", "channelUrl": "https://www.youtube.com/@CloudyHits"},
+  {"id": "Cx9Nj9raJ0o", "title": "Survive", "artist": "Lewis Capaldi", "channel": "Cloudy Hits", "channelUrl": "https://www.youtube.com/@CloudyHits"},
+  {"id": "JJ3z9d6BN24", "title": "Cover Me in Sunshine", "artist": "P!nk & Willow Sage Hart", "channel": "AweLyrics", "channelUrl": "https://www.youtube.com/@AweLyrics"}
+];

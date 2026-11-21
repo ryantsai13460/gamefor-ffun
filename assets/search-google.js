@@ -1,3 +1,5 @@
+const assetVersion = new URL(import.meta.url).search;
+const { essayGuideQuery, renderEssayGuide } = await import(`./search-essay.js${assetVersion}`);
 const storageKey = 'ffun.google-engine';
 
 function validEngineId(value) {
@@ -20,6 +22,7 @@ export function renderGoogleSearch(target, { onArcadeSearch, onQuery }) {
       <label>Public Search Engine ID <input class="field" name="engine" maxlength="121" autocomplete="off" spellcheck="false"></label>
     </details>
     <p class="muted" role="status"></p>
+    <div class="web-search-google-guide"></div>
     <div class="web-search-google-results"></div>
   `;
   const engine = root.querySelector('[name="engine"]');
@@ -27,8 +30,11 @@ export function renderGoogleSearch(target, { onArcadeSearch, onQuery }) {
   const form = root.querySelector('form');
   const query = form.elements.q;
   const status = root.querySelector('[role="status"]');
+  const guide = root.querySelector('.web-search-google-guide');
   const results = root.querySelector('.web-search-google-results');
   let editedEngine = false;
+  let essayActive;
+  let disposeGuide;
   try { engine.value = localStorage.getItem(storageKey) || ''; } catch {}
 
   engine.addEventListener('input', () => {
@@ -40,8 +46,19 @@ export function renderGoogleSearch(target, { onArcadeSearch, onQuery }) {
     event.preventDefault();
     const text = query.value.trim();
     if (!text) return;
-    if (event.submitter?.value !== 'google') {
-      onArcadeSearch(text);
+    const essay = essayGuideQuery(text);
+    if (essayActive !== essay) {
+      disposeGuide?.();
+      disposeGuide = essay ? renderEssayGuide(guide, essay) : undefined;
+      essayActive = essay;
+    }
+    if (essay) query.value = essay;
+    const google = event.submitter?.value === 'google';
+    if (!google) {
+      results.replaceChildren();
+      status.textContent = '';
+      if (essay) onQuery(essay);
+      else onArcadeSearch(text);
       return;
     }
     if (!editedEngine) {
@@ -57,9 +74,10 @@ export function renderGoogleSearch(target, { onArcadeSearch, onQuery }) {
     }
     engine.removeAttribute('aria-invalid');
     try { localStorage.setItem(storageKey, id); } catch {}
-    onQuery(text);
+    const normalized = essay || text;
+    onQuery(normalized);
     const url = new URL('./google-results.html', import.meta.url);
-    url.search = new URLSearchParams({ cx: id, q: text });
+    url.search = new URLSearchParams({ cx: id, q: normalized });
     const frame = document.createElement('iframe');
     frame.title = 'Google results';
     frame.setAttribute('sandbox', 'allow-scripts');
@@ -69,5 +87,8 @@ export function renderGoogleSearch(target, { onArcadeSearch, onQuery }) {
   });
 
   target.append(root);
-  return () => root.remove();
+  return () => {
+    disposeGuide?.();
+    root.remove();
+  };
 }

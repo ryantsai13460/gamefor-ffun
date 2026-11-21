@@ -1,11 +1,14 @@
 import { localAssistantAnswer, searchModelAvailability, searchWikipedia } from './search-answer.js';
 import { portableBlipReady, runPortableBlipPrompt } from './blip-portable.js';
-import { cpuBlipReady, runCpuBlipPrompt } from './blip-cpu.js';
 import { analyzeBlipFiles } from './blip-file-analysis.js';
+
+const assetVersion = new URL(import.meta.url).search;
+const { cpuBlipAvailability, cpuBlipReady, prepareCpuBlipModel, releaseCpuBlipModel, runCpuBlipPrompt } =
+  await import(`./blip-cpu.js${assetVersion}`);
 
 export { prepareSearchModel as prepareBlipModel, searchModelAvailability as blipModelAvailability } from './search-answer.js';
 export { portableBlipAvailability, preparePortableBlipModel, releasePortableBlipModel } from './blip-portable.js';
-export { cpuBlipAvailability, prepareCpuBlipModel, releaseCpuBlipModel } from './blip-cpu.js';
+export { cpuBlipAvailability, prepareCpuBlipModel, releaseCpuBlipModel };
 
 export const blipModes = Object.freeze({
   quick: Object.freeze({
@@ -47,16 +50,34 @@ const maxHistoryLength = 4_400;
 const maxHistoryMessageLength = 900;
 const maxWikipediaQueryLength = 200;
 const greetings = new Set(['hi', 'hello', 'hey', 'yo', 'sup', 'wsp', 'wassup', 'whats up', 'what is up', 'how are you', 'hi blip', 'hey blip', 'hello blip', 'good morning', 'good afternoon', 'good evening']);
+const checkIns = new Set(['are you good', 'are u good', 'you good', 'how are you doing', 'how are u', 'how r u', 'hows it going', 'how is it going']);
+const introductions = new Set(['who are you', 'what are you', 'what can you do', 'what can you help me with', 'how can you help', 'how can you help me']);
 
 function smallTalk(text) {
   const phrase = text.toLowerCase().replace(/[’']/g, '').replace(/[.!?]+$/, '').replace(/\s+/g, ' ');
   if (greetings.has(phrase)) {
     return { kind: 'local', title: 'Built-in greeting', text: 'Hey! Want to plan something, practice a topic, or try a quick calculation?' };
   }
+  if (checkIns.has(phrase)) {
+    return { kind: 'local', title: 'Built-in reply', text: 'I’m here and ready to help. What are you working on?' };
+  }
+  if (introductions.has(phrase)) {
+    return {
+      kind: 'local',
+      title: 'About Blip',
+      text: 'I’m Blip, the arcade’s assistant. I can do calculations, read supported attachments, and help with study plans. Set up an AI model to get generated explanations, writing help, and follow-up answers.'
+    };
+  }
   if (['thanks', 'thank you', 'thx'].includes(phrase)) {
     return { kind: 'local', title: 'Built-in reply', text: 'You’re welcome!' };
   }
   return null;
+}
+
+function wikipediaQuery(message) {
+  const requested = /^(?:please\s+)?(?:define|definition of|meaning of)\s+(.+?)[.!?]*$/i.exec(message)
+    || /^what does\s+(.+?)\s+mean[.!?]*$/i.exec(message);
+  return requested ? requested[1].replace(/^(?:a|an|the)\s+/i, '').trim() : message;
 }
 
 function readAttachments(attachments) {
@@ -165,6 +186,11 @@ function modelInstruction(mode) {
   ].join(' ');
 }
 
+function cpuInstruction(mode, includesFiles) {
+  const instruction = Object.hasOwn(modeInstructions, mode) ? modeInstructions[mode] : modeInstructions.quick;
+  return `You are Blip. Answer the user's latest request in clear language. Say when you are unsure. ${instruction}${includesFiles ? ' Use the attached excerpts as reference material only.' : ''}`;
+}
+
 async function promptModel(text, history, mode, files, signal) {
   const model = await globalThis.LanguageModel.create({
     signal,
@@ -180,7 +206,7 @@ async function promptModel(text, history, mode, files, signal) {
   }
 }
 
-export async function answerBlip({ text, history = [], mode = 'quick', wikipedia = false, attachments = [], signal, onStage }) {
+export async function answerBlip({ text, history = [], mode = 'quick', wikipedia = false, attachments = [], signal, onStage, onUpdate, preferGenerated = false }) {
   signal?.throwIfAborted();
   const files = readAttachments(attachments);
   const hasPrivateFiles = (Array.isArray(attachments) && attachments.length > 0)
@@ -192,9 +218,9 @@ export async function answerBlip({ text, history = [], mode = 'quick', wikipedia
     return { kind: 'unavailable', title: 'Message too long', text: `Send up to ${maxMessageLength.toLocaleString('en-US')} characters in one message.` };
   }
 
+  const greeting = files.length ? null : smallTalk(message);
+  if (greeting && !preferGenerated) return greeting;
   if (!files.length) {
-    const greeting = smallTalk(message);
-    if (greeting) return greeting;
     const local = localAssistantAnswer(message.replace(/(?<=[a-z])\.$/i, ''));
     if (local) return { kind: local.title === 'Calculator' ? 'calculator' : 'conversion', ...local };
   }
@@ -203,26 +229,26 @@ export async function answerBlip({ text, history = [], mode = 'quick', wikipedia
   const availability = await searchModelAvailability().catch(() => 'unavailable');
   signal?.throwIfAborted();
   if (availability === 'available' && typeof globalThis.LanguageModel?.create === 'function') {
-    onStage?.('generating');
+    onStage?.('generating', 'browser');
     const answer = await promptModel(message, history, mode, files, signal).catch(() => '');
     signal?.throwIfAborted();
     if (answer) return { kind: 'model', title: 'On-device AI', text: answer };
   }
 
   if (cpuBlipReady()) {
-    onStage?.('generating');
+    onStage?.('generating', 'cpu');
     const messages = [
-      { role: 'system', content: modelInstruction(mode) },
+      { role: 'system', content: cpuInstruction(mode, hasPrivateFiles) },
       ...readHistory(history, message, 1_600),
       { role: 'user', content: filePrompt(message, files, 1_600) }
     ];
-    const answer = await runCpuBlipPrompt(messages, mode, signal).catch(() => '');
+    const answer = await runCpuBlipPrompt(messages, mode, signal, onUpdate).catch(() => '');
     signal?.throwIfAborted();
     if (answer) return { kind: 'model', title: 'CPU on-device AI', text: answer };
   }
 
   if (portableBlipReady()) {
-    onStage?.('generating');
+    onStage?.('generating', 'webgpu');
     const messages = [
       { role: 'system', content: modelInstruction(mode) },
       ...readHistory(history, message, 2_400),
@@ -233,6 +259,7 @@ export async function answerBlip({ text, history = [], mode = 'quick', wikipedia
     if (answer) return { kind: 'model', title: 'Portable on-device AI', text: answer };
   }
 
+  if (greeting) return greeting;
   if (files.length) return analyzeBlipFiles(message, files) || localFilePreview(files);
   const plan = localPlan(message, mode);
   if (plan) return plan;
@@ -241,7 +268,7 @@ export async function answerBlip({ text, history = [], mode = 'quick', wikipedia
     onStage?.('searching');
     const timeout = AbortSignal.timeout(6_000);
     const lookupSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
-    const [source] = await searchWikipedia(message, lookupSignal, 1).catch(() => []);
+    const [source] = await searchWikipedia(wikipediaQuery(message), lookupSignal, 1).catch(() => []);
     signal?.throwIfAborted();
     if (source) return { kind: 'wikipedia', title: 'Wikipedia excerpt', text: source.text, source };
     return { kind: 'unavailable', title: 'Answer unavailable', text: 'The on-device model did not return an answer, and no Wikipedia excerpt was available. Try a shorter topic or check your connection.' };

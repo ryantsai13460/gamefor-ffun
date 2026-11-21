@@ -1220,7 +1220,7 @@ async function renderRoute(focus = true) {
       case 'web-search': {
         const [media, { searchWikipedia }, { renderGoogleSearch }, { renderSearchMaps }, { renderAssistantPanel }, { renderSearchTabs },
           { gameSearchSources }, { openSearchResource }] = await Promise.all([
-          import(`./media.js${assetVersion}`), import(`./search-answer.js${assetVersion}`), import('./search-google.js'),
+          import(`./media.js${assetVersion}`), import(`./search-answer.js${assetVersion}`), import(`./search-google.js${assetVersion}`),
           import('./search-map.js'), import(`./assistant-panel.js${assetVersion}`), import('./search-tabs.js'),
           import('./search-game-sources.js'), import(`./search-resource.js${assetVersion}`)
         ]);

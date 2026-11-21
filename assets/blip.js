@@ -36,6 +36,15 @@ const stages = {
   searching: 'Looking up a Wikipedia reference…'
 };
 
+const localModels = [
+  { id: 'browser', label: 'Browser AI', control: 'enable', notice: 'model-status', availability: blipModelAvailability,
+    prepare: prepareBlipModel, download: 'Your browser manages its model download and storage.' },
+  { id: 'webgpu', label: 'WebGPU AI', control: 'portable', notice: 'portable-status', availability: portableBlipAvailability,
+    prepare: preparePortableBlipModel, download: 'First-time setup downloads about 220 MB.' },
+  { id: 'cpu', label: 'CPU AI', control: 'cpu', notice: 'cpu-status', availability: cpuBlipAvailability,
+    prepare: prepareCpuBlipModel, download: 'First-time setup downloads about 108 MB and runs on your processor.' },
+];
+
 function element(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -219,9 +228,22 @@ export function renderBlip(target) {
             <h2>What are you curious about?</h2>
             <p>Ask a question or try one of these prompts.</p>
             <div class="blip-prompts" data-blip="prompts"></div>
-            <button class="blip-button blip-welcome-setup" type="button" data-blip="setup-shortcut" hidden>Set up AI for generated replies</button>
+            <button class="blip-button blip-welcome-setup" type="button" data-blip="setup-shortcut" hidden>Review local AI options</button>
           </div>
           <div class="blip-messages" data-blip="messages"></div>
+          <aside class="blip-recovery" data-blip="recovery" aria-label="Reply recovery" hidden>
+            <h3 data-blip="recovery-title"></h3>
+            <p data-blip="recovery-copy"></p>
+            <progress class="blip-recovery-progress" data-blip="setup-progress" aria-label="Local AI setup progress" max="100" hidden></progress>
+            <p class="blip-recovery-status" data-blip="setup-status" role="status"></p>
+            <div class="blip-recovery-actions">
+              <button class="blip-button blip-button--primary" type="button" data-blip="start-local" hidden>Start local AI</button>
+              <button class="blip-button" type="button" data-blip="start-cpu" hidden>Use CPU AI instead</button>
+              <button class="blip-button blip-button--primary" type="button" data-blip="retry-last" hidden>Retry last message</button>
+              <button class="blip-button" type="button" data-blip="cancel-setup" hidden>Cancel setup</button>
+              <button class="blip-button" type="button" data-blip="recovery-settings">Review AI options</button>
+            </div>
+          </aside>
         </div>
         <form class="blip-compose" data-blip="compose">
           <fieldset class="blip-modes" aria-describedby="blip-mode-description">
@@ -244,6 +266,7 @@ export function renderBlip(target) {
             <button class="blip-button blip-button--primary" data-blip="send" type="submit">Send</button>
             <button class="blip-button" data-blip="stop" type="button" hidden>Stop</button>
           </div>
+          <p class="blip-engine-state" data-blip="engine-state">Reply engine · Checking local AI</p>
           <p class="blip-compose-status" data-blip="status" role="status"></p>
         </form>
       </section>
@@ -307,10 +330,9 @@ export function renderBlip(target) {
   musicLink.href = '#music';
   part('music').append(musicLink);
   let edit;
-  let nativeStatus = 'unavailable';
-  let cpuStatus = 'unavailable';
-  let portableStatus = 'unavailable';
-  let setupRunning = false;
+  const modelStates = new Map(localModels.map(model => [model.id, 'checking']));
+  let modelSetup;
+  let setupNote;
 
   function updateHostedOptions() {
     const hosted = part('hosted').checked;
@@ -325,6 +347,8 @@ export function renderBlip(target) {
       : capabilities?.advanced ? 'Advanced replies allow more detail and may use more tokens.'
       : capabilities?.chat === false ? 'Hosted chat needs an OpenAI API key on this gateway.'
       : 'This gateway’s Advanced replies are unavailable.';
+    drawEngineState(currentChat());
+    drawRecovery(currentChat());
   }
 
   async function refreshGatewayCapabilities() {
@@ -407,12 +431,14 @@ export function renderBlip(target) {
     part('mode-description').textContent = currentMode.description;
     part('stop').hidden = !request;
     part('send').hidden = Boolean(request);
-    part('send').disabled = readingFiles.has(chat?.id);
+    part('send').disabled = readingFiles.has(chat?.id) || Boolean(chat && modelSetup?.turn?.chatId === chat.id);
     part('send').textContent = revision ? 'Resend in new chat' : 'Send';
     part('revising').hidden = !revision;
     part('cancel-revision').disabled = readingFiles.has(chat?.id);
     status.textContent = request?.label || '';
     drawDraftFiles(chat?.id);
+    drawEngineState(chat);
+    drawRecovery(chat);
   }
 
   function drawDraftFiles(id) {
@@ -441,6 +467,7 @@ export function renderBlip(target) {
     }));
     part('attach').disabled = !id || reading || files.length >= BLIP_FILE_LIMITS.count;
     part('file-status').textContent = fileNotices.get(id) || '';
+    drawEngineState(currentChat());
   }
 
   function showAttachment(file) {
@@ -495,7 +522,7 @@ export function renderBlip(target) {
     const messages = chat?.messages || [];
     const items = messages.map((message, index) => messageView(message, {
       onEdit: message.role === 'user' && !pending.has(chat.id) ? () => beginMessageEdit(chat, message) : undefined,
-      onRetry: message.role === 'assistant' && index === messages.length - 1 && !pending.has(chat.id)
+      onRetry: message.role === 'assistant' && index === messages.length - 1 && !pending.has(chat.id) && modelSetup?.turn?.chatId !== chat.id
         ? () => retryReply(chat, message.id) : undefined
     }));
     part('messages').replaceChildren(...items);
@@ -506,13 +533,14 @@ export function renderBlip(target) {
 
   function drawPartial(id) {
     let partial = part('messages').querySelector('.blip-reply-stream');
-    const text = pending.get(id)?.partial;
+    const request = pending.get(id);
+    const text = request?.partial;
     if (!text) {
       partial?.remove();
       return;
     }
     if (!partial) {
-      partial = messageView({ role: 'assistant', kind: 'hosted' });
+      partial = messageView({ role: 'assistant', kind: request.engine === 'hosted' ? 'hosted' : 'model' });
       partial.classList.add('blip-reply-stream');
       partial.append(element('p', 'blip-message-text'));
       part('messages').append(partial);
@@ -583,6 +611,7 @@ export function renderBlip(target) {
     input.focus({ preventScroll: true });
   });
   part('hosted').addEventListener('change', updateHostedOptions);
+  part('advanced').addEventListener('change', () => drawEngineState(currentChat()));
   part('pin').addEventListener('click', () => {
     const chat = currentChat();
     if (chat && store.setPinned(chat.id, !chat.pinned)) {
@@ -623,7 +652,8 @@ export function renderBlip(target) {
   input.addEventListener('input', () => drafts.set(store.getState().activeId, input.value));
   input.addEventListener('keydown', event => {
     if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
-    if (pending.has(store.getState().activeId) || readingFiles.has(store.getState().activeId)) return;
+    const id = store.getState().activeId;
+    if (pending.has(id) || readingFiles.has(id) || modelSetup?.turn?.chatId === id) return;
     event.preventDefault();
     composer.requestSubmit(part('send'));
   });
@@ -632,7 +662,7 @@ export function renderBlip(target) {
     event.preventDefault();
     let chat = currentChat();
     const text = input.value.trim();
-    if (!chat || pending.has(chat.id) || readingFiles.has(chat.id)) return;
+    if (!chat || pending.has(chat.id) || readingFiles.has(chat.id) || modelSetup?.turn?.chatId === chat.id) return;
     const attachments = draftFiles.get(chat.id) || [];
     if (!text && !attachments.length) {
       status.textContent = 'Enter a message or attach a file.';
@@ -679,38 +709,61 @@ export function renderBlip(target) {
     await runReply(chat, text, attachments);
   });
 
-  function retryReply(chat, messageId) {
-    if (pending.has(chat.id)) return;
-    const previousUser = chat.messages.findLastIndex(message => message.role === 'user');
-    if (previousUser < 0) return;
-    const user = chat.messages[previousUser];
-    void runReply({ ...chat, messages: chat.messages.slice(0, previousUser) }, user.text, user.attachments || [], messageId);
+  function lastTurn(chat) {
+    const index = chat?.messages.findLastIndex(message => message.role === 'user') ?? -1;
+    if (index < 0) return null;
+    const last = chat.messages.at(-1);
+    const user = chat.messages[index];
+    return { chatId: chat.id, userId: user.id, replyId: last.role === 'assistant' ? last.id : undefined, index };
   }
 
-  async function runReply(chat, text, attachments, replaceId) {
+  function retryTurn(turn, localOnly = false) {
+    if (!turn || pending.has(turn.chatId) || modelSetup?.turn?.chatId === turn.chatId) return false;
+    const chat = store.getState().chats.find(item => item.id === turn.chatId);
+    const latest = lastTurn(chat);
+    if (!latest || latest.userId !== turn.userId || latest.replyId !== turn.replyId) return false;
+    const user = chat.messages[latest.index];
+    void runReply({ ...chat, messages: chat.messages.slice(0, latest.index) }, user.text, user.attachments || [], turn.replyId, localOnly);
+    return true;
+  }
+
+  function retryReply(chat, messageId) {
+    const turn = lastTurn(chat);
+    if (turn?.replyId === messageId) retryTurn(turn);
+  }
+
+  async function runReply(chat, text, attachments, replaceId, localOnly = false) {
     const request = { controller: new AbortController(), label: stages.checking };
     pending.set(chat.id, request);
     draw();
+    const isActive = () => store.getState().activeId === chat.id;
+    const onUpdate = value => {
+      if (typeof value !== 'string' || request.controller.signal.aborted) return;
+      request.partial = value;
+      if (isActive()) drawPartial(chat.id);
+    };
     let reply;
     try {
       const contextFiles = attachments.length ? attachments :
         chat.messages.findLast(message => message.attachments?.length)?.attachments || [];
-      const useHosted = part('hosted').checked && !contextFiles.length;
-      if (useHosted && gatewayConnected()) {
+      const useHosted = !localOnly && !contextFiles.length && hostedAvailable();
+      if (useHosted) {
         const research = part('research').checked;
         const advanced = part('advanced').checked;
         let sources = [];
+        request.engine = 'hosted';
+        request.engineLabel = advanced ? 'Connected AI · Advanced' : 'Connected AI';
         request.label = research ? 'Researching and waiting for the connected model…' : 'Waiting for the connected model…';
-        if (store.getState().activeId === chat.id) status.textContent = request.label;
+        if (isActive()) {
+          status.textContent = request.label;
+          drawEngineState(currentChat());
+        }
         const answer = await hostedBlipReply({
           text, history: chat.messages, mode: chat.mode, research,
           depth: advanced ? 'advanced' : undefined,
           signal: AbortSignal.any([request.controller.signal, AbortSignal.timeout(advanced ? 95_000 : 65_000)]),
           onSources(value) { sources = value; },
-          onUpdate(value) {
-            request.partial = value;
-            if (store.getState().activeId === chat.id) drawPartial(chat.id);
-          }
+          onUpdate,
         });
         reply = { kind: 'hosted', text: answer, sources };
       } else {
@@ -719,12 +772,24 @@ export function renderBlip(target) {
           attachments: contextFiles,
           history: chat.messages,
           mode: chat.mode,
-          wikipedia: part('references').checked && !contextFiles.length,
+          wikipedia: !localOnly && part('references').checked && !contextFiles.length,
+          preferGenerated: localOnly,
           signal: request.controller.signal,
-          onStage(stage) {
+          onUpdate,
+          onStage(stage, engine) {
             if (request.controller.signal.aborted) return;
-            request.label = stages[stage] || stages.checking;
-            if (store.getState().activeId === chat.id) status.textContent = request.label;
+            if (request.engine !== engine) {
+              request.engine = engine;
+              request.partial = undefined;
+            }
+            const model = localModels.find(item => item.id === engine);
+            request.engineLabel = model?.label;
+            request.label = model ? model.label + ' is working…' : stages[stage] || stages.checking;
+            if (isActive()) {
+              status.textContent = request.label;
+              drawEngineState(currentChat());
+              drawPartial(chat.id);
+            }
           }
         });
       }
@@ -736,6 +801,9 @@ export function renderBlip(target) {
     if (pending.get(chat.id) !== request || lifetime.signal.aborted) return;
     pending.delete(chat.id);
     if (!reply || request.controller.signal.aborted) return;
+    if (reply.kind === 'unavailable' && request.engine !== 'hosted') {
+      for (const model of localModels) refreshModelState(model);
+    }
     const active = store.getState().activeId === chat.id;
     const bounded = reply.text.slice(0, BLIP_LIMITS.message);
     const saved = replaceId
@@ -796,6 +864,7 @@ export function renderBlip(target) {
       }
     } else {
       stopReply(edit.id);
+      if (modelSetup?.turn?.chatId === edit.id) modelSetup.controller.abort();
       drafts.delete(edit.id);
       draftFiles.delete(edit.id);
       fileNotices.delete(edit.id);
@@ -808,72 +877,182 @@ export function renderBlip(target) {
   });
   dialog.addEventListener('close', () => { edit = undefined; });
 
+  function readyModel() {
+    // Match the inference order when more than one local runtime is ready.
+    return ['browser', 'cpu', 'webgpu'].map(id => localModels.find(model => model.id === id))
+      .find(model => modelStates.get(model.id) === 'available');
+  }
+
+  function canPrepare(model) {
+    return ['downloadable', 'downloading'].includes(modelStates.get(model.id));
+  }
+
+  function suggestedModel() {
+    const available = localModels.filter(canPrepare);
+    return available.find(model => model.id !== setupNote?.modelId) || available[0];
+  }
+
+  function hostedAvailable() {
+    return part('hosted').checked && gatewayConnected() && capabilities?.chat !== false;
+  }
+
+  function hostedFor(chat) {
+    return Boolean(chat && hostedAvailable() &&
+      !draftFiles.get(chat.id)?.length && !chat.messages.some(message => message.attachments?.length));
+  }
+
+  function drawEngineState(chat) {
+    const state = part('engine-state');
+    const request = pending.get(chat?.id);
+    const ready = readyModel();
+    const label = request?.engineLabel ? request.engineLabel + ' · Generating' : modelSetup
+        ? modelSetup.label : hostedFor(chat)
+        ? part('advanced').checked ? 'Connected AI · Advanced' : 'Connected AI'
+        : ready ? ready.label + ' ready' : ([...modelStates.values()].includes('checking') ? 'Checking local AI' : 'Local tools');
+    state.textContent = 'Reply engine · ' + label;
+    state.dataset.ready = String(!modelSetup && (Boolean(ready) || hostedFor(chat)));
+  }
+
+  function drawRecovery(chat) {
+    const turn = lastTurn(chat);
+    const latest = chat?.messages.at(-1);
+    const setupHere = modelSetup && (!modelSetup.turn || modelSetup.turn.chatId === chat?.id);
+    const ready = readyModel();
+    const checking = [...modelStates.values()].includes('checking');
+    const recoverable = turn && !pending.has(chat.id) &&
+      (latest.role === 'user' || latest.kind === 'unavailable' || (latest.kind === 'local' && !ready && !hostedFor(chat)));
+    const card = part('recovery');
+    card.hidden = !setupHere && !recoverable;
+    if (card.hidden) return;
+
+    const suggested = suggestedModel();
+    const cpu = localModels.find(model => model.id === 'cpu');
+    const canRetry = Boolean(turn && (ready || hostedFor(chat)));
+    const showStart = !modelSetup && !canRetry && Boolean(suggested);
+    const showCpu = showStart && suggested !== cpu && canPrepare(cpu);
+    part('recovery-title').textContent = setupHere ? 'Starting ' + modelSetup.model.label
+      : canRetry ? 'Retry this reply' : 'Get a generated reply';
+    part('recovery-copy').textContent = setupHere
+      ? (modelSetup.turn ? 'Blip will retry your last message here when the model is ready.' : 'The model runs on this device.')
+      : canRetry ? 'Blip will use the saved message and its conversation context.'
+      : suggested ? suggested.label + '. ' + suggested.download +
+        (showCpu ? ' The CPU option downloads about 108 MB.' : '') + ' Prompts and files stay on this device.'
+      : checking ? 'Checking which local models this device supports.'
+      : 'This device could not start a local model. Chats without files can use a connected AI provider.';
+    const note = setupNote && (!setupNote.chatId || setupNote.chatId === chat?.id) ? setupNote.text : '';
+    part('setup-status').textContent = setupHere ? modelSetup.label : note;
+    const progress = part('setup-progress');
+    progress.hidden = !setupHere;
+    if (setupHere && Number.isFinite(modelSetup.fraction)) progress.value = modelSetup.fraction * 100;
+    else progress.removeAttribute('value');
+
+    part('start-local').hidden = !showStart;
+    part('start-cpu').hidden = !showCpu;
+    part('retry-last').hidden = Boolean(modelSetup) || !canRetry;
+    part('cancel-setup').hidden = !setupHere;
+    part('cancel-setup').disabled = Boolean(setupHere && modelSetup.controller.signal.aborted);
+    part('recovery-settings').hidden = Boolean(setupHere);
+  }
+
   function drawModels() {
-    const nativeReady = nativeStatus === 'available';
-    const cpuReady = cpuStatus === 'available';
-    const portableReady = portableStatus === 'available';
-    const ready = nativeReady || cpuReady || portableReady;
-    const canEnable = !ready && ['downloadable', 'downloading'].includes(nativeStatus);
-    const canStartCpu = !ready && ['downloadable', 'downloading'].includes(cpuStatus);
-    const canDownload = !ready && ['downloadable', 'downloading'].includes(portableStatus);
-    const canSetUp = canEnable || canStartCpu || canDownload;
-    part('enable').hidden = !canEnable;
-    part('cpu').hidden = !canStartCpu;
-    part('portable').hidden = !canDownload;
-    part('setup-shortcut').hidden = !canSetUp;
-    part('settings-label').textContent = canSetUp ? 'Set up AI' : 'AI settings';
-    modelSettings.dataset.ready = String(ready);
-    part('model-status').textContent = nativeReady ? 'The browser model is ready.'
-      : canEnable ? 'Enable the browser model to use conversational AI.'
-      : 'This browser’s built-in model is unavailable.';
-    part('cpu-status').hidden = !cpuReady && !canStartCpu;
-    part('cpu-status').textContent = cpuReady ? 'CPU AI is ready.'
-      : 'Runs on your processor. First-time setup downloads about 108 MB. Prompts and files stay on this device.';
-    part('portable-status').textContent = portableReady ? 'The portable local model is ready.'
-      : canDownload ? 'The WebGPU option downloads about 220 MB on first use.'
-      : ready || canSetUp ? '' : 'Local replies, file previews, calculations, and optional Wikipedia lookups are available.';
+    const ready = readyModel();
+    const canSetUp = localModels.some(canPrepare);
+    part('setup-shortcut').hidden = !canSetUp || Boolean(ready) || Boolean(modelSetup);
+    part('settings-label').textContent = canSetUp && !ready ? 'Set up AI' : 'AI settings';
+    modelSettings.dataset.ready = String(Boolean(ready));
+    for (const model of localModels) {
+      const state = modelStates.get(model.id);
+      const control = part(model.control);
+      const notice = part(model.notice);
+      control.hidden = !canPrepare(model) || Boolean(ready);
+      control.disabled = Boolean(modelSetup);
+      notice.hidden = model.id !== 'browser' && state === 'unavailable';
+      notice.textContent = modelSetup?.model === model ? modelSetup.label
+        : setupNote?.modelId === model.id ? setupNote.text
+        : state === 'available' ? model.label + ' ready.'
+        : state === 'checking' ? 'Checking ' + model.label + '…'
+        : canPrepare(model) ? model.download
+        : model.label + ' is unavailable in this browser.';
+    }
+    drawEngineState(currentChat());
+    drawRecovery(currentChat());
   }
 
-  Promise.allSettled([blipModelAvailability(), cpuBlipAvailability(), portableBlipAvailability()]).then(([native, cpu, portable]) => {
-    if (lifetime.signal.aborted) return;
-    nativeStatus = native.value || 'unavailable';
-    cpuStatus = cpu.value || 'unavailable';
-    portableStatus = portable.value || 'unavailable';
+  async function startLocalModel(model, turn) {
+    if (!model || modelSetup || !canPrepare(model)) return;
+    if (turn && pending.has(turn.chatId)) return;
+    const controller = new AbortController();
+    const request = { model, turn, controller, label: 'Preparing ' + model.label + '…' };
+    modelSetup = request;
+    setupNote = undefined;
     drawModels();
-  });
-
-  const setupButtons = ['enable', 'cpu', 'portable'].map(part);
-  for (const [control, notice, prepare, ready] of [
-    ['enable', 'model-status', prepareBlipModel, () => { nativeStatus = 'available'; }],
-    ['cpu', 'cpu-status', prepareCpuBlipModel, () => { cpuStatus = 'available'; }],
-    ['portable', 'portable-status', preparePortableBlipModel, () => { portableStatus = 'available'; }]
-  ]) {
-    part(control).addEventListener('click', async () => {
-      if (setupRunning) return;
-      setupRunning = true;
-      const message = part(notice);
-      for (const button of setupButtons) button.disabled = true;
-      message.textContent = 'Preparing the local model…';
-      try {
-        await prepare(lifetime.signal, (fraction, description) => {
-          if (!lifetime.signal.aborted) message.textContent = `${description || 'Preparing local AI'} · ${Math.round(fraction * 100)}%`;
-        });
-        if (!lifetime.signal.aborted) {
-          ready();
-          drawModels();
-        }
-      } catch {
-        if (!lifetime.signal.aborted) message.textContent = 'The model could not start. Try again or choose another available model.';
-      } finally {
-        setupRunning = false;
-        for (const button of setupButtons) button.disabled = false;
+    if (turn) draw();
+    else drawComposer(currentChat());
+    let ready = false;
+    try {
+      await model.prepare(AbortSignal.any([controller.signal, lifetime.signal]), (fraction, description) => {
+        if (lifetime.signal.aborted || controller.signal.aborted) return;
+        request.fraction = Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : undefined;
+        request.label = (description || 'Preparing ' + model.label) +
+          (Number.isFinite(request.fraction) ? ' · ' + Math.round(request.fraction * 100) + '%' : '');
+        drawModels();
+      });
+      controller.signal.throwIfAborted();
+      if (!lifetime.signal.aborted) {
+        modelStates.set(model.id, 'available');
+        ready = true;
       }
-    });
+    } catch {
+      if (!lifetime.signal.aborted) {
+        setupNote = {
+          modelId: model.id,
+          chatId: turn?.chatId,
+          text: controller.signal.aborted ? 'Setup canceled.' : model.label + ' could not start. Try another available model.',
+        };
+      }
+    } finally {
+      modelSetup = undefined;
+      if (!lifetime.signal.aborted) {
+        drawModels();
+        if (turn) draw();
+        else drawComposer(currentChat());
+      }
+    }
+    if (ready && turn && !lifetime.signal.aborted) retryTurn(turn, true);
   }
-  part('setup-shortcut').addEventListener('click', () => {
+
+  function showModelSettings() {
     modelSettings.open = true;
     modelSettings.querySelector('summary').focus({ preventScroll: true });
+  }
+
+  function refreshModelState(model) {
+    const previous = modelStates.get(model.id);
+    void model.availability().catch(() => 'unavailable').then(state => {
+      if (lifetime.signal.aborted || modelSetup?.model === model || modelStates.get(model.id) !== previous) return;
+      modelStates.set(model.id, state || 'unavailable');
+      drawModels();
+    });
+  }
+
+  for (const model of localModels) {
+    refreshModelState(model);
+    part(model.control).addEventListener('click', () => { void startLocalModel(model); });
+  }
+  part('start-local').addEventListener('click', () => { void startLocalModel(suggestedModel(), lastTurn(currentChat())); });
+  part('start-cpu').addEventListener('click', () => {
+    void startLocalModel(localModels.find(model => model.id === 'cpu'), lastTurn(currentChat()));
   });
+  part('retry-last').addEventListener('click', () => { retryTurn(lastTurn(currentChat()), !hostedFor(currentChat())); });
+  part('cancel-setup').addEventListener('click', () => {
+    modelSetup?.controller.abort();
+    if (modelSetup) {
+      modelSetup.label = 'Canceling setup…';
+      drawModels();
+    }
+  });
+  part('recovery-settings').addEventListener('click', showModelSettings);
+  part('setup-shortcut').addEventListener('click', showModelSettings);
   for (const [popover, other] of [[modelSettings, musicSettings], [musicSettings, modelSettings]]) {
     popover.addEventListener('toggle', () => { if (popover.open) other.open = false; });
   }

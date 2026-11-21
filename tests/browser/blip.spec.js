@@ -124,6 +124,104 @@ test('blip.ai works on a phone and looks up sources only when enabled', async ({
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
 });
 
+test('Blip starts an opted-in local engine and retries the saved turn with context', async ({ page }) => {
+  await page.addInitScript(() => {
+    let ready = false;
+    window.blipSetupAttempts = 0;
+    Object.defineProperty(window, 'LanguageModel', {
+      configurable: true,
+      value: {
+        availability: async () => ready ? 'available' : 'downloadable',
+        async create({ monitor, initialPrompts, signal } = {}) {
+          if (monitor) {
+            window.blipSetupAttempts++;
+            await new Promise((resolve, reject) => {
+              const download = new EventTarget();
+              monitor(download);
+              download.dispatchEvent(new ProgressEvent('downloadprogress', { loaded: 42, total: 100 }));
+              window.finishBlipSetup = resolve;
+              signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+            });
+            ready = true;
+          }
+          return {
+            destroy() {},
+            async prompt(text) {
+              window.blipRetriedTurn = { text, initialPrompts };
+              return 'A tide pool shelters small shore creatures between tides.';
+            }
+          };
+        }
+      }
+    });
+  });
+  await page.goto('/#blip');
+  const input = page.getByRole('textbox', { name: 'Message blip.ai' });
+  const thread = page.getByRole('region', { name: 'Conversation messages' });
+  await input.fill('Calculate 6 × 7');
+  await input.press('Enter');
+  await expect(thread.getByText('42', { exact: true })).toBeVisible();
+  await input.fill('Explain what is inside a tide pool');
+  await input.press('Enter');
+  await expect(thread.getByText('Blip unavailable', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.blipSetupAttempts)).toBe(0);
+
+  const recovery = page.getByRole('complementary', { name: 'Reply recovery' });
+  await recovery.getByRole('button', { name: 'Start local AI', exact: true }).click();
+  await expect(recovery.getByRole('progressbar', { name: 'Local AI setup progress' })).toHaveAttribute('value', '42');
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
+  await page.evaluate(() => window.finishBlipSetup());
+  await expect(thread.getByText('A tide pool shelters small shore creatures between tides.')).toBeVisible();
+  await expect(thread.getByText('Blip unavailable', { exact: true })).toHaveCount(0);
+  await expect(thread.locator('.blip-message--user')).toHaveCount(2);
+  await expect(page.getByText('Reply engine · Browser AI ready')).toBeVisible();
+  expect(await page.evaluate(() => window.blipSetupAttempts)).toBe(1);
+  const retried = await page.evaluate(() => window.blipRetriedTurn);
+  expect(retried.text).toBe('Explain what is inside a tide pool');
+  expect(retried.initialPrompts.slice(1)).toEqual([
+    { role: 'user', content: 'Calculate 6 × 7' }, { role: 'assistant', content: '42' },
+  ]);
+});
+
+test('Blip offers the CPU model after setup fails and starts it only on request', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'gpu', { configurable: true, value: undefined });
+    Object.defineProperty(window, 'LanguageModel', {
+      configurable: true,
+      value: {
+        availability: async () => 'downloadable',
+        create: async () => { throw new Error('Test browser setup failure'); }
+      }
+    });
+  });
+  await page.route('**/assets/blip-cpu.js*', route => route.fulfill({
+    contentType: 'text/javascript',
+    body: `
+      let ready = false;
+      window.blipCpuSetups = 0;
+      export async function cpuBlipAvailability() { return ready ? 'available' : 'downloadable'; }
+      export function cpuBlipReady() { return ready; }
+      export async function prepareCpuBlipModel() { window.blipCpuSetups++; ready = true; }
+      export function releaseCpuBlipModel() { ready = false; }
+      export async function runCpuBlipPrompt() { return 'The CPU model retried the original question.'; }
+    `
+  }));
+  await page.goto('/#blip');
+  const input = page.getByRole('textbox', { name: 'Message blip.ai' });
+  await input.fill('Explain how tides affect a shipping schedule');
+  await input.press('Enter');
+  const recovery = page.getByRole('complementary', { name: 'Reply recovery' });
+  await expect(recovery.getByRole('button', { name: 'Use CPU AI instead' })).toBeVisible();
+  await recovery.getByRole('button', { name: 'Start local AI', exact: true }).click();
+  await expect(recovery.getByText('Browser AI could not start. Try another available model.')).toBeVisible();
+  await expect(recovery.getByText(/CPU AI\. First-time setup downloads about 108 MB/)).toBeVisible();
+  expect(await page.evaluate(() => window.blipCpuSetups)).toBe(0);
+  await recovery.getByRole('button', { name: 'Start local AI', exact: true }).click();
+  await expect(page.getByText('The CPU model retried the original question.')).toBeVisible();
+  await expect(page.getByText('Reply engine · CPU AI ready')).toBeVisible();
+  expect(await page.evaluate(() => window.blipCpuSetups)).toBe(1);
+});
+
 test('blip.ai keeps attached text in its saved chat and skips external lookup', async ({ page }) => {
   let lookups = 0;
   await page.addInitScript(() => {

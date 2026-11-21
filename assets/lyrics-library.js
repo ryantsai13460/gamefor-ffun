@@ -1,13 +1,24 @@
 const release = new URL(import.meta.url).search;
-const [{ lyricsChart }, { lyricsSources, normalizeLyricsText: normalize, appleMusicSearchUrl }] = await Promise.all([
+const [{ lyricsChart }, { lyricsSources, normalizeLyricsText: normalize, appleMusicSearchUrl }, { sevenCloudsLyrics }, { otherChannelLyrics }] = await Promise.all([
   import(`./lyrics-chart.js${release}`),
-  import(`./lyrics-sources.js${release}`)
+  import(`./lyrics-sources.js${release}`),
+  import(`./lyrics-7clouds.js${release}`),
+  import(`./lyrics-other-channels.js${release}`)
 ]);
 
 const batchSize = 25;
-const featuredTitles = ['housewife', 'dracula'];
 const corrections = new Map([['house wifre', 'housewife'], ['house wife', 'housewife'], ['drcula', 'dracula']]);
-const songIndex = lyricsChart.map(song => ({ song, match: normalize(`${song.title} ${song.artist}`) }));
+const searchIndex = songs => songs.map(song => ({ song, match: normalize(`${song.title} ${song.artist}`) }));
+const trackKey = (title, artist) => `${normalize(title)}|${normalize(artist)}`;
+const songIndex = searchIndex(lyricsChart);
+export const creatorLyricVideos = [...new Map([...sevenCloudsLyrics, ...otherChannelLyrics].map(video => [video.id, video])).values()];
+const videoIndex = searchIndex(creatorLyricVideos);
+const videoByTrack = new Map();
+for (const video of creatorLyricVideos) {
+  const key = trackKey(video.chartTitle || video.title, video.artist);
+  if (!videoByTrack.has(key)) videoByTrack.set(key, video);
+}
+const channels = [...new Set(creatorLyricVideos.map(video => video.channel))];
 const charts = [...new Map(lyricsChart.map(song => [song.sourceUrl, song])).values()];
 const displayDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 
@@ -35,58 +46,37 @@ function link(text, href, className = 'button', external = false) {
   return anchor;
 }
 
-function sourceFor(song) {
-  const title = normalize(song.title);
-  const artist = normalize(song.artist);
-  return lyricsSources[`${title}|${artist}`];
+function trackVideo(song) {
+  return videoByTrack.get(trackKey(song.title, song.artist));
 }
 
-function officialVideo(song) {
-  const source = sourceFor(song);
-  if (source?.kind !== 'lyric-video') return null;
-  if (/^[A-Za-z0-9_-]{11}$/.test(source.videoId || '')) {
-    const url = `https://www.youtube.com/watch?v=${source.videoId}`;
-    if (source.url === url) return { id: source.videoId, url };
-  }
-  if (source.label === 'Official lyric video on Apple Music'
-      && /^https:\/\/music\.apple\.com\/[a-z]{2}\/music-video\//.test(source.url)) {
-    return { url: source.url, provider: 'Apple Music' };
-  }
-  return null;
+function watchUrl(video) {
+  return `https://www.youtube.com/watch?v=${video.id}`;
 }
 
 function videoArtwork(song) {
   const art = element('div', 'lyrics-video-art');
   art.setAttribute('aria-hidden', 'true');
   art.append(element('span', 'lyrics-video-art-title', song.title));
-  const video = officialVideo(song);
-  if (video?.id) {
-    const image = element('img');
-    image.alt = '';
-    image.loading = 'lazy';
-    image.decoding = 'async';
-    image.addEventListener('load', () => image.classList.add('is-ready'), {once: true});
-    image.addEventListener('error', () => image.remove(), {once: true});
-    image.src = `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`;
-    art.append(image);
-  }
   return art;
 }
 
 function lyricVideoSearch(song) {
   const url = new URL('https://www.youtube.com/results');
   const exact = [song.title, song.artist].map(value => `"${value.replace(/"/g, '')}"`);
-  url.searchParams.set('search_query', `${exact.join(' ')} official lyric video`);
+  url.searchParams.set('search_query', `${exact.join(' ')} lyric video`);
   return url.href;
 }
 
-export function findChartSongs(query = '', chart = '', videosOnly = false) {
+function searchTracks(index, query, include) {
   const normalized = normalize(query);
   const words = (corrections.get(normalized) || normalized).split(' ').filter(Boolean);
-  return songIndex
-    .filter(({ song, match }) => (!chart || song.sourceUrl === chart) && words.every(word => match.includes(word))
-      && (!videosOnly || officialVideo(song)))
+  return index.filter(({ song, match }) => include(song) && words.every(word => match.includes(word)))
     .map(({ song }) => song);
+}
+
+export function findChartSongs(query = '', chart = '', videosOnly = false) {
+  return searchTracks(songIndex, query, song => (!chart || song.sourceUrl === chart) && (!videosOnly || trackVideo(song)));
 }
 
 export function renderLyrics(target, params) {
@@ -95,7 +85,7 @@ export function renderLyrics(target, params) {
   const head = element('header', 'lyrics-heading');
   const copy = element('div');
   const edition = displayDate.format(new Date(lyricsChart[0].date));
-  copy.append(element('h1', '', 'Music'), element('p', 'muted', `Browse chart songs dated ${edition} or watch official videos that show the lyrics.`));
+  copy.append(element('h1', '', 'Music'), element('p', 'muted', `Watch lyrics from 7clouds and other lyric channels, or browse the ${edition} charts.`));
   head.append(copy);
   const views = element('nav', 'lyrics-views');
   views.setAttribute('aria-label', 'Music views');
@@ -104,21 +94,6 @@ export function renderLyrics(target, params) {
   const musicVideos = link('Music videos', '#music?view=videos');
   views.append(watchLyrics, allSongs, musicVideos);
   page.append(head, views);
-
-  const opening = element('section', 'lyrics-feature');
-  opening.append(element('h2', '', 'Featured lyric videos'));
-  const featured = element('div', 'lyrics-feature-grid');
-  for (const name of featuredTitles) {
-    const song = lyricsChart.find(entry => normalize(entry.title) === name);
-    if (!song) continue;
-    const card = element('div', 'lyrics-feature-song');
-    const title = element('div');
-    title.append(element('h3', '', song.title), element('p', 'muted', song.artist));
-    card.append(title, songActions(song));
-    featured.append(card);
-  }
-  opening.append(featured);
-  page.append(opening);
 
   const filters = element('div', 'lyrics-filters');
   const queryLabel = element('label', '', 'Song or artist');
@@ -134,17 +109,21 @@ export function renderLyrics(target, params) {
     entry.source === 'Billboard Hot 100' ? entry.source : `${entry.source} · ${entry.market}`, entry.sourceUrl
   )));
   chartLabel.append(chart);
-  filters.append(queryLabel, chartLabel);
+  const channelLabel = element('label', 'lyrics-channel', 'Lyric channel');
+  const channel = element('select', 'field');
+  channel.append(new Option('All lyric channels', ''), ...channels.map(name => new Option(name, name)));
+  channelLabel.append(channel);
+  filters.append(queryLabel, chartLabel, channelLabel);
   const videoFilter = element('label', 'lyrics-video-filter');
   const videosOnly = element('input');
   videosOnly.type = 'checkbox';
-  videoFilter.append(videosOnly, element('span', '', 'Official lyric videos only'));
+  videoFilter.append(videosOnly, element('span', '', 'Lyric videos only'));
   filters.append(videoFilter);
   page.append(filters);
 
   const status = element('p', 'muted lyrics-count');
   status.setAttribute('role', 'status');
-  const lyricIntro = element('p', 'lyrics-watch-intro', 'Official uploads that put the song’s lyrics on screen.');
+  const lyricIntro = element('p', 'lyrics-watch-intro', 'Lyrics on screen from 7clouds and other lyric channels.');
   const list = element('ol', 'lyrics-song-list');
   list.setAttribute('aria-label', 'Chart songs');
   const more = button('Load more songs', () => {
@@ -179,21 +158,22 @@ export function renderLyrics(target, params) {
 
   function songActions(song) {
     const actions = element('div', 'lyrics-song-actions');
-    const video = officialVideo(song);
-    if (video) {
-      const play = video.id
-        ? button('Play lyrics video', () => openLyricVideo(song, video), 'button primary lyrics-video-action')
-        : link(`Lyric video on ${video.provider}`, video.url, 'button primary lyrics-video-action', true);
-      play.setAttribute('aria-label', `Play lyrics video for ${song.title} by ${song.artist}${video.provider ? ` on ${video.provider}` : ''}`);
-      actions.append(play);
-    }
+    const video = trackVideo(song);
+    if (video) actions.append(playButton(song, video));
     actions.append(songButton(song));
-    if (!video?.id) {
+    if (!video) {
       const find = link('Find lyric videos', lyricVideoSearch(song), 'button lyrics-find-action', true);
       find.setAttribute('aria-label', `Find lyric videos for ${song.title} by ${song.artist}`);
       actions.append(find);
     }
     return actions;
+  }
+
+  function playButton(song, video) {
+    const play = button('Play lyrics video', () => openLyricVideo(song, video), 'button primary lyrics-video-action');
+    play.setAttribute('aria-label', `Play lyrics video for ${song.title} by ${song.artist}`);
+    play.setAttribute('aria-haspopup', 'dialog');
+    return play;
   }
 
   function closeLyrics() {
@@ -208,23 +188,15 @@ export function renderLyrics(target, params) {
     dialog.remove();
   }
 
-  function providerActions(song, video, excludedUrl) {
-    const source = sourceFor(song);
-    const choices = new Map();
-    if (source) choices.set(source.url, source.label);
-    if (source?.alternateUrl && source.alternateLabel) choices.set(source.alternateUrl, source.alternateLabel);
-    if (video?.id) choices.set(video.url, 'Official lyric video on YouTube');
-    if (source?.label !== 'Lyrics on Apple Music') {
-      choices.set(song.trackUrl || appleMusicSearchUrl(song.title, song.artist),
-        song.trackUrl ? 'Lyrics on Apple Music' : 'Find song on Apple Music');
-    }
-    if (!video?.id) choices.set(lyricVideoSearch(song), 'Find lyric videos');
+  function providerActions(song, video, inPlayer = false) {
     const actions = element('div', 'lyrics-provider-actions');
-    for (const [url, label] of choices) {
-      if (url !== excludedUrl) {
-        const primary = !video?.id && !actions.childElementCount;
-        actions.append(link(label, url, primary ? 'button primary' : 'button', true));
-      }
+    if (video && !inPlayer) actions.append(link(`Watch on YouTube · ${video.channel}`, watchUrl(video), 'button', true));
+    if (song.sourceUrl) {
+      const source = lyricsSources[trackKey(song.title, song.artist)];
+      const appleUrl = source?.url || song.trackUrl;
+      actions.append(link(appleUrl ? 'Lyrics on Apple Music' : 'Find song on Apple Music',
+        appleUrl || appleMusicSearchUrl(song.title, song.artist), 'button', true));
+      if (!video) actions.append(link('Find lyric videos', lyricVideoSearch(song), 'button', true));
     }
     return actions;
   }
@@ -235,7 +207,7 @@ export function renderLyrics(target, params) {
     try {
       ({ watchDialog } = await import(`./media.js${release}`));
     } catch {
-      if (revision === dialogRevision && page.isConnected) openLyrics(song, true);
+      if (revision === dialogRevision && page.isConnected) openLyrics(song, video, true);
       return;
     }
     if (revision !== dialogRevision || !page.isConnected) return;
@@ -243,18 +215,18 @@ export function renderLyrics(target, params) {
       closeLyrics();
       releasePlayer = watchDialog(page, {
         title: `Lyrics for ${song.title}`,
-        subtitle: `${song.artist} · Official lyric video`,
-        video: { id: video.id, title: `${song.title} official lyric video` },
-        external: video.url,
-        directLabel: 'Official lyric video on YouTube',
-        details: providerActions(song, video, video.url)
+        subtitle: `${song.artist} · ${video.channel}`,
+        video: { id: video.id, title: `${song.title} lyric video from ${video.channel}` },
+        external: watchUrl(video),
+        directLabel: `Watch on YouTube · ${video.channel}`,
+        details: song.sourceUrl ? providerActions(song, video, true) : undefined
       });
     } catch {
-      if (page.isConnected) openLyrics(song, true);
+      if (page.isConnected) openLyrics(song, video, true);
     }
   }
 
-  function openLyrics(song, playbackFailed = false) {
+  function openLyrics(song, video = trackVideo(song), playbackFailed = false) {
     closeLyrics();
     const dialog = element('dialog', 'media-dialog lyrics-dialog');
     dialog.setAttribute('aria-label', `Lyrics for ${song.title}`);
@@ -266,16 +238,15 @@ export function renderLyrics(target, params) {
     head.append(title, close);
     dialog.append(head);
     if (playbackFailed) {
-      const error = element('p', 'lyrics-dialog-copy', 'The in-page player could not start. You can still open the official lyric video on YouTube.');
+      const error = element('p', 'lyrics-dialog-copy', 'The in-page player could not start. You can open the lyric video on YouTube.');
       error.setAttribute('role', 'status');
       dialog.append(error);
     } else {
       dialog.append(element('p', 'lyrics-dialog-copy', 'Apple Music may require sign-in or a subscription to show lyrics.'));
     }
-    const video = officialVideo(song);
     const actions = providerActions(song, video);
-    if (video?.id && !playbackFailed) {
-      actions.prepend(button('Play official lyric video here', () => openLyricVideo(song, video), 'button primary'));
+    if (video && !playbackFailed) {
+      actions.prepend(button('Play lyric video here', () => openLyricVideo(song, video), 'button primary'));
     }
     dialog.append(actions);
     dialog.addEventListener('close', () => {
@@ -287,33 +258,45 @@ export function renderLyrics(target, params) {
   }
 
   function draw() {
-    const results = findChartSongs(query.value, chart.value, watchView || videosOnly.checked);
+    const results = watchView
+      ? searchTracks(videoIndex, query.value, video => !channel.value || video.channel === channel.value)
+      : findChartSongs(query.value, chart.value, videosOnly.checked);
     const text = query.value.trim();
     const videoParams = new URLSearchParams({ view: 'videos' });
     if (text) videoParams.set('q', text);
     musicVideos.href = `#music?${videoParams}`;
-    opening.hidden = Boolean(text || chart.value || videosOnly.checked || watchView);
     watchLyrics.setAttribute('aria-pressed', String(watchView));
     allSongs.setAttribute('aria-pressed', String(!watchView));
+    chartLabel.hidden = watchView;
+    channelLabel.hidden = !watchView;
     videoFilter.hidden = watchView;
     lyricIntro.hidden = !watchView;
+    attribution.hidden = watchView;
+    query.placeholder = watchView ? 'Search lyric videos' : 'Search chart songs';
+    list.setAttribute('aria-label', watchView ? 'Lyric videos' : 'Chart songs');
+    more.textContent = watchView ? 'Load more lyric videos' : 'Load more songs';
     list.classList.toggle('lyrics-video-list', watchView);
     if (watchView) {
       status.textContent = results.length
-        ? `Showing ${Math.min(visible, results.length)} of ${results.length} official lyric videos`
-        : 'No verified lyric videos match this search.';
+        ? `Showing ${Math.min(visible, results.length)} of ${results.length} lyric videos`
+        : 'No lyric videos match this search.';
     } else {
       status.textContent = results.length
-        ? `Showing ${Math.min(visible, results.length)} of ${results.length} chart songs${videosOnly.checked ? ' with official lyric videos' : ''}`
-        : videosOnly.checked ? 'No songs with official lyric videos match this search.' : 'No songs match this search.';
+        ? `Showing ${Math.min(visible, results.length)} of ${results.length} chart songs${videosOnly.checked ? ' with lyric videos' : ''}`
+        : videosOnly.checked ? 'No chart songs with lyric videos match this search.' : 'No songs match this search.';
     }
     list.replaceChildren(...results.slice(0, visible).map(song => {
       const row = element('li', watchView ? 'lyrics-song lyrics-video-card' : 'lyrics-song');
       const title = element('div', 'lyrics-track');
       title.append(element('h3', '', song.title), element('p', 'muted', song.artist));
-      const source = link(song.source, song.sourceUrl, 'lyrics-source text-action', true);
-      row.append(watchView ? videoArtwork(song) : element('span', 'lyrics-rank', `#${song.rank}`),
-        title, source, songActions(song));
+      if (watchView) {
+        const actions = element('div', 'lyrics-song-actions');
+        actions.append(playButton(song, song));
+        row.append(videoArtwork(song), title, link(song.channel, song.channelUrl, 'lyrics-source text-action', true), actions);
+      } else {
+        row.append(element('span', 'lyrics-rank', `#${song.rank}`), title,
+          link(song.source, song.sourceUrl, 'lyrics-source text-action', true), songActions(song));
+      }
       return row;
     }));
     more.hidden = visible >= results.length;
@@ -329,6 +312,7 @@ export function renderLyrics(target, params) {
   }
   query.addEventListener('input', resetFilter);
   chart.addEventListener('change', resetFilter);
+  channel.addEventListener('change', resetFilter);
   videosOnly.addEventListener('change', resetFilter);
   draw();
   return closeLyrics;

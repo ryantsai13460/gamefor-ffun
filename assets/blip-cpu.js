@@ -89,7 +89,7 @@ export function prepareCpuBlipModel(signal, onProgress) {
       onProgress?.(.96, 'Loading the CPU model');
       const wasm = new URL('./vendor/wllama-2.3.7/wllama.wasm', import.meta.url);
       state.engine = new Wllama({ 'single-thread/wllama.wasm': wasm.href }, { suppressNativeLog: true });
-      await state.engine.loadModel([model], { n_threads: 1, n_ctx: 2_048, n_batch: 128 });
+      await state.engine.loadModel([model], { n_threads: 1, n_ctx: 4_096, n_batch: 128 });
       lifetime.throwIfAborted();
       state.ready = true;
       onProgress?.(1, 'CPU AI ready');
@@ -110,7 +110,7 @@ export function releaseCpuBlipModel() {
   void state.initialization.catch(() => {}).then(() => state.queue).then(() => closeEngine(state));
 }
 
-export function runCpuBlipPrompt(messages, mode, signal) {
+export function runCpuBlipPrompt(messages, mode, signal, onUpdate) {
   signal?.throwIfAborted();
   const state = current;
   if (!state?.ready) return Promise.resolve('');
@@ -120,9 +120,16 @@ export function runCpuBlipPrompt(messages, mode, signal) {
     const result = await state.engine.createChatCompletion(messages, {
       stream: false,
       useCache: true,
-      nPredict: mode === 'quick' ? 72 : 128,
-      sampling: { temp: mode === 'brainstorm' ? .72 : .3 },
-      abortSignal
+      nPredict: mode === 'quick' ? 120 : 220,
+      sampling: {
+        temp: mode === 'brainstorm' ? .72 : .3,
+        penalty_last_n: 64,
+        penalty_repeat: 1.1
+      },
+      abortSignal,
+      onNewToken: onUpdate ? (_token, _piece, value) => {
+        if (!abortSignal.aborted) onUpdate(value.trimStart());
+      } : undefined
     });
     abortSignal.throwIfAborted();
     return typeof result === 'string' ? result.trim() : '';

@@ -4,7 +4,7 @@ The previous GitHub entry page contained duplicate document markup and ended ins
 
 ## Passed
 
-The suite includes 16 Node tests, 13 gateway tests, and 33 Chromium browser tests. Separate DOM smoke tests exercised game rules, media imports, and assistant behavior.
+The suite includes 16 Node tests, 13 gateway tests, and 36 Chromium browser tests. Separate checks exercised game rules, media imports, and real CPU model inference, streaming, and cancellation.
 
 | Area | Checks |
 | --- | --- |
@@ -14,9 +14,9 @@ The suite includes 16 Node tests, 13 gateway tests, and 33 Chromium browser test
 | Player | All 20 built-in games launch in Chromium. Checked fullscreen, restart, keyboard interaction, standalone click-to-score, and puzzle progression. Targeted tests covered the Harbor Dispatch delivery sequence and Tidal Rescue fuel and crew rules. |
 | Viewer and Play Hub | Checked tabs, duplicate and reopen actions, history, refresh, native fullscreen, in-page navigation, a browser-enforced frame restriction, saved device checks, and JSON report export. Preview responses were controlled in the browser tests. |
 | Media | Verified 600 additions across two batches through official YouTube oEmbed metadata and public creator indexes. Tests check 1,253 unique entries, ten populated topics, and 48 cinema listings. |
-| Music | Browser tests cover pagination and filters for 550 chart songs, the 42-video Watch lyrics view, official Housewife and Dracula embeds, and a title-and-artist lyric video search. |
-| Shorts and Web Search | Browser tests cover Shorts navigation, tab state, 116 violin results, contextual AI follow-ups with a simulated model, sandboxed Google results, native fullscreen, and in-page access to the Territorial.io game preview, wiki, and trailer. |
-| blip.ai | Chromium tests cover saved context, cancellation, local replies, attached PDF text, exported transcripts, pinned chats, copied code, and persisted hosted research sources. Gateway and browser fixtures check the optional Advanced replies request. Node tests cover on-device summaries, passage lookup, and CSV/TSV profiles. |
+| Music | Browser tests cover 550 chart songs, 69 creator lyric videos, channel filtering, covers without photos, the 7clouds Housewife and Dracula embeds, and a title-and-artist lyric video search. Metadata verifies title, uploader, and creator attribution. Full footage could not be reviewed in the test environment. |
+| Shorts and Web Search | Browser tests cover Shorts navigation, tab state, 116 violin results, contextual AI follow-ups, essay typo handling, writing resources, model-generated and built-in essay guidance, sandboxed Google results, native fullscreen, and the Territorial.io preview. Generated answers were tested with model fixtures. |
+| blip.ai | Chromium tests cover saved context, cancellation, local replies, attached PDF text, exported transcripts, pinned chats, copied code, persisted hosted research sources, and starting an on-device model and retrying a failed turn. Model setup also tests an explicitly chosen CPU fallback. Gateway fixtures check Advanced replies. |
 | Layout and accessibility | Chromium at 1440px, 768px, and 390px. Checked horizontal overflow, mobile drawer dismissal and keyboard focus, and image placeholders with third-party images blocked. |
 
 ## Limits

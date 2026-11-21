@@ -1,0 +1,90 @@
+.google-essay-guide,
+.google-essay-section,
+.google-essay-answer {
+  display: grid;
+  gap: .65rem;
+  min-width: 0;
+}
+
+.google-essay-guide > h3 {
+  font-size: clamp(1.2rem, 3vw, 1.55rem);
+}
+
+.google-essay-answer,
+.google-essay-card {
+  padding: clamp(.75rem, 3vw, 1.05rem);
+  border: 1px solid var(--line, #303039);
+  border-radius: .7rem;
+  background: var(--panel, #19191f);
+}
+
+.google-essay-answer h4,
+.google-essay-section h4 {
+  margin: 0;
+  font-size: 1.02rem;
+}
+
+.google-essay-steps {
+  display: grid;
+  gap: .38rem;
+  margin: 0;
+  padding-inline-start: 1.35rem;
+  line-height: 1.5;
+}
+
+.google-essay-generated {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
+
+.google-essay-status:empty {
+  display: none;
+}
+
+.google-essay-local {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .45rem;
+}
+
+.google-essay-local > p {
+  flex-basis: 100%;
+  font-size: .875rem;
+}
+
+.google-essay-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  gap: .6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.google-essay-card {
+  display: grid;
+  align-content: start;
+  gap: .4rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.google-essay-card img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: .4rem;
+  object-fit: cover;
+}
+
+.google-essay-video {
+  justify-content: start;
+  min-height: 2.65rem;
+  text-align: start;
+}
+
+.google-essay-card p {
+  font-size: .86rem;
+  line-height: 1.45;
+}

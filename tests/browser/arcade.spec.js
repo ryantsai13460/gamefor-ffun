@@ -571,6 +571,42 @@ test('Web Search isolates configured Google results in the page', async ({ page 
   expect(page.context().pages()).toHaveLength(1);
 });
 
+test('Google essay searches show an answer, videos and writing tools together', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'LanguageModel', { configurable: true, value: {
+      availability: async () => window.essayModelReady ? 'available' : 'unavailable',
+      create: async () => ({
+        prompt: async text => text.includes('how to write an essay about music') ? 'Start with a thesis about music.' : '',
+        destroy() {}
+      })
+    } });
+  });
+  await page.goto('/#web-search?mode=google');
+  const query = page.getByRole('searchbox', { name: 'Google query' });
+  const search = page.getByRole('button', { name: 'Search', exact: true });
+  await query.fill('how to wrie an essay');
+  await search.click();
+  await expect(query).toHaveValue('how to write an essay');
+  await expect(page.getByRole('heading', { name: 'Essay writing guide', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Built-in essay guide', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Google Docs', exact: true })).toHaveAttribute('href', /docs\.google\.com/);
+  await expect(page.getByRole('link', { name: 'ZoteroBib', exact: true })).toHaveAttribute('href', 'https://zbib.org/');
+  await expect(page.getByRole('link', { name: 'blip.ai', exact: true }).last()).toHaveAttribute('href', '#blip');
+
+  await page.getByRole('button', { name: /^How to Write an Essay:.*Scribbr/ }).click();
+  const video = page.getByRole('dialog', { name: /^How to Write an Essay:.*Scribbr/ });
+  await expect(video.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/UuOWNNvupik/);
+  await video.getByRole('button', { name: 'Close', exact: true }).click();
+
+  await page.evaluate(() => { window.essayModelReady = true; });
+  await query.fill('how to write an essay about music');
+  await search.click();
+  await expect(page.getByRole('heading', { name: 'On-device AI answer', exact: true })).toBeVisible();
+  await expect(page.getByText('Start with a thesis about music.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Purdue OWL', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/#web-search\?mode=google$/);
+});
+
 test('searching Territorial.io from Google shows its preview, wiki and videos without leaving', async ({ page }) => {
   await page.goto('/#web-search?mode=google');
   await page.getByRole('searchbox', { name: 'Google query' }).fill('territorial.io');
@@ -631,12 +667,25 @@ test('Music videos finds official songs and opens the player inside the arcade',
   expect(page.context().pages()).toHaveLength(1);
 });
 
-test('Music opens a searchable chart with official lyrics sources', async ({ page }) => {
+test('Music replaces lyric videos with creator uploads and keeps the searchable chart', async ({ page }) => {
   await page.goto('/#music');
   const songs = page.getByRole('list', { name: 'Chart songs' });
   await expect(page.getByText('Showing 25 of 550 chart songs')).toBeVisible();
   await page.getByRole('button', { name: 'Watch lyrics', exact: true }).click();
-  await expect(page.getByText(/Showing 25 of 42/)).toBeVisible();
+  await expect(page.getByText('Showing 25 of 69 lyric videos')).toBeVisible();
+  const lyricVideos = page.getByRole('list', { name: 'Lyric videos' });
+  await expect(lyricVideos.locator('img')).toHaveCount(0);
+  await page.getByLabel('Lyric channel').selectOption('7clouds');
+  await expect(page.getByText('Showing 25 of 45 lyric videos')).toBeVisible();
+  await expect(lyricVideos.getByRole('link', { name: '7clouds', exact: true })).toHaveCount(25);
+  await lyricVideos.getByRole('button', { name: 'Play lyrics video for Housewife by Tate McRae' }).click();
+  const creatorPlayer = page.getByRole('dialog', { name: 'Lyrics for Housewife' });
+  await expect(creatorPlayer.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/hlLvIWeZc2w/);
+  await expect(creatorPlayer.getByRole('link', { name: 'Watch on YouTube · 7clouds' })).toBeVisible();
+  await creatorPlayer.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByLabel('Lyric channel').selectOption('Unique Vibes');
+  await expect(lyricVideos.getByRole('link', { name: '7clouds', exact: true })).toHaveCount(0);
+  await expect(lyricVideos.getByRole('link', { name: 'Unique Vibes', exact: true }).first()).toBeVisible();
   await expect(page.getByRole('link', { name: /^Find lyric videos for / })).toHaveCount(0);
   await page.getByRole('button', { name: 'All chart songs', exact: true }).click();
   await expect(songs.getByRole('listitem')).toHaveCount(25);
@@ -649,20 +698,20 @@ test('Music opens a searchable chart with official lyrics sources', async ({ pag
   await search.fill('house wifre');
   await songs.getByRole('button', { name: 'Play lyrics video for Housewife by Tate McRae' }).click();
   const housewife = page.getByRole('dialog', { name: 'Lyrics for Housewife' });
-  await expect(housewife.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/yi24DPRG0Sg/);
-  await expect(housewife.getByRole('link', { name: 'Official lyric video on Apple Music' }))
-    .toHaveAttribute('href', /music\.apple\.com\/us\/music-video\/housewife-official-lyric-video\//);
+  await expect(housewife.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/hlLvIWeZc2w/);
+  await expect(housewife.getByRole('link', { name: 'Lyrics on Apple Music' }))
+    .toHaveAttribute('href', /music\.apple\.com\/us\/album\/housewife\//);
   await housewife.getByRole('button', { name: 'Close', exact: true }).click();
 
   await search.fill('drcula');
   await songs.getByRole('button', { name: 'Lyrics for Dracula by Tame Impala & JENNIE' }).click();
   const dracula = page.getByRole('dialog', { name: 'Lyrics for Dracula' });
-  await dracula.getByRole('button', { name: 'Play official lyric video here' }).click();
-  await expect(dracula.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/0UPDBODtxzw/);
+  await dracula.getByRole('button', { name: 'Play lyric video here' }).click();
+  await expect(dracula.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/UvhkjVBBKiU/);
   await dracula.getByRole('button', { name: 'Close', exact: true }).click();
-  await page.getByRole('checkbox', { name: 'Official lyric videos only' }).check();
+  await page.getByRole('checkbox', { name: 'Lyric videos only' }).check();
   await expect(songs.getByRole('button', { name: 'Play lyrics video for Dracula by Tame Impala & JENNIE' })).toBeVisible();
-  await page.getByRole('checkbox', { name: 'Official lyric videos only' }).uncheck();
+  await page.getByRole('checkbox', { name: 'Lyric videos only' }).uncheck();
   await search.fill('Benson Boone');
   await expect(page.getByRole('link', { name: 'Music videos' })).toHaveAttribute('href', '#music?view=videos&q=Benson+Boone');
 
