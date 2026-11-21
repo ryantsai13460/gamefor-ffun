@@ -575,17 +575,16 @@ test('searching Territorial.io from Google shows its preview, wiki and videos wi
   expect(page.context().pages()).toHaveLength(1);
 });
 
-test('Music searches familiar titles and plays an on-site audio file', async ({ page }) => {
-  await page.goto('/#music?q=twinkle');
+test('Music finds official songs and opens the player inside the arcade', async ({ page }) => {
+  await page.goto('/#music?q=hall+of+fame');
   const search = page.getByRole('searchbox', { name: 'Search music by title, artist, or style' });
-  await expect(search).toHaveValue('twinkle');
-  await page.getByRole('button', { name: 'Play Twinkle, Twinkle, Little Star', exact: true }).click();
-  const audio = page.locator('audio[aria-label="Track playback"]');
-  await expect.poll(() => audio.evaluate(element => element.currentTime)).toBeGreaterThan(0);
-  expect(new URL(await audio.evaluate(element => element.currentSrc)).origin).toBe(origin);
-  await search.fill('Fur Elise');
-  await expect(page.getByRole('button', { name: 'Play Für Elise', exact: true })).toBeVisible();
-  await expect(page).toHaveURL(/#music\?q=twinkle$/);
+  await expect(search).toHaveValue('hall of fame');
+  await page.getByRole('button', { name: 'Play Hall of Fame', exact: true }).click();
+  const player = page.getByRole('dialog', { name: 'Hall of Fame' });
+  await expect(player.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/mk48xRzuNvA/);
+  await player.getByRole('button', { name: 'Close', exact: true }).click();
+  await search.fill('Benson Boone');
+  await expect(page.getByRole('button', { name: 'Play Beautiful Things', exact: true })).toBeVisible();
   expect(page.context().pages()).toHaveLength(1);
 });
 

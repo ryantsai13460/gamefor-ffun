@@ -22,7 +22,7 @@ The cinema library has 17 Blender Open Movies, 19 animated shorts, and 12 studio
 
 ## Music library
 
-The Music section hosts 35 instrumental recordings made for the arcade. It includes 29 new arrangements of historical melodies and six original pieces. The catalog keeps the composition source and credit for each arrangement. Playback uses local MP3 files, and title, artist, style, and collection search run in the browser. [Music catalog](../assets/music-catalog.js)
+Music uses official artist and label uploads through YouTube’s embedded player. Chart picks come from the Billboard Hot 100 for the week of November 21, 2026. [Billboard Hot 100](https://ca.billboard.com/charts/hot-100/2026-11-21)
 
 ## Creator library and search service
 
