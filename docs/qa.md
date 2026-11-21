@@ -1,5 +1,25 @@
 # Arcade release verification
 
+## Modes, in-page play, and learning collections
+
+| Area | Verification |
+| --- | --- |
+| Home modes | Arcade, School, Gaming, Watching, and Library remember the selected view after reload. The School topic form, Gaming’s filtered search, Watching’s recently added media, and Library’s saved games lead to the corresponding routes. Keyboard switching retains focus. |
+| Colors and resizing | The ten palette previews update the site immediately. The four new game backdrop presets save independently. Retested all modes and Settings on a 320-pixel display with text enlarged to 200%. |
+| Game destinations | Inspected the rendered details for all 563 catalog IDs and 83 aliases. All 561 earlier records were preserved. Started 25 local games and opened both documented Fancade players with fixtures. The other 536 titles offer in-page alternatives. |
+| Proxy Gemini and Google | Coolmath, Miniplay, Poki, and recognized game URLs lead to arcade options. Tested that opening the Coolmath choice makes zero portal requests. Configured Google results retained their sandbox, routed a known game to its catalog card, and opened an ordinary article in the viewer. |
+| Learning games | Completed Fraction Kitchen’s four orders and Clock Courier’s five stops in the game logic. Chromium checks covered keyboard controls and direct touch play on slices, clock numbers, and the minute ring. |
+| Web Search, AI Mode, and Blip | Curated references work with the external lookup unavailable. Draft in AI Mode keeps the search and in-progress answer in the same tab and waits for the user to submit. Tested partial comparisons, exact math, study and programming guides, and fallback from a simulated gateway outage. |
+| Movies and YouTube | The library gained 29 complete films and 131 verified YouTube entries, including 57 Shorts. Checked publisher metadata and representative complete-film manifests. Browser playback checks used provider fixtures. |
+
+All 38 Node unit tests, 21 gateway tests, 94 Chromium tests, and 36 focused WebKit tests passed. All 34 focused Firefox cases passed across the initial suite and a targeted timeout rerun. The Chromium layout case also passed in isolation after timing out under concurrent load.
+
+The final package passed 900 combinations of mode, palette, and width from 320 to 1920 pixels across Chromium, Firefox, and WebKit. One parallel Firefox pass timed out in School search. All 300 Firefox cases passed on the isolated repeat. The package opened 25 destinations under `/gamefor-ffun/` at four widths without overflow or first-party errors. An automated accessibility scan reported zero violations across 184 states. Session-only mode switching, colors, and game launch also worked when browser storage was denied.
+
+The final package completed 70 navigation rounds over about 35 minutes across the three browsers, with 14 rounds for each mode and zero first-party errors. Ten additional Firefox checks of School search, Back, reload, and enlarged text passed.
+
+The real pinned CPU model answered a question carried from School search into AI Mode. It produced the relevant answer after about 62 seconds on the successful run. An earlier attempt timed out during concurrent browser testing. Hosted AI and third-party playback were verified with fixtures. The Sites preview relay did not start, so browser checks ran against the repository and exported static package.
+
 ## Home, game colors, and search refresh
 
 | Area | Verification |

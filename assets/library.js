@@ -1,4 +1,5 @@
 import { arcadeEmbed } from './embedded-content.js';
+import { arcadeModes } from './arcade-modes.js';
 
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 
@@ -8,7 +9,11 @@ export const themeOptions = [
   ['ocean', 'Ocean'],
   ['pine', 'Pine'],
   ['violet', 'Violet'],
-  ['ember', 'Ember']
+  ['ember', 'Ember'],
+  ['lagoon', 'Lagoon'],
+  ['berry', 'Berry'],
+  ['cobalt', 'Cobalt'],
+  ['dune', 'Dune']
 ];
 
 export function normalize(value) {
@@ -85,6 +90,7 @@ export function restorePreferences(saved, byId) {
     compact: saved?.compact === true,
     artwork: saved?.artwork !== false,
     theme: themeOptions.some(([id]) => id === saved?.theme) ? saved.theme : 'midnight',
+    mode: arcadeModes.some(({ id }) => id === saved?.mode) ? saved.mode : 'arcade',
     hiddenHome: Array.isArray(saved?.hiddenHome) ? [...new Set(saved.hiddenHome
       .filter(id => ['destinations', 'featured', 'recent', 'popular', 'new', 'built-in', 'media'].includes(id)))] : [],
     launches

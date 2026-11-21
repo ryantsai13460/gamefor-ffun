@@ -1,6 +1,7 @@
 const assetVersion = new URL(import.meta.url).search;
 const [{
   assistantReferences,
+  builtInReferenceAnswer,
   builtInSearchGuide,
   generateSearchAnswer,
   localAssistantAnswer,
@@ -9,9 +10,9 @@ const [{
   searchAnswerPrompt,
   searchModelAvailability,
 }, { cpuBlipAvailability, cpuBlipReady, prepareCpuBlipModel, releaseCpuBlipModel, runCpuBlipPrompt }, { formatBlipReply },
-{ gatewayConnected, hostedBlipReply, renderGatewaySettings }] = await Promise.all([
+{ gatewayConnected, hostedBlipReply, renderGatewaySettings }, { comparisonTopics }] = await Promise.all([
   import(`./search-answer.js${assetVersion}`), import(`./blip-cpu.js${assetVersion}`),
-  import(`./blip-format.js${assetVersion}`), import(`./service-gateway.js${assetVersion}`)
+  import(`./blip-format.js${assetVersion}`), import(`./service-gateway.js${assetVersion}`), import(`./search-references.js${assetVersion}`)
 ]);
 
 export { releaseCpuBlipModel };
@@ -21,6 +22,7 @@ const examples = [
   ['Plan a task', 'Make a 20-minute study plan for a history quiz.'],
   ['Calculate', 'Calculate (24 × 3) + 18'],
   ['Convert units', 'Convert 5 miles to km'],
+  ['Compare topics', 'What is the difference between HTML and CSS?'],
 ];
 let panelCount = 0;
 
@@ -49,7 +51,7 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
   const panelId = ++panelCount;
   const root = element('section', 'assistant-panel');
   const title = element('h2', 'assistant-title', 'AI Help');
-  const description = element('p', 'muted assistant-intro', 'Ask for an explanation, writing help, or a plan. Calculations and unit conversions work locally.');
+  const description = element('p', 'muted assistant-intro', 'Ask for an explanation, a comparison, or a plan. Calculations and unit conversions work locally.');
   const form = element('form', 'assistant-form');
   form.id = `assistant-form-${panelId}`;
   form.setAttribute('role', 'search');
@@ -77,6 +79,16 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
   const contextTopic = element('strong');
   const newQuestion = button('button', 'Start a new question');
   contextNote.append(contextTopic, newQuestion);
+
+  const handoff = element('div', 'assistant-context');
+  handoff.hidden = true;
+  const handedQuestion = element('strong');
+  handedQuestion.tabIndex = -1;
+  const handoffActions = element('div', 'assistant-actions');
+  const useHandoff = button('button', 'Use Web Search query');
+  const dismissHandoff = button('button', 'Dismiss Web Search query');
+  handoffActions.append(useHandoff, dismissHandoff);
+  handoff.append(handedQuestion, handoffActions);
 
   const suggestions = element('div', 'assistant-examples');
   suggestions.setAttribute('role', 'group');
@@ -166,6 +178,8 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
   let followingUp = false;
   let modelReady = false;
   let cpuSetup;
+  let submittedPrompt = '';
+  let offeredQuery = '';
 
   function syncConnected() {
     const ready = gatewayConnected();
@@ -316,10 +330,49 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
     submit.textContent = enabled ? 'Send follow-up' : 'Ask AI';
   }
 
+  function syncHandoff() {
+    handoff.hidden = !offeredQuery;
+    useHandoff.disabled = Boolean(pending);
+    handedQuestion.textContent = offeredQuery
+      ? `${pending ? 'Waiting for the current answer. ' : ''}Web Search query: ${offeredQuery}` : '';
+  }
+
+  function fillQuestion(query, focus) {
+    offeredQuery = '';
+    syncHandoff();
+    setFollowUp(false);
+    input.value = query;
+    if (focus) input.focus();
+  }
+
+  function prefillQuestion(value, { focus = true } = {}) {
+    if (lifetime.signal.aborted || typeof value !== 'string') return;
+    const query = value.trim().slice(0, input.maxLength);
+    if (!query) return;
+    const draft = input.value.trim();
+    if (pending || (draft && draft !== submittedPrompt && draft !== query)) {
+      offeredQuery = query;
+      syncHandoff();
+      if (focus) (pending ? handedQuestion : useHandoff).focus();
+      return;
+    }
+    fillQuestion(query, focus);
+  }
+
+  useHandoff.addEventListener('click', () => {
+    if (offeredQuery && !pending) fillQuestion(offeredQuery, true);
+  });
+  dismissHandoff.addEventListener('click', () => {
+    offeredQuery = '';
+    syncHandoff();
+    input.focus({ preventScroll: true });
+  });
+
   function startQuestion(enabled) {
     pending?.abort();
     pending = undefined;
     stop.hidden = true;
+    syncHandoff();
     drawAnswer(lastAnswer);
     status.textContent = '';
     setFollowUp(enabled);
@@ -340,6 +393,7 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
     pending?.abort();
     pending = undefined;
     stop.hidden = true;
+    syncHandoff();
     drawAnswer(lastAnswer);
     status.textContent = 'Answer stopped.';
     input.focus();
@@ -355,6 +409,7 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
     pending?.abort();
     pending = undefined;
     stop.hidden = true;
+    syncHandoff();
     drawAnswer(lastAnswer);
     const online = event.submitter === hostedSubmit;
     const withResearch = online && research.checked;
@@ -363,6 +418,7 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
     if (!context) onQuery?.(question);
     const computed = !context && localAssistantAnswer(question);
     if (computed) {
+      submittedPrompt = question;
       showAnswer({ label: computed.title, text: computed.text, question });
       return;
     }
@@ -378,9 +434,11 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
 
     const request = new window.AbortController();
     pending = request;
+    submittedPrompt = question;
+    syncHandoff();
     const { signal } = request;
     const withTimeout = duration => window.AbortSignal.any([signal, window.AbortSignal.timeout(duration)]);
-    const guide = !context && builtInSearchGuide(question);
+    const guide = !context && (builtInSearchGuide(question) || builtInReferenceAnswer(question));
     const shouldLookUp = !online && !context && !guide && useWikipedia.checked && question.length <= 200;
     stop.hidden = false;
     announcement.textContent = '';
@@ -418,7 +476,8 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
         }
       }
 
-      const sources = context?.sources || (shouldLookUp ? await assistantReferences(question, withTimeout(5000)).catch(() => []) : []);
+      const sources = context?.sources || guide?.sources ||
+        (shouldLookUp ? await assistantReferences(question, withTimeout(5000)).catch(() => []) : []);
       if (signal.aborted) return;
       let label = 'On-device AI answer';
       let answer = await generateSearchAnswer(question, sources, videos, withTimeout(30000), context,
@@ -447,7 +506,12 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
         showAnswer({ ...guide, question, topic, videos, formatted: true },
           connectedFailure ? 'The connected model could not finish. A built-in guide is available.' : '');
       } else if (sources.length) {
-        showAnswer({ label: 'Wikipedia excerpt', text: sources[0].text, sources, videos, question, topic: sources[0].title, canContinue: true });
+        const single = sources.length === 1;
+        const isComparison = comparisonTopics(question).length > 0;
+        const text = single ? sources[0].text : sources.map(source => `${source.title}\n${source.text}`).join('\n\n');
+        showAnswer({ label: single ? 'Wikipedia excerpt' : 'Wikipedia excerpts', text, sources, videos, question,
+          topic: single && !isComparison ? sources[0].title : topic, canContinue: true },
+        single && isComparison ? 'One source excerpt is available for this comparison.' : '');
       } else {
         const message = connectedFailure || (shouldLookUp
           ? 'A ready local model and a related Wikipedia excerpt are unavailable for this question.'
@@ -463,6 +527,7 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
       if (pending === request) {
         pending = undefined;
         stop.hidden = true;
+        syncHandoff();
       }
     }
   });
@@ -476,7 +541,7 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
     }
   });
 
-  root.append(title, description, contextNote, form, suggestions, details, connected, status, announcement, result);
+  root.append(title, description, contextNote, handoff, form, suggestions, details, connected, status, announcement, result);
   target.append(root);
   searchModelAvailability().catch(() => 'unavailable').then(availability => {
     if (!lifetime.signal.aborted) showModelStatus(availability);
@@ -485,9 +550,12 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
     if (!lifetime.signal.aborted) showCpuStatus(availability);
   });
 
-  return () => {
-    lifetime.abort();
-    pending?.abort();
-    root.remove();
+  return {
+    prefillQuestion,
+    dispose() {
+      lifetime.abort();
+      pending?.abort();
+      root.remove();
+    }
   };
 }

@@ -1,3 +1,8 @@
+const release = new URL(import.meta.url).search;
+const { comparisonTopics, findSearchReferences, builtInReferenceAnswer } = await import(`./search-references.js${release}`);
+
+export { findSearchReferences, builtInReferenceAnswer };
+
 export async function searchWikipedia(query, signal, limit = 5) {
   const url = new URL('https://en.wikipedia.org/w/api.php');
   url.search = new URLSearchParams({
@@ -20,12 +25,13 @@ export async function searchWikipedia(query, signal, limit = 5) {
   const { query: result } = await response.json();
   if (!Array.isArray(result?.pages)) return [];
   return result.pages
-    .filter(page => Number.isSafeInteger(page?.pageid) && typeof page.title === 'string' && typeof page.extract === 'string' && page.extract.trim())
+    .filter(page => Number.isSafeInteger(page?.pageid) && page.pageid > 0 && typeof page.title === 'string' && page.title.trim()
+      && typeof page.extract === 'string' && page.extract.trim())
     .sort((first, second) => (first.index ?? 0) - (second.index ?? 0))
     .slice(0, limit)
     .map(page => ({
-      title: page.title,
-      text: page.extract.trim(),
+      title: page.title.trim().slice(0, 180),
+      text: page.extract.trim().slice(0, 720),
       url: `https://en.wikipedia.org/?curid=${page.pageid}`
     }));
 }
@@ -34,20 +40,33 @@ const topicWords = text => text.toLowerCase().normalize('NFKD').replace(/\p{Mark
   .match(/[\p{L}\p{N}]+/gu) || [];
 const queryWords = new Set('a an about and are can could did do does explain how in is me of on please tell the to was were what when where who why will would'.split(' '));
 
-export async function assistantReferences(question, signal) {
-  const topic = question.trim().replace(/[.!?]+$/u, '')
+function wikipediaTopic(question) {
+  return question.trim().replace(/[.!?]+$/u, '')
     .replace(/^(?:please\s+)?(?:tell me about|explain|describe|define|what (?:is|are|was|were)|who (?:is|was|were)|how (?:do|does|did))\s+(?:(?:a|an|the)\s+)?/i, '')
     .replace(/\s+(?:form|formed|happen|happened|work|works)$/i, '');
+}
+
+async function relevantWikipedia(topic, signal) {
   const terms = [...new Set(topicWords(topic).filter(word => !queryWords.has(word)))];
   if (!terms.length) return [];
   const articles = await searchWikipedia(topic, signal, 4);
   const ranked = articles.map(article => {
     const title = topicWords(article.title);
     const matches = terms.filter(term => title.includes(term)).length;
-    return { article, score: (title.join(' ') === terms.join(' ') ? 20 : 0) + matches };
+    const qualified = matches === terms.length;
+    return { article, score: (title.join(' ') === terms.join(' ') ? 20 : 0) + (qualified ? 4 : 0) + matches, matches };
   });
-  return ranked.filter(({ score }) => score > 0).sort((a, b) => b.score - a.score)
+  return ranked.filter(({ matches }) => matches > 0).sort((a, b) => b.score - a.score)
     .slice(0, 3).map(({ article }) => article);
+}
+
+export async function assistantReferences(question, signal) {
+  const pair = comparisonTopics(question);
+  if (!pair.length) return relevantWikipedia(wikipediaTopic(question), signal);
+  const results = await Promise.allSettled(pair.map(topic => relevantWikipedia(wikipediaTopic(topic), signal)));
+  signal?.throwIfAborted();
+  const leading = results.flatMap(result => result.status === 'fulfilled' ? result.value.slice(0, 1) : []);
+  return [...new Map(leading.map(article => [article.url, article])).values()];
 }
 
 export async function searchModelAvailability() {
@@ -167,6 +186,9 @@ for (const [category, symbol, scale, names] of [
 const decimal = '[+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+)';
 const convertPattern = new RegExp(`^(?:(?:please\\s+)?convert\\s+)?(${decimal})\\s*([a-z°]+)\\s+(?:to|in|into)\\s+([a-z°]+)$`, 'i');
 const percentagePattern = new RegExp(`^(${decimal})\\s*%\\s+of\\s+(${decimal})$`, 'i');
+const numericListPattern = new RegExp(`^${decimal}(?:(?:\\s*,\\s*(?:and\\s+)?|\\s+and\\s+|\\s+)${decimal})*$`, 'i');
+const percentOfPattern = new RegExp(`^what\\s+percent(?:age)?\\s+is\\s+(${decimal})\\s+(?:out of|of)\\s+(${decimal})$`, 'i');
+const percentChangePattern = new RegExp(`^percent(?:age)?\\s+(?:change|increase|decrease)\\s+from\\s+(${decimal})\\s+to\\s+(${decimal})$`, 'i');
 
 function quantity(value) {
   return new Intl.NumberFormat('en-US', {
@@ -181,6 +203,58 @@ function convertValue(value, from, to) {
   if (celsius < -273.15) return NaN;
   if (to.symbol === '°F') return celsius * 9 / 5 + 32;
   return to.symbol === 'K' ? celsius + 273.15 : celsius;
+}
+
+function statisticsText(kind, list) {
+  if (list.length > 1000 || !numericListPattern.test(list)) return '';
+  const values = list.match(new RegExp(decimal, 'g')).map(Number);
+  if (values.some(value => !Number.isFinite(value))) return 'Those values are outside the range of the calculator.';
+  if (kind !== 'median') {
+    const sum = values.reduce((total, value) => total + value, 0);
+    if (!Number.isFinite(sum)) return 'Those values are outside the range of the calculator.';
+    return `Mean: ${quantity(sum / values.length)}\n\nAdd the ${values.length} ${values.length === 1 ? 'value' : 'values'} to get ${quantity(sum)}, then divide by ${values.length}.`;
+  }
+  values.sort((a, b) => a - b);
+  const middle = Math.floor(values.length / 2);
+  if (values.length % 2) return `Median: ${quantity(values[middle])}\n\nSort the values from smallest to largest. The value in position ${middle + 1} is in the middle.`;
+  const first = values[middle - 1];
+  const second = values[middle];
+  return `Median: ${quantity(first / 2 + second / 2)}\n\nThe two middle values after sorting are ${quantity(first)} and ${quantity(second)}. Take their mean.`;
+}
+
+function simplifyFraction(numerator, denominator) {
+  if (![numerator, denominator].every(Number.isSafeInteger)) return 'Those values are outside the range of the calculator.';
+  if (denominator === 0) return 'A fraction cannot have a zero denominator.';
+  let divisor = Math.abs(denominator);
+  let remainder = Math.abs(numerator);
+  while (remainder) [divisor, remainder] = [remainder, divisor % remainder];
+  const top = numerator / divisor * Math.sign(denominator);
+  const bottom = Math.abs(denominator) / divisor;
+  return `${top}${bottom === 1 ? '' : `/${bottom}`}\n\nDivide the numerator and denominator by their greatest common divisor, ${divisor}.${denominator < 0 ? ' Move the negative sign to the numerator.' : ''}`;
+}
+
+function appliedCalculation(question) {
+  const addressed = question.replace(/^(?:please\s+)?(?:(?:find|calculate|compute)\s+(?:the\s+)?)?/i, '').replace(/[.!]+$/, '');
+  const statistics = addressed.match(/^(?:what\s+is\s+(?:the\s+)?)?(mean|average|median)\s+of\s+(.+)$/i);
+  if (statistics) return statisticsText(statistics[1].toLowerCase(), statistics[2]);
+
+  const fraction = addressed.match(/^simplify\s+(?:the\s+fraction\s+)?([+-]?\d+)\s*\/\s*([+-]?\d+)$/i);
+  if (fraction) return simplifyFraction(Number(fraction[1]), Number(fraction[2]));
+
+  const part = addressed.match(percentOfPattern);
+  const change = addressed.replace(/^what\s+(?:is|was)\s+(?:the\s+)?/i, '').match(percentChangePattern);
+  const numbers = part || change;
+  if (!numbers) return '';
+  const first = Number(numbers[1]);
+  const second = Number(numbers[2]);
+  if (![first, second].every(Number.isFinite)) return 'Those values are outside the range of the calculator.';
+  const baseline = part ? second : first;
+  if (!baseline) return part ? 'A percent of a total of zero is undefined.' : 'Percent change from zero is undefined.';
+  const percent = (part ? first / second : (second - first) / Math.abs(first)) * 100;
+  if (!Number.isFinite(percent)) return 'Those values are outside the range of the calculator.';
+  if (part) return `${quantity(percent)}%\n\nDivide ${quantity(first)} by ${quantity(second)}, then multiply by 100.`;
+  const direction = percent < 0 ? 'decrease' : percent > 0 ? 'increase' : 'change';
+  return `${quantity(Math.abs(percent))}% ${direction}\n\nSubtract ${quantity(first)} from ${quantity(second)}. Divide by the starting value’s magnitude, ${quantity(Math.abs(first))}, then multiply by 100.`;
 }
 
 function calculate(tokens) {
@@ -238,6 +312,8 @@ function calculate(tokens) {
 
 export function localAssistantAnswer(input) {
   const question = input.trim().replace(/[?=]\s*$/, '').trim();
+  const applied = appliedCalculation(question);
+  if (applied) return { title: 'Calculator', text: applied };
   const conversion = question.match(convertPattern);
   if (conversion) {
     const [, original, fromName, toName] = conversion;

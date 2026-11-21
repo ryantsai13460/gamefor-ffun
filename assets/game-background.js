@@ -11,6 +11,10 @@ export const gameBackgroundOptions = [
   ['pine', 'Pine green'],
   ['orchid', 'Orchid purple'],
   ['amber', 'Amber'],
+  ['lagoon', 'Lagoon teal'],
+  ['berry', 'Berry pink'],
+  ['cobalt', 'Cobalt blue'],
+  ['dune', 'Dune gold'],
   ['color', 'Custom color'],
   ['custom', 'My image']
 ];

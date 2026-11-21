@@ -11,6 +11,148 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+test('Draft in AI Mode carries a Web Search query in the same tab and preserves an edited question', async ({ page }) => {
+  const firstQuery = 'Compare HTML and CSS';
+  const secondQuery = 'Why is the sky blue?';
+  await page.goto('/#web-search');
+  const web = page.getByRole('combobox', { name: 'Search the web' });
+  await web.fill(firstQuery);
+  await web.press('Enter');
+  const categories = page.getByRole('group', { name: 'Result category' });
+  const wiki = categories.getByRole('button', { name: 'Wiki', exact: true });
+  await wiki.click();
+  const tabs = page.getByRole('tablist', { name: 'Web Search tabs' });
+  await page.getByRole('button', { name: 'Draft in AI Mode', exact: true }).click();
+  await expect(prompt(page)).toHaveValue(firstQuery);
+  await expect(prompt(page)).toBeFocused();
+  await expect(page.locator('.assistant-result')).toBeHidden();
+  await expect(page).toHaveURL(/\/#web-search$/);
+  await expect(tabs.getByRole('tab', { selected: true })).toHaveText(firstQuery);
+  await prompt(page).press('Enter');
+  await expect(panel(page).getByRole('heading', { name: 'Reference comparison' })).toBeVisible();
+  await prompt(page).fill('My unsent question about the comparison');
+
+  await page.getByRole('button', { name: 'Web & YouTube', exact: true }).click();
+  await expect(web).toHaveValue(firstQuery);
+  await expect(wiki).toHaveAttribute('aria-pressed', 'true');
+  await web.fill(secondQuery);
+  await web.press('Enter');
+  await page.getByRole('button', { name: 'Draft in AI Mode', exact: true }).click();
+  await expect(prompt(page)).toHaveValue('My unsent question about the comparison');
+  await expect(panel(page).getByText('Web Search query: ' + secondQuery)).toBeVisible();
+  await panel(page).getByRole('button', { name: 'Use Web Search query', exact: true }).click();
+  await expect(prompt(page)).toHaveValue(secondQuery);
+  await expect(panel(page).getByRole('heading', { name: 'Reference comparison' })).toBeVisible();
+  await expect(panel(page).getByRole('heading', { name: 'Reference explanation' })).toHaveCount(0);
+  expect(page.context().pages()).toHaveLength(1);
+});
+
+test('an AI Mode handoff waits for a running answer and leaves it visible after loading the new draft', async ({ page }) => {
+  await page.goto('/#web-search');
+  await page.getByRole('combobox', { name: 'Search the web' }).waitFor();
+  await page.evaluate(() => {
+    Object.defineProperty(globalThis, 'LanguageModel', {
+      configurable: true,
+      value: {
+        availability: async () => 'available',
+        create: async () => ({
+          prompt: async () => new Promise(resolve => { window.completeAiSearch = resolve; }),
+          destroy() {}
+        })
+      }
+    });
+  });
+  await page.getByRole('button', { name: 'AI Mode', exact: true }).click();
+  await prompt(page).fill('Explain how orbital motion works');
+  await prompt(page).press('Enter');
+  await expect.poll(() => page.evaluate(() => typeof window.completeAiSearch)).toBe('function');
+
+  await page.getByRole('button', { name: 'Web & YouTube', exact: true }).click();
+  const web = page.getByRole('combobox', { name: 'Search the web' });
+  await web.fill('What causes the seasons?');
+  await web.press('Enter');
+  await page.getByRole('button', { name: 'Draft in AI Mode', exact: true }).click();
+  const offered = panel(page).getByRole('button', { name: 'Use Web Search query', exact: true });
+  await expect(offered).toBeDisabled();
+  await expect(prompt(page)).toHaveValue('Explain how orbital motion works');
+  await expect(panel(page).getByRole('button', { name: 'Stop answering', exact: true })).toBeVisible();
+  await page.evaluate(() => window.completeAiSearch('The text from the original answer.'));
+  await expect(offered).toBeEnabled();
+  await expect(panel(page).getByText('The text from the original answer.')).toBeVisible();
+  await offered.click();
+  await expect(prompt(page)).toHaveValue('What causes the seasons?');
+  await expect(panel(page).getByText('The text from the original answer.')).toBeVisible();
+  await expect(panel(page).getByRole('button', { name: 'Stop answering', exact: true })).toBeHidden();
+});
+
+test('an AI Mode link opens an editable question without submitting it', async ({ page }) => {
+  let wikipediaRequests = 0;
+  await page.route(url => url.hostname === 'en.wikipedia.org', route => {
+    wikipediaRequests++;
+    return route.abort();
+  });
+  await page.goto('/#web-search?mode=ai&q=Explain+orbital+motion');
+  await expect(page.getByRole('button', { name: 'AI Mode', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(prompt(page)).toHaveValue('Explain orbital motion');
+  await expect(page.locator('.assistant-result')).toBeHidden();
+  expect(wikipediaRequests).toBe(0);
+});
+
+test('AI Mode explains reference topics and calculates without a model or external lookup', async ({ page }) => {
+  let lookups = 0;
+  await page.route(url => url.hostname === 'en.wikipedia.org', route => {
+    lookups++;
+    return route.abort();
+  });
+  await page.goto('/#web-search?mode=ai');
+  await panel(page).getByRole('button', { name: 'Compare topics' }).click();
+  await prompt(page).press('Enter');
+  await expect(panel(page).getByRole('heading', { name: 'Reference comparison' })).toBeVisible();
+  await expect(panel(page).getByRole('heading', { name: 'HTML', exact: true })).toBeVisible();
+  await expect(panel(page).getByRole('heading', { name: 'CSS', exact: true })).toBeVisible();
+  await expect(panel(page).getByRole('link', { name: 'What is CSS?', exact: true })).toHaveAttribute('href', /^https:\/\/developer\.mozilla\.org\//);
+  await prompt(page).fill('Why is the sky blue?');
+  await prompt(page).press('Enter');
+  await expect(panel(page).getByRole('heading', { name: 'Reference explanation' })).toBeVisible();
+  await expect(panel(page).getByText(/shorter blue wavelengths/)).toBeVisible();
+  await expect(panel(page).getByRole('link', { name: 'Why Is the Sky Blue?', exact: true })).toHaveAttribute('href', 'https://spaceplace.nasa.gov/blue-sky/en/');
+  await prompt(page).fill('Find the average of 12, 15, and 18');
+  await prompt(page).press('Enter');
+  await expect(panel(page).getByRole('heading', { name: 'Calculator' })).toBeVisible();
+  await expect(page.locator('.assistant-result-text')).toContainText('Mean: 15');
+  await expect(page.locator('.assistant-result-text')).toContainText('divide by 3');
+  expect(lookups).toBe(0);
+});
+
+test('AI Mode looks up the two sides of a comparison and keeps the source excerpts distinct', async ({ page }) => {
+  const queries = [];
+  let partial = false;
+  await page.route(url => url.hostname === 'en.wikipedia.org', route => {
+    const query = new URL(route.request().url()).searchParams.get('gsrsearch');
+    queries.push(query);
+    if (partial && query === 'Venus') return route.abort();
+    const pageData = query === 'Mercury' ? { pageid: 47, index: 1, title: 'Mercury', extract: 'Mercury is the first planet from the Sun.' }
+      : { pageid: 48, index: 1, title: 'Venus', extract: 'Venus is the second planet from the Sun.' };
+    return route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: { query: { pages: [pageData] } } });
+  });
+  await page.goto('/#web-search?mode=ai');
+  await prompt(page).fill('Compare Mercury and Venus');
+  await prompt(page).press('Enter');
+  await expect(panel(page).getByRole('heading', { name: 'Wikipedia excerpts' })).toBeVisible();
+  await expect(page.locator('.assistant-result-text')).toContainText('Mercury is the first planet');
+  await expect(page.locator('.assistant-result-text')).toContainText('Venus is the second planet');
+  await expect(panel(page).getByRole('link', { name: 'Mercury', exact: true })).toHaveAttribute('href', 'https://en.wikipedia.org/?curid=47');
+  await expect(panel(page).getByRole('link', { name: 'Venus', exact: true })).toHaveAttribute('href', 'https://en.wikipedia.org/?curid=48');
+  expect(queries.sort()).toEqual(['Mercury', 'Venus']);
+
+  partial = true;
+  await prompt(page).press('Enter');
+  await expect(panel(page).getByRole('heading', { name: 'Wikipedia excerpt', exact: true })).toBeVisible();
+  await expect(panel(page).getByText('One source excerpt is available for this comparison.')).toBeVisible();
+  await expect(panel(page).getByRole('link', { name: 'Search web and YouTube', exact: true }))
+    .toHaveAttribute('href', '#web-search?q=Compare+Mercury+and+Venus');
+});
+
 test('AI Mode builds offline plans and offers only relevant Wikipedia excerpts and related videos', async ({ page }) => {
   const queries = [];
   await page.route(url => url.hostname === 'en.wikipedia.org', route => {

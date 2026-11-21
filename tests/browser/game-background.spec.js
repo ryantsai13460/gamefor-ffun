@@ -53,12 +53,12 @@ test('the site theme and custom game color persist independently', async ({ page
   await page.goto('/#settings?panel=background');
   const theme = page.getByRole('combobox', { name: 'Theme', exact: true });
   const gameBackground = page.getByRole('combobox', { name: 'Game background' });
-  await expect(theme.getByRole('option')).toHaveCount(6);
+  await expect(theme.getByRole('option')).toHaveCount(10);
   await theme.selectOption('pine');
   await expect(page.locator('body')).toHaveAttribute('data-theme', 'pine');
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#101d19');
 
-  for (const preset of ['ocean', 'pine', 'orchid', 'amber']) {
+  for (const preset of ['ocean', 'pine', 'orchid', 'amber', 'lagoon', 'berry', 'cobalt', 'dune']) {
     await gameBackground.selectOption(preset);
     await expect(page.locator('.game-background-preview')).toHaveAttribute('data-game-background', preset);
   }

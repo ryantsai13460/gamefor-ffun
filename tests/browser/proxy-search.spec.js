@@ -21,6 +21,7 @@ test('Proxy Gemini searches the connected provider and preserves the official fa
     return route.fulfill({ headers, json: { results: [
       { title: 'HTML reference', url: 'https://example.com/reference', description: 'Publisher documentation.' },
       { title: 'Duplicate reference', url: 'https://example.com/reference', description: '' },
+      { title: 'Eggy Car on Coolmath', url: 'https://www.coolmathgames.com/0-eggy-car', description: 'Portal result.' },
       { title: 'Local address', url: 'https://127.0.0.1/private', description: '' }
     ] } });
   });
@@ -41,9 +42,15 @@ test('Proxy Gemini searches the connected provider and preserves the official fa
 
   const results = page.locator('.proxy-search-results');
   await expect(results.getByRole('heading', { name: 'HTML reference' })).toBeVisible();
-  await expect(results.getByRole('listitem')).toHaveCount(1);
+  await expect(results.getByRole('listitem')).toHaveCount(2);
   await expect(results.getByText('example.com', { exact: true })).toBeVisible();
   await expect(results.getByText('Publisher documentation.')).toBeVisible();
+  const portal = results.getByRole('listitem').filter({ hasText: 'Eggy Car on Coolmath' });
+  await expect(portal.getByRole('link')).toHaveCount(0);
+  await portal.getByRole('button', { name: 'See in-page options for Eggy Car on Coolmath' }).click();
+  await expect(page.getByRole('heading', { name: 'Eggy Car isn’t available in-page' })).toBeVisible();
+  await expect(page.locator('.proxy-frame')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   const official = results.getByRole('link', { name: 'Open HTML reference in new tab' });
   await expect(official).toHaveAttribute('href', 'https://example.com/reference');
   await expect(official).toHaveAttribute('target', '_blank');
@@ -156,6 +163,26 @@ test('Proxy Gemini keeps address errors by tab and updates the recent pages on H
   await history.getByRole('button', { name: 'Clear browsing history and closed tabs' }).click();
   await history.getByRole('button', { name: 'Close browsing history' }).click();
   await expect(page.getByRole('heading', { name: 'Recent pages' })).toHaveCount(0);
+});
+
+test('Proxy Gemini offers an in-page alternative without requesting the game portal', async ({ page }) => {
+  const arcadeUrl = new URLSearchParams({ address: 'https://www.coolmathgames.com/0-eggy-car/?fixture=1' });
+  const portalRequests = [];
+  page.on('request', request => {
+    if (new URL(request.url()).hostname.endsWith('coolmathgames.com')) portalRequests.push(request.url());
+  });
+  await page.goto(`/#browse?${arcadeUrl}`);
+  const viewer = page.locator('.proxy-viewer');
+  await expect(viewer.getByRole('heading', { name: 'Eggy Car isn’t available in-page' })).toBeVisible();
+  await expect(viewer.locator('iframe')).toHaveCount(0);
+  await expect(viewer.getByRole('link')).toHaveCount(0);
+  await viewer.getByRole('button', { name: 'Play Pocket Circuit', exact: true }).click();
+  await expect(viewerAddress(page)).toHaveValue('arcade:ffun-circuit-v1');
+  await expect(viewer.locator('.local-game')).toBeVisible();
+  await viewer.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(viewer.getByRole('heading', { name: 'Eggy Car isn’t available in-page' })).toBeVisible();
+  expect(portalRequests).toEqual([]);
+  expect(page.context().pages()).toHaveLength(1);
 });
 
 test('Proxy Gemini recovers from a blocked preview and finds in-page games on mobile', async ({ page }) => {

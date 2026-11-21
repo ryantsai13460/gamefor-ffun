@@ -1,24 +1,19 @@
-import { arcadeEmbed, browserApps, isMiniplayAddress } from "./embedded-content.js";
-import { createLibrary, queryLibrary } from "./library.js";
+import { arcadeEmbed, browserApps } from "./embedded-content.js";
+import { createGameAddressLookup, isGamePortalAddress } from "./game-play-policy.js";
+import { createLibrary, normalize, queryLibrary } from "./library.js";
 
 const assetVersion = new URL(import.meta.url).search;
 const [{ games }, { mountLocalGame }] = await Promise.all([
   import(`./catalog.js${assetVersion}`), import(`./local-games.js${assetVersion}`)
 ]);
 
-const legacyViewer = "https://proxy-arcade-play.base44.app/browse";
+const legacyViewerOrigin = "https://proxy-arcade-play.base44.app";
 const home = { kind: "home", title: "Start page", address: "" };
 const localPage = "catch-the-star.html";
 const shortcuts = [
   ["Catch the Star", localPage, "Local arcade"],
   ["Stacktris", "https://play.fancade.com/5BEC8352E4E078B1", "Game player"],
   ["Wikipedia", "https://www.wikipedia.org/", "Homepage preview"],
-];
-const gameShortcuts = [
-  ["Territorial.io", "https://territorial.io/"],
-  ["Bloxd.io", "https://bloxd.io/"],
-  ["Paper.io 2", "https://voodoo.io/paper2"],
-  ["Hexanaut.io", "https://hexanaut.io/"],
 ];
 const youtubeHosts = new Set([
   "youtube.com", "www.youtube.com", "m.youtube.com",
@@ -41,6 +36,30 @@ const gameEmbeds = new Map(
   embeddedGames.flatMap(game => [[game.url, game], [arcadeEmbed(game), game]])
 );
 const appEmbeds = new Map(browserApps.flatMap(app => [[app.embed, app], [app.url, app]]));
+const catalogGameTitles = new Map(games.map(game => [normalize(game.title), game]));
+const catalogGameAtAddress = createGameAddressLookup(games);
+const featuredAlternatives = ["ffun-circuit-v1", "ffun-skyline-v1", "2048"];
+
+function gameLaunchAddress(game) {
+  return game.local ? `arcade:${game.id}` : arcadeEmbed(game);
+}
+
+function suggestedGames(category) {
+  const sameCategory = category ? queryLibrary(inPageLibrary, { source: builtInGames, category }) : [];
+  const featured = featuredAlternatives.map(id => inPageLibrary.byId.get(id)).filter(Boolean);
+  return [...new Set([...sameCategory, ...featured, ...builtInGames])].slice(0, 3);
+}
+
+function catalogGameForQuery(query) {
+  const title = normalize(query);
+  if (catalogGameTitles.has(title)) return catalogGameTitles.get(title);
+  if (title.length < 4) return undefined;
+  return [...catalogGameTitles].find(([name]) => name.startsWith(`${title} `))?.[1];
+}
+
+function externalPreviewSource(page) {
+  return page.kind === "game" || page.kind === "local" ? "" : page.url;
+}
 
 export function youtubeVideoId(url) {
   if (!youtubeHosts.has(url.hostname)) return "";
@@ -129,12 +148,13 @@ export function resolveBrowserAddress(input, pageUrl) {
     return { ...app, kind: "app", address: url.href };
   }
 
-  if (isMiniplayAddress(url)) {
-    return { kind: "miniplay", title: "Miniplay", address: url.href, url: url.href };
+  if (url.origin === legacyViewerOrigin) {
+    return { kind: "unavailable", title: "Base44 viewer", address: url.href };
   }
 
-  if (url.origin === new URL(legacyViewer).origin && url.pathname.replace(/\/$/, "") === "/browse") {
-    return { kind: "unavailable", title: "Base44 viewer", address: url.href, url: url.href };
+  const knownGame = catalogGameAtAddress(url);
+  if (knownGame || isGamePortalAddress(url)) {
+    return { kind: "external-game", title: knownGame?.title || url.hostname, address: url.href, game: knownGame };
   }
 
   return { kind: "website", title: url.hostname, address: url.href, url: url.href, embed: url.href };
@@ -241,7 +261,7 @@ function createBrowser() {
   const shell = element("section", "proxy-viewer");
   const heading = element("div", "proxy-heading");
   const title = element("h1", "", "Proxy Gemini");
-  const description = element("p", "", "Play games, search the web, and preview sites that allow embedding.");
+  const description = element("p", "", "Play arcade games here, search the web, or preview sites that allow embedding.");
   heading.append(title, description);
 
   const windowPanel = element("div", "proxy-window");
@@ -615,14 +635,14 @@ function createBrowser() {
     section.append(heading, filter, matchCount);
 
     const groups = [
-      ["Built-in games", builtInGames, game => `arcade:${game.id}`],
-      ["Official game players", embeddedGames, arcadeEmbed]
-    ].map(([label, entries, destination]) => {
+      ["Built-in games", builtInGames],
+      ["Official in-page players", embeddedGames]
+    ].map(([label, entries]) => {
       const group = element("section", "proxy-playable-group");
       const list = element("ul", "proxy-playable-list");
       const items = entries.map(game => {
         const item = element("li");
-        const play = control(`Play ${game.title}`, game.title, () => submit(destination(game)));
+        const play = control(`Play ${game.title}`, game.title, () => submit(gameLaunchAddress(game)));
         play.className = "proxy-bookmark";
         item.append(play);
         list.append(item);
@@ -669,15 +689,7 @@ function createBrowser() {
     for (const [label, url, type] of shortcuts) {
       links.append(startShortcut(label, type, url));
     }
-    const bookmarks = element("div", "proxy-bookmarks");
-    bookmarks.setAttribute("role", "group");
-    bookmarks.setAttribute("aria-label", "Game website bookmarks");
-    for (const [label, url] of gameShortcuts) {
-      const shortcut = control(`Open ${label}`, label, () => submit(url));
-      shortcut.className = "proxy-bookmark";
-      bookmarks.append(shortcut);
-    }
-    quick.append(element("h2", "", "Quick links"), links, bookmarks);
+    quick.append(element("h2", "", "Quick links"), links);
     const apps = element("section", "proxy-playable");
     const appLinks = element("div", "proxy-shortcuts proxy-apps");
     for (const app of browserApps) {
@@ -736,33 +748,56 @@ function createBrowser() {
     return choose;
   }
 
+  function gameSuggestions(games) {
+    const section = element("section", "proxy-game-suggestions");
+    const options = element("div", "proxy-direct-actions");
+    for (const game of games) {
+      const play = control(`Play ${game.title}`, game.title, () => submit(gameLaunchAddress(game)));
+      play.className = "proxy-bookmark";
+      options.append(play);
+    }
+    section.append(element("h3", "", "Play here"), options);
+    return section;
+  }
+
   function directPage(page) {
-    const search = page.kind === "search";
     const content = element("div", "proxy-direct");
-    if (page.kind === "miniplay") {
-      const homeLink = element("a", "button", "Go to Home");
-      homeLink.href = "#home";
+    if (page.kind !== "search") {
+      const title = page.game?.title ? `${page.game.title} isn’t available in-page`
+        : page.kind === "unavailable" ? "This legacy viewer can’t open here" : "This game site isn’t available in-page";
       const actions = element("div", "proxy-direct-actions");
-      actions.append(playHereAction(), homeLink, external(page.url, "Open Miniplay in new tab", "proxy-source"));
-      content.append(element("h2", "", "Miniplay links are on Home"),
-        element("p", "", "This destination opens on the publisher’s website."), actions);
+      actions.append(playHereAction());
+      content.append(element("h2", "", title),
+        element("p", "", "Try a game you can play inside the arcade."),
+        gameSuggestions(suggestedGames(page.game?.category)), actions);
       return content;
     }
-    const title = element("h2", "", search ? `Search for “${page.title}”` : page.title);
+
+    const title = element("h2", "", `Search for “${page.title}”`);
     const actions = element("div", "proxy-direct-actions");
-    if (search) {
-      const params = new URLSearchParams({ q: page.title }).toString();
-      const webSearch = element("a", "button proxy-action", "Search web and YouTube");
-      webSearch.href = `#web-search?${params}`;
-      const arcadeSearch = element("a", "button", "Search arcade games");
-      arcadeSearch.href = `#games?${params}`;
-      actions.append(webSearch, arcadeSearch);
-    } else {
-      actions.append(playHereAction());
-    }
-    actions.append(external(page.url, search ? "Search Google in new tab" : "Open Base44 in new tab", "proxy-source"));
     content.append(title);
-    if (!search) content.append(element("p", "", "Base44 blocks embedding this viewer."));
+    const matches = queryLibrary(inPageLibrary, { search: page.title }).slice(0, 3);
+    const externalGame = !matches.length && catalogGameForQuery(page.title);
+    if (matches.length || externalGame) {
+      content.append(gameSuggestions(externalGame ? suggestedGames(externalGame.category) : matches));
+    }
+    const gameQuery = Boolean(matches.length || externalGame);
+    const webSearch = element("a", gameQuery ? "button" : "button proxy-action", "Search web and YouTube");
+    webSearch.href = `#web-search?${new URLSearchParams({ q: page.title })}`;
+    const arcadeSearch = element("a", gameQuery ? "button proxy-action" : "button",
+      externalGame ? "Browse arcade alternatives" : "Search arcade games");
+    const gameParams = new URLSearchParams({ option: "in-page" });
+    if (externalGame) {
+      if (externalGame.category && queryLibrary(inPageLibrary, { category: externalGame.category }).length) {
+        gameParams.set("category", externalGame.category);
+      }
+    } else {
+      gameParams.set("q", page.title);
+    }
+    arcadeSearch.href = `#games?${gameParams}`;
+    if (gameQuery) actions.append(arcadeSearch, webSearch);
+    else actions.append(webSearch, arcadeSearch);
+    actions.append(external(page.url, "Search Google in new tab", "proxy-source"));
     content.append(actions);
     return content;
   }
@@ -780,22 +815,33 @@ function createBrowser() {
       const destinations = new Set();
       for (const result of records) {
         const destination = resolveBrowserAddress(result.url, window.location.href);
-        if (!destination?.address.startsWith("https:") || !destination.url || destinations.has(destination.url)) continue;
-        destinations.add(destination.url);
+        if (!destination?.address.startsWith("https:")) continue;
+        const destinationUrl = destination.url || destination.address;
+        if (destinations.has(destinationUrl)) continue;
+        destinations.add(destinationUrl);
         const row = element("li");
-        row.append(element("h4", "", result.title), element("p", "proxy-search-source", new URL(destination.url).hostname));
+        row.append(element("h4", "", result.title), element("p", "proxy-search-source", new URL(destinationUrl).hostname));
         if (result.description) row.append(element("p", "", result.description));
         const actions = element("div", "proxy-result-actions");
-        if (destination.embed) {
-          const openPreview = control(`Preview ${result.title}`, "Preview here", () => submit(destination.address));
-          openPreview.className = "button";
-          actions.append(openPreview);
+        if (destination.kind === "external-game" || destination.kind === "unavailable") {
+          const play = control(`See in-page options for ${result.title}`, "See in-page options", () => submit(destination.address));
+          play.className = "button";
+          actions.append(play);
+        } else {
+          if (destination.embed) {
+            const openPreview = control(`Preview ${result.title}`, "Preview here", () => submit(destination.address));
+            openPreview.className = "button";
+            actions.append(openPreview);
+          }
+          const openTab = control(`New viewer tab for ${result.title}`, "New viewer tab", () => openResultInTab(destination));
+          openTab.className = "button";
+          actions.append(openTab);
+          if (externalPreviewSource(destination)) {
+            const official = external(destination.url, "Open in new tab", "proxy-source");
+            official.setAttribute("aria-label", `Open ${result.title} in new tab`);
+            actions.append(official);
+          }
         }
-        const openTab = control(`New viewer tab for ${result.title}`, "New viewer tab", () => openResultInTab(destination));
-        openTab.className = "button";
-        const official = external(destination.url, "Open in new tab", "proxy-source");
-        official.setAttribute("aria-label", `Open ${result.title} in new tab`);
-        actions.append(openTab, official);
         row.append(actions);
         list.append(row);
       }
@@ -901,7 +947,7 @@ function createBrowser() {
     preview.frame = frame;
     preview.message = `Opening ${page.title}…`;
     preview.busy = true;
-    preview.source = local ? "" : page.url;
+    preview.source = externalPreviewSource(page);
     stage.setAttribute("aria-busy", "true");
     const update = () => {
       if (tab === active) syncPreview();
@@ -921,7 +967,7 @@ function createBrowser() {
     const fail = (heading, message) => {
       controller.abort();
       stopPlayer();
-      preview.source = page.url;
+      preview.source = externalPreviewSource(page);
       preview.frame = null;
       stage.replaceChildren(previewRecovery(heading, message));
       finish(heading);
@@ -929,20 +975,22 @@ function createBrowser() {
     const unverified = page.kind === "game"
       ? "Official game player preview. Playback depends on the publisher and your connection."
       : "Preview unverified. If it stays blank, the site may block embedding. Hide it for other options.";
+    const retryMessage = preview.source ? "Retry the preview or open the original in a new tab."
+      : "Retry the player or choose another in-page game.";
     const timer = setTimeout(() => {
       if (frameResponded && youtube) finish("YouTube playback could not be verified. Open the video on YouTube if it does not play here.", true);
-      else fail("Preview timed out", "Try Refresh to start again, or open the original in a new tab.");
+      else fail("Preview timed out", retryMessage);
     }, 10000);
     frame.addEventListener("load", () => {
       frameResponded = true;
       if (local) {
         const ready = Boolean(frame.contentDocument?.getElementById("star"));
         if (ready) finish("The game is ready.");
-        else fail("The local game could not load", "Try Refresh, or open the game in a new tab.");
+        else fail("The local game could not load", retryMessage);
       } else if (!youtube) finish(unverified, true);
     }, listenerOptions);
     frame.addEventListener("error", () => {
-      fail("Preview unavailable", "Try Refresh, or open the original in a new tab.");
+      fail("Preview unavailable", retryMessage);
     }, listenerOptions);
     const url = new URL(page.embed || page.url);
     if (youtube) {
@@ -1009,8 +1057,10 @@ function createBrowser() {
     const tab = active;
     const page = current();
     unloadTab(tab);
-    tab.preview = { source: page.url };
-    const panel = previewRecovery("Preview hidden", "You can still open the original in a new tab.");
+    const original = externalPreviewSource(page);
+    tab.preview = { source: original };
+    const message = original ? "You can still open the original in a new tab." : "Retry the player or choose another in-page game.";
+    const panel = previewRecovery("Preview hidden", message);
     tab.panel.append(panel);
     syncPreview();
     panel.querySelector(".proxy-action").focus();
@@ -1119,10 +1169,7 @@ function createBrowser() {
   toolbar.append(navigation, form, panelActions);
   statusRow.append(status, source, dismissPreview);
   windowPanel.append(tabsRow, toolbar, addressError, statusRow, progress, panels);
-  const legacy = element("details", "proxy-legacy");
-  legacy.append(element("summary", "", "Legacy Base44 viewer"),
-    external(legacyViewer, "Open Base44 in new tab", "proxy-source"));
-  shell.append(heading, windowPanel, legacy, savedStatus);
+  shell.append(heading, windowPanel, savedStatus);
 
   return {
     shell,

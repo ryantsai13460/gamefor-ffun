@@ -470,6 +470,76 @@ test('Blip offers no-download Workers AI after opt-in and keeps attached chats l
   expect(await page.evaluate(() => localStorage.getItem('ffun.gateway.url'))).toBe('https://gateway.example');
 });
 
+test('Blip starter tasks give labeled code and math help without setting up a model', async ({ page }) => {
+  await page.route(url => url.pathname.endsWith('/search-answer.js') && !url.search, route =>
+    route.fulfill({ contentType: 'text/javascript', body: 'export {};' }));
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'LanguageModel', { configurable: true, value: undefined });
+  });
+  await page.goto('/#blip');
+  await page.getByRole('button', { name: 'Try a coding example', exact: true }).click();
+  await expect(page.getByRole('radio', { name: 'Code', exact: true })).toBeChecked();
+  const input = page.getByRole('textbox', { name: 'Message blip.ai' });
+  await expect(input).toHaveValue('Show how to filter a list of game titles in JavaScript.');
+  await input.press('Enter');
+  const conversation = page.getByRole('region', { name: 'Conversation messages' });
+  await expect(conversation.getByText('Local reply', { exact: true })).toBeVisible();
+  await expect(conversation.locator('pre code')).toContainText('games.filter(title =>');
+  await input.fill('Which is greater, 3/5 or 5/8?');
+  await input.press('Enter');
+  await expect(conversation.getByText('3/5 is less than 5/8.', { exact: true })).toBeVisible();
+  await input.fill('Help me outline an essay.');
+  await input.press('Enter');
+  await expect(conversation.getByText(/working thesis/)).toBeVisible();
+  await expect(conversation.getByText('On-device AI', { exact: true })).toHaveCount(0);
+});
+
+test('a failed connected reply can use built-in help without retrying the provider or sending a Wikipedia lookup', async ({ page }) => {
+  let hostedRequests = 0;
+  let wikipediaRequests = 0;
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'LanguageModel', { configurable: true, value: undefined });
+  });
+  await page.route('https://en.wikipedia.org/**', route => {
+    wikipediaRequests++;
+    return route.abort();
+  });
+  const headers = {
+    'access-control-allow-origin': '*',
+    'access-control-allow-headers': 'authorization, content-type',
+    'access-control-allow-methods': 'POST, OPTIONS',
+  };
+  await page.route('https://gateway.example/api/**', route => {
+    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
+    if (new URL(route.request().url()).pathname === '/api/capabilities') {
+      return route.fulfill({ headers, json: { chat: true, advanced: false, research: false, search: false, youtube: false } });
+    }
+    hostedRequests++;
+    return route.fulfill({ status: 503, headers, json: { error: 'The test gateway is unavailable.' } });
+  });
+  await page.goto('/#blip');
+  await page.getByRole('button', { name: 'Set up online chat' }).click();
+  await page.getByLabel('Backend URL').fill('https://gateway.example');
+  await page.getByLabel('Backend access code').fill('fixture-access');
+  await page.getByRole('button', { name: 'Connect backend' }).click();
+  await page.getByRole('checkbox', { name: 'Use the connected model for chats without files' }).check();
+  await page.getByRole('checkbox', { name: 'Use Wikipedia as a fallback' }).check();
+  await page.locator('.blip-settings-popover > summary').click();
+
+  const input = page.getByRole('textbox', { name: 'Message blip.ai' });
+  await input.fill('Make a 10-minute study plan for history.');
+  await input.press('Enter');
+  await expect(page.getByText('10-minute study plan for history', { exact: true })).toBeVisible();
+  await expect(page.getByText('Connected AI was unavailable. Blip answered on this device.')).toBeVisible();
+  expect(hostedRequests).toBe(1);
+
+  await input.fill('Explain neutron stars.');
+  await input.press('Enter');
+  await expect(page.locator('.blip-message--assistant').last()).toContainText('The test gateway is unavailable.');
+  expect(hostedRequests).toBe(2);
+  expect(wikipediaRequests).toBe(0);
+});
+
 test('Blip resends an edited message in a new chat with the earlier context', async ({ page }) => {
   await page.goto('/#blip');
   const input = page.getByRole('textbox', { name: 'Message blip.ai' });

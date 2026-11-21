@@ -1,15 +1,21 @@
-import { localAssistantAnswer, searchModelAvailability, searchWikipedia } from './search-answer.js';
 import { analyzeBlipFiles } from './blip-file-analysis.js';
 import { recentBlipTurns } from './blip-context.js';
 import { blipGenerationMode } from './blip-generation.js';
 
 const assetVersion = new URL(import.meta.url).search;
 const [
+  { localAssistantAnswer, prepareSearchModel, searchModelAvailability, searchWikipedia },
+  { blipOfflineReply, blipOnboardingReply },
   { cpuBlipAvailability, cpuBlipReady, prepareCpuBlipModel, releaseCpuBlipModel, runCpuBlipPrompt },
   { portableBlipAvailability, portableBlipReady, preparePortableBlipModel, releasePortableBlipModel, runPortableBlipPrompt }
-] = await Promise.all([import(`./blip-cpu.js${assetVersion}`), import(`./blip-portable.js${assetVersion}`)]);
+] = await Promise.all([
+  import(`./search-answer.js${assetVersion}`),
+  import(`./blip-local-help.js${assetVersion}`),
+  import(`./blip-cpu.js${assetVersion}`),
+  import(`./blip-portable.js${assetVersion}`)
+]);
 
-export { prepareSearchModel as prepareBlipModel, searchModelAvailability as blipModelAvailability } from './search-answer.js';
+export { prepareSearchModel as prepareBlipModel, searchModelAvailability as blipModelAvailability };
 export { portableBlipAvailability, preparePortableBlipModel, releasePortableBlipModel };
 export { cpuBlipAvailability, prepareCpuBlipModel, releaseCpuBlipModel };
 
@@ -61,30 +67,6 @@ export const blipModes = Object.freeze({
 const maxMessageLength = 3_000;
 const maxReplyChars = 12_000;
 const maxWikipediaQueryLength = 200;
-const greetings = new Set(['hi', 'hello', 'hey', 'yo', 'sup', 'wsp', 'wassup', 'whats up', 'what is up', 'how are you', 'hi blip', 'hey blip', 'hello blip', 'good morning', 'good afternoon', 'good evening']);
-const checkIns = new Set(['are you good', 'are u good', 'you good', 'how are you doing', 'how are u', 'how r u', 'hows it going', 'how is it going']);
-const introductions = new Set(['who are you', 'what are you', 'what can you do', 'what can you help me with', 'how can you help', 'how can you help me']);
-
-function smallTalk(text) {
-  const phrase = text.toLowerCase().replace(/[’']/g, '').replace(/[.!?]+$/, '').replace(/\s+/g, ' ');
-  if (greetings.has(phrase)) {
-    return { kind: 'local', title: 'Built-in greeting', text: 'Hey! Want to plan something, practice a topic, or try a quick calculation?' };
-  }
-  if (checkIns.has(phrase)) {
-    return { kind: 'local', title: 'Built-in reply', text: 'I’m here and ready to help. What are you working on?' };
-  }
-  if (introductions.has(phrase)) {
-    return {
-      kind: 'local',
-      title: 'About Blip',
-      text: 'I’m Blip, the arcade’s assistant. I can do calculations, read supported attachments, and help with study plans. Set up an AI model to get generated explanations, writing help, and follow-up answers.'
-    };
-  }
-  if (['thanks', 'thank you', 'thx'].includes(phrase)) {
-    return { kind: 'local', title: 'Built-in reply', text: 'You’re welcome!' };
-  }
-  return null;
-}
 
 function wikipediaQuery(message) {
   const requested = /^(?:please\s+)?(?:define|definition of|meaning of)\s+(.+?)[.!?]*$/i.exec(message)
@@ -128,41 +110,6 @@ function localFilePreview(files) {
     title: 'Local file preview',
     text: `${snapshots.join('\n\n')}\n\nUse an on-device model for a summary or a question about the file.`
   };
-}
-
-function localPlan(text, mode) {
-  if (mode === 'study' && /\bcompare\b.*\bfractions?\b/i.test(text)) {
-    return {
-      kind: 'local', title: 'Built-in fractions lesson',
-      text: 'Give both fractions the same denominator, then compare their numerators. For example, 2/3 is 8/12 and 3/4 is 9/12, so 3/4 is larger.\n\nTry it: Which is larger, 3/5 or 5/8?'
-    };
-  }
-  const study = /\b(?:study|revision|review|learning)\s+(?:plan|schedule|routine)\b|\b(?:plan|schedule)\s+(?:a\s+)?(?:study|review|revision)\b/i.test(text);
-  if (study) {
-    const requested = Number(/\b(\d{1,3})\s*[- ]?\s*min(?:ute)?s?\b/i.exec(text)?.[1]);
-    const duration = requested >= 5 && requested <= 240 ? requested : 20;
-    const recall = Math.max(1, Math.round(duration * .2));
-    const practice = Math.max(1, Math.round(duration * .45));
-    const check = Math.min(duration - recall - practice - 1, Math.max(1, Math.round(duration * .25)));
-    const review = duration - recall - practice - check;
-    return {
-      kind: 'local', title: 'Built-in study plan',
-      text: `${duration}-minute study plan\n\n${recall} min · Write down what you remember without notes.\n${practice} min · Do practice problems or recall the main ideas aloud.\n${check} min · Check the answers and revisit any gaps.\n${review} min · Pick one thing to review tomorrow.`
-    };
-  }
-  if (/\b(?:make|create|build|draft|outline|plan)\b.*\b(?:plan|schedule|routine|my week|my day|this project)\b/i.test(text)) {
-    return {
-      kind: 'local', title: 'Built-in planning checklist',
-      text: '1. Write the outcome and when you want it done.\n2. Split it into three small steps with a clear finish for each.\n3. Put the first step on your calendar and gather what you need.\n4. Check what worked before scheduling the next step.'
-    };
-  }
-  if (mode === 'study' && /\b(?:study|revise|review|quiz myself|practice)\b/i.test(text)) {
-    return {
-      kind: 'local', title: 'Built-in study routine',
-      text: 'Choose one concept and explain it in your own words without opening your notes. Then check the explanation and fix the biggest gap. Make one question you can answer tomorrow without rereading.'
-    };
-  }
-  return null;
 }
 
 function readHistory(history, maxChars = 7_200, maxMessageChars = 1_800) {
@@ -233,7 +180,7 @@ export async function answerBlip({ text, history = [], mode = 'quick', wikipedia
     return { kind: 'unavailable', title: 'Message too long', text: `Send up to ${maxMessageLength.toLocaleString('en-US')} characters in one message.` };
   }
 
-  const greeting = files.length ? null : smallTalk(message);
+  const greeting = files.length ? null : blipOnboardingReply(message);
   if (greeting && !preferGenerated) return greeting;
   if (!files.length) {
     const local = localAssistantAnswer(message.replace(/(?<=[a-z])\.$/i, ''));
@@ -295,8 +242,8 @@ export async function answerBlip({ text, history = [], mode = 'quick', wikipedia
 
   if (greeting) return greeting;
   if (files.length) return analyzeBlipFiles(message, files) || localFilePreview(files);
-  const plan = localPlan(message, mode);
-  if (plan) return plan;
+  const builtIn = blipOfflineReply(message, mode);
+  if (builtIn) return builtIn;
 
   if (!hasPrivateFiles && wikipedia === true && message.length <= maxWikipediaQueryLength) {
     onStage?.('searching');
