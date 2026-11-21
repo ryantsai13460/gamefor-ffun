@@ -214,7 +214,7 @@ test('Blip offers the CPU model after setup fails and starts it only on request'
   await expect(recovery.getByRole('button', { name: 'Use CPU AI instead' })).toBeVisible();
   await recovery.getByRole('button', { name: 'Start local AI', exact: true }).click();
   await expect(recovery.getByText('Browser AI could not start. Try another available model.')).toBeVisible();
-  await expect(recovery.getByText(/CPU AI\. First-time setup downloads about 108 MB/)).toBeVisible();
+  await expect(recovery.getByText(/CPU AI\. First-time setup downloads about 273 MB/)).toBeVisible();
   expect(await page.evaluate(() => window.blipCpuSetups)).toBe(0);
   await recovery.getByRole('button', { name: 'Start local AI', exact: true }).click();
   await expect(page.getByText('The CPU model retried the original question.')).toBeVisible();

@@ -1,7 +1,7 @@
-const weights = 'https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/09816acd5d99df7be770d85ea30822623dab342c/SmolLM2-135M-Instruct-Q4_K_M.gguf';
-const weightSize = 105_454_432;
-const weightHash = '2e8040ceae7815abe0dcb3540b9995eaa1fa0d2ca9e797d0a635ae4433c68c2d';
-const cacheName = 'ffun-blip-cpu-model-v1';
+const weights = 'https://huggingface.co/bartowski/SmolLM2-360M-Instruct-GGUF/resolve/7be6f65f1db715fe5dc5a4634c0d459b4eed42ec/SmolLM2-360M-Instruct-Q4_K_M.gguf';
+const weightSize = 270_590_880;
+const weightHash = '2fa3f013dcdd7b99f9b237717fa0b12d75bbb89984cc1274be1471a465bac9c2';
+const cacheName = 'ffun-blip-cpu-model-v2';
 const shaHeader = 'x-blip-sha256';
 let current;
 

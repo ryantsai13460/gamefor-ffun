@@ -43,7 +43,7 @@ const localModels = [
   { id: 'webgpu', label: 'WebGPU AI', control: 'portable', notice: 'portable-status', availability: portableBlipAvailability,
     prepare: preparePortableBlipModel, download: 'First-time setup downloads about 220 MB.' },
   { id: 'cpu', label: 'CPU AI', control: 'cpu', notice: 'cpu-status', availability: cpuBlipAvailability,
-    prepare: prepareCpuBlipModel, download: 'First-time setup downloads about 108 MB and runs on your processor.' },
+    prepare: prepareCpuBlipModel, download: 'First-time setup downloads about 273 MB and runs on your processor.' },
 ];
 
 function element(tag, className, text) {
@@ -1029,7 +1029,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
       ? (modelSetup.turn ? 'Blip will retry your last message here when the model is ready.' : 'The model runs on this device.')
       : canRetry ? 'Blip will use the saved message and its conversation context.'
       : suggested ? suggested.label + '. ' + suggested.download +
-        (showCpu ? ' The CPU option downloads about 108 MB.' : '') + ' Prompts and files stay on this device.'
+        (showCpu ? ' The CPU option downloads about 273 MB.' : '') + ' Prompts and files stay on this device.'
       : checking ? 'Checking which local models this device supports.'
       : 'This device could not start a local model. Chats without files can use a connected AI provider.';
     const note = setupNote && (!setupNote.chatId || setupNote.chatId === chat?.id) ? setupNote.text : '';
