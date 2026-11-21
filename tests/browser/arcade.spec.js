@@ -79,7 +79,11 @@ test('navigation, catalog pagination, filtering, favorites, play history and set
   await go(page, 'New Games');
   await expect(page.locator('.game-card').first()).toBeVisible();
   await go(page, 'Built-in Games');
-  await expect(page.locator('.game-card')).toHaveCount(games.filter(game => game.local).length);
+  const builtInCount = games.filter(game => game.local).length;
+  await expect(page.locator('.game-card')).toHaveCount(24);
+  await expect(page.locator('.library-results')).toHaveText(`1–24 of ${builtInCount} games`);
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.locator('.game-card')).toHaveCount(builtInCount - 24);
 
   const global = page.getByRole('searchbox', { name: 'Search the arcade' });
   await global.fill('slither.io');
@@ -90,8 +94,8 @@ test('navigation, catalog pagination, filtering, favorites, play history and set
   await global.fill('resent client');
   await global.press('Enter');
   await page.getByRole('link', { name: /^Resent Client/ }).click();
-  await expect(page.getByText('Play link unavailable')).toBeVisible();
-  await expect(page.getByRole('link', { name: /Minecraft Classic/i })).toBeVisible();
+  await expect(page.getByText('In-page play unavailable', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Browse in-page games', exact: true })).toHaveAttribute('href', '#games?option=in-page');
 
   await page.getByRole('button', { name: 'Random Game' }).click();
   await expect(page.getByRole('button', { name: 'Play game', exact: true })).toBeVisible();
@@ -208,10 +212,12 @@ test('Proxy Gemini respects frame blocking and keeps links and search explicit',
   await expect(page.getByRole('group', { name: '2048 controls' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Stacktris Game player', exact: true }).click();
   await expect(page.locator('.proxy-frame')).toHaveAttribute('src', 'https://play.fancade.com/5BEC8352E4E078B1');
+  await expect(page.getByRole('link', { name: 'Open in new tab', exact: true })).toHaveCount(0);
   const address = page.getByRole('textbox', { name: 'Address or search query' });
   await address.fill('https://www.miniplay.com/game/snow-rider-3d');
   await address.press('Enter');
-  await expect(page.getByRole('heading', { name: 'Miniplay links are on Home' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Snow Rider 3D isn’t available in-page' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Play Pocket Circuit' })).toBeVisible();
   await expect(page.locator('.proxy-frame')).toHaveCount(0);
   await address.fill(blocked);
   const requestedBlockedPage = page.waitForRequest(blocked);
@@ -228,15 +234,15 @@ test('Proxy Gemini respects frame blocking and keeps links and search explicit',
 
   await address.fill('https://proxy-arcade-play.base44.app/browse');
   await address.press('Enter');
-  await expect(page.getByText('Base44 blocks embedding this viewer.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'This legacy viewer can’t open here' })).toBeVisible();
   await expect(page.locator('.proxy-frame')).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Open Base44 in new tab' })).toHaveAttribute('target', '_blank');
+  await expect(page.getByRole('link', { name: 'Open Base44 in new tab' })).toHaveCount(0);
   await address.fill('snow rider');
   await address.press('Enter');
   await expect(page.getByRole('link', { name: 'Search Google in new tab' })).toHaveAttribute('target', '_blank');
-  await page.getByRole('link', { name: 'Search arcade games' }).click();
-  await expect(page).toHaveURL(/#games\?q=snow\+rider$/);
-  await expect(page.getByRole('heading', { name: 'Snow Rider 3D', exact: true }).first()).toBeVisible();
+  await page.getByRole('link', { name: 'Browse arcade alternatives' }).click();
+  await expect(page).toHaveURL(/#games\?option=in-page&category=Racing$/);
+  await expect(page.getByRole('heading', { name: 'Pocket Circuit', exact: true }).first()).toBeVisible();
 });
 
 test('video and film search, official fallback, playback review, catalog report', async ({ page }) => {
@@ -311,10 +317,10 @@ test('Explore connects the new videos, collections, cinema, arcade and tools', a
 
   await page.getByRole('link', { name: 'Browse new videos' }).click();
   await expect(page.getByRole('button', { name: 'New additions' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.media-result-count')).toHaveText('600 videos');
+  await expect(page.locator('.media-result-count')).toHaveText('731 videos');
   await page.getByRole('navigation', { name: 'Browse video topics' }).getByRole('link', { name: 'Science' }).click();
   await expect(page.getByRole('combobox', { name: 'Video topic' })).toHaveValue('Science');
-  await expect(page.locator('.media-result-count')).toHaveText('118 videos');
+  await expect(page.locator('.media-result-count')).toHaveText('172 videos');
 
   await go(page, 'Explore', 'Explore the arcade');
   await page.getByRole('link', { name: /^Cinema \d+ films and trailers$/ }).click();
@@ -350,7 +356,7 @@ test('every built-in player mounts and publisher embeds retain a direct source',
     await page.goto(`/#play/${game.id}`);
     await page.getByRole('button', { name: 'Play game', exact: true }).click();
     await expect(page.locator('.player-stage iframe')).toHaveAttribute('src', game.embed);
-    await expect(page.getByRole('link', { name: 'Open game source' })).toHaveAttribute('href', game.url);
+    await expect(page.getByRole('link', { name: 'Open game source' })).toHaveCount(0);
   }
 });
 
@@ -578,14 +584,16 @@ test('search tabs keep paged violin results with separate Shorts and videos', as
   expect(page.context().pages()).toHaveLength(1);
 });
 
-test('game details offer an in-arcade preview and Home collects Miniplay links', async ({ page }) => {
-  await page.goto('/#play/retrobowl');
-  const source = await page.getByRole('link', { name: 'Open game source' }).getAttribute('href');
-  await page.getByRole('link', { name: 'Open in Proxy Gemini' }).click();
-  await expect(page.locator('.proxy-frame')).toHaveAttribute('src', source);
+test('catalog-only game details and Home lead to playable alternatives inside the arcade', async ({ page }) => {
+  for (const id of ['retrobowl', 'snow-rider-3d']) {
+    await page.goto(`/#play/${id}`);
+    await expect(page.getByRole('heading', { name: 'In-page play unavailable' })).toBeVisible();
+    await expect(page.locator('.player-actions a[target="_blank"]')).toHaveCount(0);
+    await page.getByRole('link', { name: 'Browse in-page games' }).click();
+    await expect(page.getByRole('combobox', { name: 'Play option' })).toHaveValue('in-page');
+  }
   await go(page, 'Home', 'Pocket Circuit');
-  await expect(page.getByRole('heading', { name: 'Miniplay links' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Snow Rider 3D', exact: true })).toHaveAttribute('target', '_blank');
+  await expect(page.locator('main a[href*="miniplay.com"]')).toHaveCount(0);
 });
 
 test('Web Search opens a pasted YouTube URL in the official player', async ({ page }) => {

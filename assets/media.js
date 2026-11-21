@@ -9,10 +9,12 @@ const [
   { gatewayConnected, renderGatewaySettings, searchGatewayVideoPage },
   { entertainmentVideos },
   { familyVideos },
+  { learningVideos },
 ] = await Promise.all([
   import(`./service-gateway.js${assetVersion}`),
   import(`./media-entertainment-videos.js${assetVersion}`),
   import(`./media-family-videos.js${assetVersion}`),
+  import(`./media-learning-videos.js${assetVersion}`),
 ]);
 
 const SHORTS = [
@@ -56,9 +58,9 @@ const CREATOR_VIDEOS = [
 const previousVideos = [...addedVideos, ...CREATOR_VIDEOS, ...SHORTS, ...addedShorts].map(video => ({
   ...video, tags: [video.tags.includes('Violin') ? 'Music' : 'Gaming', ...video.tags]
 }));
-const CURATED_VIDEOS = new Map([...previousVideos, ...expansionVideos, ...discoveryVideos, ...entertainmentVideos, ...familyVideos]
+const CURATED_VIDEOS = new Map([...previousVideos, ...expansionVideos, ...discoveryVideos, ...entertainmentVideos, ...familyVideos, ...learningVideos]
   .map((video) => [video.id, video]));
-const expandedIds = new Set([...discoveryVideos, ...expansionVideos].map(video => video.id));
+const expandedIds = new Set([...learningVideos, ...discoveryVideos, ...expansionVideos].map(video => video.id));
 const videoFormats = new Map([
   ['shorts', 'Shorts'], ['videos', 'Full videos'], ['all', 'All videos'], ['new', 'New additions'],
   ['favorites', 'Favorites'], ['recent', 'Recently opened'], ['watched', 'Recently watched']

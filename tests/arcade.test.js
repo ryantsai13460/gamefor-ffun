@@ -9,7 +9,9 @@ import { expansionVideos } from '../assets/media-expansion.js';
 import { discoveryVideos } from '../assets/media-discovery-videos.js';
 import { entertainmentVideos } from '../assets/media-entertainment-videos.js';
 import { familyVideos } from '../assets/media-family-videos.js';
+import { learningVideos } from '../assets/media-learning-videos.js';
 import { featuredFilm, filmCatalog } from '../assets/film-catalog.js';
+import { learningFilms } from '../assets/film-learning.js';
 import { filmPlayback } from '../assets/film-playback.js';
 import { featuredTrack, musicCatalog } from '../assets/music-catalog.js';
 
@@ -18,8 +20,8 @@ const site = 'https://ryantsai13460.github.io/gamefor-ffun/#browse';
 
 test('the video expansions preserve the library and use unique official player IDs', () => {
   const library = getVideoCollections();
-  assert.equal(library.count, 1397);
-  assert.equal(library.added, 600);
+  assert.equal(library.count, 1528);
+  assert.equal(library.added, 731);
   assert.equal(expansionVideos.length, 500);
   assert.equal(expansionVideos.filter(({ short }) => short).length, 250);
   assert.equal(discoveryVideos.length, 100);
@@ -28,7 +30,9 @@ test('the video expansions preserve the library and use unique official player I
   assert.equal(entertainmentVideos.filter(({ short }) => short).length, 51);
   assert.equal(familyVideos.length, 44);
   assert.equal(familyVideos.filter(({ short }) => short).length, 24);
-  for (const video of [...expansionVideos, ...discoveryVideos, ...entertainmentVideos, ...familyVideos]) {
+  assert.equal(learningVideos.length, 131);
+  assert.equal(learningVideos.filter(({ short }) => short).length, 57);
+  for (const video of [...expansionVideos, ...discoveryVideos, ...entertainmentVideos, ...familyVideos, ...learningVideos]) {
     assert.match(video.id, /^[A-Za-z0-9_-]{11}$/);
     assert.ok(video.title && video.creator && video.tags.length);
     const thumbnail = new URL(video.thumbnail);
@@ -52,6 +56,9 @@ test('MrBeast creator searches find official full videos and Shorts across name 
 
 test('the cinema catalog separates complete films from trailers and uses legitimate playback routes', () => {
   assert.equal(new Set(filmCatalog.map(({ id }) => id)).size, filmCatalog.length);
+  assert.equal(learningFilms.length, 29);
+  assert.equal(learningFilms.filter(({ format }) => format === 'feature').length, 16);
+  assert.ok(learningFilms.every(film => filmPlayback(film) && !filmPlayback(film, true) && new URL(film.art).protocol === 'https:'));
   assert.ok(filmCatalog.filter(film => !film.regionLimited && filmPlayback(film)).length >= 100);
   assert.equal(filmCatalog.filter(film => !filmPlayback(film) && filmPlayback(film, true)).length, 12);
   assert.ok(filmCatalog.some(film => film.format === 'feature' && film.runtimeMinutes >= 40 && filmPlayback(film)));
@@ -105,12 +112,12 @@ test('expiring family film offers preserve their records and only advertise acti
   assert.equal(filmPlayback({ ...bear, availableUntil: '2000-01-01T00:00:00Z', trailer: 'wJO_vIDZn-I' }, true).id, 'wJO_vIDZn-I');
 });
 
-test('the catalog includes 548 main library games, three additional recovered games and ten originals', () => {
-  assert.equal(games.length, 561);
+test('the catalog includes 548 main library games, three additional recovered games and twelve originals', () => {
+  assert.equal(games.length, 563);
   assert.equal(games.filter(({ collection }) => collection === 'github' || collection === 'base44-library').length, 548);
   assert.equal(games.filter(({ collection }) => collection === 'base44-home').length, 2);
   assert.equal(games.filter(({ collection }) => collection === 'history').length, 1);
-  assert.equal(games.filter(({ collection }) => collection === 'original').length, 10);
+  assert.equal(games.filter(({ collection }) => collection === 'original').length, 12);
   assert.equal(new Set(games.map(({ id }) => id)).size, games.length);
   assert.equal(new Set(games.map(({ title }) => normalize(title))).size, games.length);
   assert.equal([...library.categoryCounts.values()].reduce((sum, count) => sum + count, 0), games.length);
@@ -140,7 +147,7 @@ test('catalog records have distinct sources, correct status, and safe relative a
     }
     if (typeof game.local === 'string') await readFile(new URL(game.local, new URL('../', import.meta.url)));
   }
-  assert.deepEqual(statusCounts, { local: 23, embed: 2, external: 534, unverified: 2 });
+  assert.deepEqual(statusCounts, { local: 25, embed: 2, external: 534, unverified: 2 });
 });
 
 test('search spans titles, punctuated names, legacy aliases, categories and availability', () => {
@@ -173,8 +180,17 @@ test('Proxy Gemini resolves website previews, official embeds, local play and re
   assert.equal(resolveBrowserAddress('catch-the-star.html', site).url, 'https://ryantsai13460.github.io/gamefor-ffun/catch-the-star.html');
   assert.equal(resolveBrowserAddress('wikipedia.org', site).embed, 'https://wikipedia.org/');
   assert.equal(resolveBrowserAddress('wikipedia.org', site).kind, 'website');
-  assert.equal(resolveBrowserAddress('https://www.miniplay.com/game/snow-rider-3d', site).kind, 'miniplay');
-  assert.equal(resolveBrowserAddress('https://www.miniplay.com/embed/unlisted-game', site).embed, undefined);
+  assert.equal(resolveBrowserAddress('https://support.miniclip.com/hc/en-us/articles/360019766978-Blash-io', site).kind, 'website');
+  assert.equal(resolveBrowserAddress('https://www.miniplay.com/game/snow-rider-3d', site).title, 'Snow Rider 3D');
+  for (const input of [
+    'https://www.miniplay.com/embed/unlisted-game', 'https://www.coolmathgames.com/0-eggy-car/?ref=fixture',
+    'poki.com/en/g/unlisted-game', 'https://territorial.io/', 'https://voodoo.io/paper2'
+  ]) {
+    const destination = resolveBrowserAddress(input, site);
+    assert.equal(destination.kind, 'external-game');
+    assert.equal(destination.embed, undefined);
+    assert.equal(destination.url, undefined);
+  }
   assert.equal(resolveBrowserAddress('https://play.fancade.com/5BEC8352E4E078B1', site).kind, 'game');
   assert.equal(resolveBrowserAddress('https://proxy-arcade-play.base44.app/browse/', site).kind, 'unavailable');
   assert.equal(resolveBrowserAddress('my next game', site).kind, 'search');

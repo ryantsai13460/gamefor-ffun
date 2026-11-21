@@ -15,8 +15,8 @@ const [{ BLIP_FILE_ACCEPT, BLIP_FILE_LIMITS, normalizeBlipAttachments, readBlipF
 
 const examples = [
   ['Make a plan', 'Help me make a 20-minute study plan.', 'study'],
-  ['Think it through', 'Compare two ways to start learning guitar.', 'think'],
-  ['Brainstorm ideas', 'Brainstorm three ideas for a weekend game project.', 'brainstorm'],
+  ['Compare fractions', 'Which is greater, 3/5 or 5/8?', 'study'],
+  ['Try a coding example', 'Show how to filter a list of game titles in JavaScript.', 'code'],
   ['Convert units', 'Convert 5 miles to km', 'quick']
 ];
 const themeKey = 'gamefor-ffun:blip-theme';
@@ -865,6 +865,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
       if (isActive()) drawPartial(chat.id);
     };
     let reply;
+    let connectedError;
     try {
       const contextFiles = attachments.length ? attachments :
         chat.messages.findLast(message => message.attachments?.length)?.attachments || [];
@@ -881,24 +882,31 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
           status.textContent = request.label;
           drawEngineState(currentChat());
         }
-        const answer = await hostedBlipReply({
-          text, history: chat.messages,
-          mode: capabilities?.modes?.includes(chat.mode) ? chat.mode : legacyHostedModes[chat.mode] || chat.mode,
-          research,
-          depth: advanced ? 'advanced' : undefined,
-          signal: AbortSignal.any([request.controller.signal, AbortSignal.timeout(advanced ? 95_000 : 65_000)]),
-          onSources(value) { sources = value; },
-          onFinish(value) { truncated = value; },
-          onUpdate,
-        });
-        reply = { kind: 'hosted', text: answer, sources, truncated };
-      } else {
+        try {
+          const answer = await hostedBlipReply({
+            text, history: chat.messages,
+            mode: capabilities?.modes?.includes(chat.mode) ? chat.mode : legacyHostedModes[chat.mode] || chat.mode,
+            research,
+            depth: advanced ? 'advanced' : undefined,
+            signal: AbortSignal.any([request.controller.signal, AbortSignal.timeout(advanced ? 95_000 : 65_000)]),
+            onSources(value) { sources = value; },
+            onFinish(value) { truncated = value; },
+            onUpdate,
+          });
+          reply = { kind: 'hosted', text: answer, sources, truncated };
+        } catch (error) {
+          request.controller.signal.throwIfAborted();
+          if (error?.name === 'AbortError') throw error;
+          connectedError = error?.message || 'The connected model could not complete the reply.';
+        }
+      }
+      if (!reply) {
         reply = await answerBlip({
           text,
           attachments: contextFiles,
           history: chat.messages,
           mode: chat.mode,
-          wikipedia: !localOnly && part('references').checked && !contextFiles.length && !chatHasFiles(chat),
+          wikipedia: !connectedError && !localOnly && part('references').checked && !contextFiles.length && !chatHasFiles(chat),
           preferGenerated: localOnly,
           signal: request.controller.signal,
           onUpdate,
@@ -918,6 +926,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
             }
           }
         });
+        if (connectedError && reply.kind === 'unavailable') reply.text = connectedError;
       }
     } catch (error) {
       if (!request.controller.signal.aborted) {
@@ -937,7 +946,8 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
       : store.addMessage(chat.id, 'assistant', bounded, reply);
     if (active) {
       draw({ follow: nearTranscriptEnd() });
-      status.textContent = saved ? 'Reply added.' : reply.kind === 'unavailable' ? bounded : 'The reply could not be saved.';
+      status.textContent = saved ? connectedError ? 'Connected AI was unavailable. Blip answered on this device.' : 'Reply added.'
+        : reply.kind === 'unavailable' ? bounded : 'The reply could not be saved.';
     } else if (saved) drawRail();
   }
 

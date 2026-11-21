@@ -15,6 +15,20 @@ test.beforeEach(async ({ page }) => {
   await page.route('https://**/*', route => route.fulfill({ status: 503 }));
 });
 
+test('Web Search keeps a first-party guide available when the external lookup fails', async ({ page }) => {
+  await page.goto('/#web-search');
+  await search(page, 'Why is the sky blue?');
+  await expect(page.getByRole('heading', { name: 'Results for “Why is the sky blue?”', exact: true })).toBeVisible();
+  const references = panel(page, 'Wiki and references');
+  await expect(references.getByText('NASA Space Place', { exact: true })).toBeVisible();
+  await references.getByRole('button', { name: 'Why Is the Sky Blue?', exact: true }).click();
+  const result = page.getByRole('dialog', { name: 'Why Is the Sky Blue?', exact: true });
+  const source = result.getByRole('link', { name: 'Open original source' });
+  await expect(source).toHaveAttribute('href', 'https://spaceplace.nasa.gov/blue-sky/en/');
+  await expect(source).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(result.locator('iframe')).toHaveCount(0);
+});
+
 test('Web Search offers examples and keeps clearable recent queries across tabs', async ({ page }) => {
   await page.goto('/#web-search');
   const ideas = page.getByRole('region', { name: 'Try a search' });
@@ -114,7 +128,9 @@ test('connected Web Search deduplicates sources and passes their context to Blip
   await page.route('https://gateway.example/api/search', route => route.request().method() === 'OPTIONS'
     ? route.fulfill({ status: 204, headers }) : route.fulfill({ headers, json: { results: [
       { title: 'HTML reference', description: 'Publisher reference for HTML.', url: source },
-      { title: 'Duplicate URL', description: 'The same page.', url: source }
+      { title: 'Duplicate URL', description: 'The same page.', url: source },
+      { title: 'Play on Coolmath', description: 'Portal game.', url: 'https://www.coolmathgames.com/0-unlisted-fixture-game' },
+      { title: 'Retro Bowl publisher', description: 'External catalog source.', url: 'https://poki.com/en/g/retro-bowl' }
     ] } }));
   await page.goto('/#web-search');
   await page.getByText('Connect a web search provider', { exact: true }).click();
@@ -124,9 +140,12 @@ test('connected Web Search deduplicates sources and passes their context to Blip
   await search(page, 'learn html');
   await category(page).getByRole('button', { name: 'Web', exact: true }).click();
   const web = panel(page, 'Web results');
-  await expect(web.getByRole('listitem')).toHaveCount(1);
+  await expect(web.getByRole('listitem')).toHaveCount(3);
   await expect(web.getByRole('link', { name: 'HTML reference', exact: true })).toHaveAttribute('href', source);
   await expect(web.getByRole('link', { name: source, exact: true })).toHaveAttribute('href', source);
+  await expect(web.locator('a[href*="coolmathgames.com"], a[href*="poki.com"]')).toHaveCount(0);
+  await expect(web.getByRole('link', { name: 'Browse in-page games' })).toHaveAttribute('href', '#games?option=in-page');
+  await expect(web.getByRole('link', { name: 'View game in the arcade' })).toHaveAttribute('href', '#play/retrobowl');
   await web.getByRole('link', { name: 'Ask Blip', exact: true }).click();
   await expect(page.locator('#blip-prompt')).toHaveValue(`Help me understand this search result and clarify what the source supports.\n\nHTML reference\nPublisher reference for HTML.\n${source}`);
 });

@@ -1,9 +1,41 @@
+import { createGameAddressLookup, isGamePortalAddress } from './game-play-policy.js';
+import { normalize } from './library.js';
+
 const assetVersion = new URL(import.meta.url).search;
-const { essayGuideQuery, renderEssayGuide } = await import(`./search-essay.js${assetVersion}`);
+const [{ essayGuideQuery, renderEssayGuide }, { games }] = await Promise.all([
+  import(`./search-essay.js${assetVersion}`), import(`./catalog.js${assetVersion}`),
+]);
 const storageKey = 'ffun.google-engine';
+const byAddress = createGameAddressLookup(games);
+const byTitle = new Map(games.map(game => [normalize(game.title), game]));
+const portalName = /^(?:(?:play|open|visit) )?(?:cool ?math(?: ?games)?|miniplay|minijuegos(?: ?gratis)?|poki|crazy ?games)$/;
+const portalSuffix = / (?:on )?(?:cool ?math(?: ?games)?|miniplay|minijuegos(?: ?gratis)?|poki|crazy ?games)$/;
+const portalPrefix = /^(?:cool ?math(?: ?games)?|miniplay|minijuegos(?: ?gratis)?|poki|crazy ?games) /;
 
 function validEngineId(value) {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{5,80}(?::[A-Za-z0-9_-]{1,40})?$/.test(value);
+}
+
+function gameSearch(query) {
+  const address = /^(?:https?:\/\/)?[^\s/]+\.[^\s/]+(?:\/\S*)?$/i.test(query)
+    ? query.replace(/^(?:site:)?(?!(?:https?):\/\/)/i, 'https://') : '';
+  const title = normalize(query);
+  const named = title.replace(portalPrefix, '').replace(/^(?:play|open) /, '')
+    .replace(portalSuffix, '').replace(/ (?:online|for free|free online)$/, '');
+  return byTitle.get(title) || byTitle.get(named) || byAddress(address) || isGamePortalAddress(address) || portalName.test(title);
+}
+
+function googleDestination(value) {
+  if (typeof value !== 'string' || value.length > 2048) return null;
+  try {
+    let url = new URL(value);
+    if (['www.google.com', 'google.com'].includes(url.hostname) && url.pathname === '/url') {
+      url = new URL(url.searchParams.get('url') || url.searchParams.get('q'));
+    }
+    return url.protocol === 'https:' && !url.username && !url.password ? url : null;
+  } catch {
+    return null;
+  }
 }
 
 export function renderGoogleSearch(target, { onArcadeSearch, onQuery, initialQuery = '' }) {
@@ -42,13 +74,14 @@ export function renderGoogleSearch(target, { onArcadeSearch, onQuery, initialQue
   let editedEngine = false;
   let essayActive;
   let disposeGuide;
+  let resultFrame;
   try { engine.value = localStorage.getItem(storageKey) || ''; } catch {}
 
   function updateActions() {
     const text = query.value.trim();
     clear.disabled = !query.value && !essayActive && !results.firstChild && !status.textContent;
-    googleLink.hidden = !text;
-    if (text) {
+    googleLink.hidden = !text || Boolean(gameSearch(text));
+    if (!googleLink.hidden) {
       const url = new URL('https://www.google.com/search');
       url.searchParams.set('q', text);
       googleLink.href = url.href;
@@ -57,12 +90,32 @@ export function renderGoogleSearch(target, { onArcadeSearch, onQuery, initialQue
     }
   }
 
+  function followResult(event) {
+    if (!resultFrame || event.source !== resultFrame.contentWindow || event.origin !== 'null' ||
+        event.data?.type !== 'arcade-google-destination') return;
+    const destination = googleDestination(event.data.url);
+    if (!destination) {
+      status.textContent = 'This search result has no supported web address.';
+      return;
+    }
+    const game = byAddress(destination);
+    if (game) {
+      location.hash = '#play/' + encodeURIComponent(game.id);
+    } else if (isGamePortalAddress(destination)) {
+      status.textContent = 'This result points to a game portal. Browse the in-page games to play here.';
+    } else {
+      location.hash = '#browse?' + new URLSearchParams({ address: destination.href });
+    }
+  }
+  window.addEventListener('message', followResult);
+
   query.addEventListener('input', updateActions);
   clear.addEventListener('click', () => {
     query.value = '';
     disposeGuide?.();
     disposeGuide = undefined;
     essayActive = undefined;
+    resultFrame = undefined;
     results.replaceChildren();
     status.textContent = '';
     engine.removeAttribute('aria-invalid');
@@ -89,11 +142,18 @@ export function renderGoogleSearch(target, { onArcadeSearch, onQuery, initialQue
     if (essay) query.value = essay;
     updateActions();
     const google = event.submitter?.value === 'google';
+    resultFrame = undefined;
     results.replaceChildren();
     if (!google) {
       status.textContent = '';
       if (essay) onQuery(essay);
       else onArcadeSearch(text);
+      return;
+    }
+    const local = gameSearch(text);
+    if (local) {
+      if (local === true) status.textContent = 'Browse the in-page games to play here.';
+      else onArcadeSearch(local.title);
       return;
     }
     if (!editedEngine) {
@@ -112,12 +172,15 @@ export function renderGoogleSearch(target, { onArcadeSearch, onQuery, initialQue
     const normalized = essay || text;
     onQuery(normalized);
     const url = new URL('./google-results.html', import.meta.url);
-    url.search = new URLSearchParams({ cx: id, q: normalized });
+    url.search = assetVersion;
+    url.searchParams.set('cx', id);
+    url.searchParams.set('q', normalized);
     const frame = document.createElement('iframe');
+    resultFrame = frame;
     frame.title = 'Google results';
     frame.setAttribute('sandbox', 'allow-scripts');
     frame.addEventListener('load', () => {
-      if (results.contains(frame)) status.textContent = 'The configured Google engine opens below. You can also open this search on Google.';
+      if (results.contains(frame)) status.textContent = 'Google results open below.';
     });
     frame.addEventListener('error', () => {
       if (results.contains(frame)) status.textContent = 'The Google engine panel did not load. Open this search on Google or try again.';
@@ -133,6 +196,7 @@ export function renderGoogleSearch(target, { onArcadeSearch, onQuery, initialQue
     queueMicrotask(() => { if (root.isConnected) form.requestSubmit(); });
   }
   return () => {
+    window.removeEventListener('message', followResult);
     disposeGuide?.();
     root.remove();
   };

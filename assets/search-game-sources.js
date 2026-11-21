@@ -1,16 +1,15 @@
-// Official pages and publisher uploads for selected arcade search results.
+// Publisher references and approved in-page gameplay for selected search results.
 export const gameSearchSources = {
   territorial: {
     site: {
-      kind: 'site',
+      kind: 'game',
       title: 'Territorial.io',
       provider: 'Territorial.io',
       url: 'https://territorial.io/',
-      preview: true,
+      preview: 'https://territorial.io/',
       description: 'A real-time strategy game about expanding your territory. Play alone against bots or try multiplayer team, battle royale, or one-on-one matches.',
     },
     reference: {
-      kind: 'reference',
       title: 'Game Play – Territorial.io Wiki',
       provider: 'Territorial.io Wiki',
       url: 'https://territorial.io/wiki/gameplay',
@@ -39,7 +38,7 @@ export const gameSearchSources = {
   },
   'extra-geometry-dash': {
     site: {
-      kind: 'site',
+      kind: 'game',
       title: 'Geometry Dash',
       provider: 'RobTop Games',
       url: 'https://store.steampowered.com/app/322170/Geometry_Dash/',
@@ -59,7 +58,7 @@ export const gameSearchSources = {
   },
   subway: {
     site: {
-      kind: 'site',
+      kind: 'game',
       title: 'Subway Surfers',
       provider: 'SYBO',
       url: 'https://subwaysurfers.com/',

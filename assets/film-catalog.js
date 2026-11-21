@@ -1,10 +1,11 @@
 // Official film and trailer sources. Release years are film release dates, not web upload dates.
 // Each title links to its rights holder, creator, or authorized viewing provider.
 const release = new URL(import.meta.url).search;
-const [{ nfbFilms }, { archiveFilms }, { familyFilms }] = await Promise.all([
+const [{ nfbFilms }, { archiveFilms }, { familyFilms }, { learningFilms }] = await Promise.all([
   import(`./film-nfb.js${release}`),
   import(`./film-archive.js${release}`),
-  import(`./film-family.js${release}`)
+  import(`./film-family.js${release}`),
+  import(`./film-learning.js${release}`)
 ]);
 
 export const filmCatalog = [
@@ -682,7 +683,8 @@ export const filmCatalog = [
   },
   ...nfbFilms,
   ...archiveFilms,
-  ...familyFilms
+  ...familyFilms,
+  ...learningFilms
 ];
 
 export const featuredFilm = filmCatalog[0];

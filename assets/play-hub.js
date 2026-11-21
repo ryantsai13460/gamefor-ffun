@@ -10,7 +10,7 @@ const accessTypes = [
   ["built-in", "Built in"],
   ["embedded", "In-page player"],
   ["miniplay", "Miniplay"],
-  ["external", "External publisher"],
+  ["external", "Publisher listing"],
   ["catalog", "Catalog only"],
   ["unverified", "Playback unverified"]
 ];
@@ -97,7 +97,7 @@ function identifyGames(games) {
     const links = [...new Map([source, alternate, related, player].filter(Boolean).map(url => [url.href, url])).values()];
     const search = normalize([name, category, ...links.map(url => url.hostname), ...(game.aliases ?? [])].join(" "));
     const fingerprint = JSON.stringify([game.id, local, source?.href ?? "", player?.href ?? ""]);
-    return { game, name, category, local, sourceValue, playerValue, source, player, related, links, miniplay, type, search, fingerprint };
+    return { game, name, category, local, sourceValue, playerValue, source, player, links, miniplay, type, search, fingerprint };
   });
   const idCounts = countAcross(entries, entry => entry.game.id);
   const playerCounts = countAcross(entries, entry => entry.player?.href);
@@ -129,15 +129,11 @@ function selectField(label, options) {
   return [field, select];
 }
 
-function externalLink(text, url) {
-  const link = element("a", text, "ph-button");
-  link.href = url.href;
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
-  return link;
+function canPlayHere(entry) {
+  return Boolean(entry.local || entry.player);
 }
 
-export function renderPlayHub(target, games, { openGame, openBrowser, isFavorite, toggleFavorite }) {
+export function renderPlayHub(target, games, { openGame, isFavorite, toggleFavorite }) {
   let entries = identifyGames(games);
   let sessionChecks = {};
   const legacyChecks = readChecks(LEGACY_KEY);
@@ -183,10 +179,10 @@ export function renderPlayHub(target, games, { openGame, openBrowser, isFavorite
   const manual = element("textarea", undefined, "ph-copy");
   manual.hidden = true;
   manual.readOnly = true;
-  manual.setAttribute("aria-label", "Link or report text to copy");
+  manual.setAttribute("aria-label", "Catalog report text");
   const modesList = [
-    ["access", "Game access", "See which games run here, use a publisher's player, or are listed for reference."],
-    ["links", "Game links", "Open a publisher page, copy its address, or pass it to Proxy Gemini."],
+    ["access", "Game access", "See which games play in the arcade and browse catalog listings."],
+    ["links", "Source records", "Review the publishers listed in the game catalog and find games you can play here."],
     ["reviews", "Playback checks", "Record what played on this device and check the catalog for configuration issues."]
   ];
   const modeButtons = new Map(modesList.map(([key, title]) => [
@@ -222,23 +218,6 @@ export function renderPlayHub(target, games, { openGame, openBrowser, isFavorite
       sessionChecks[entry.fingerprint] = record;
       feedback.textContent = "Playback check saved for this visit. Browser storage is unavailable.";
     }
-  }
-
-  async function copyLink(entry, url) {
-    try {
-      await navigator.clipboard.writeText(url.href);
-      feedback.textContent = `Copied the link for ${entry.name}.`;
-    } catch {
-      showCopyText(url.href);
-      feedback.textContent = "The link is selected. Use your browser's Copy command.";
-    }
-  }
-
-  function showCopyText(value) {
-    manual.value = value;
-    manual.hidden = false;
-    manual.focus();
-    manual.select();
   }
 
   function exportReport() {
@@ -304,7 +283,7 @@ export function renderPlayHub(target, games, { openGame, openBrowser, isFavorite
       title.append(element("p", `${outcome} · ${date}`, "ph-meta"));
     }
     if (entry.issues.length) title.append(element("p", entry.issues.join(" · "), "ph-meta"));
-    if (entry.type === "catalog") return;
+    if (!canPlayHere(entry)) return;
     const confirm = button("Record playback", () => {
       reviewDialog(entry);
     });
@@ -345,23 +324,22 @@ export function renderPlayHub(target, games, { openGame, openBrowser, isFavorite
     const detail = [entry.category, label, entry.miniplay ? "Miniplay" : "", entry.game.status === "unverified" ? "Playback unverified" : ""]
       .filter(Boolean).join(" · ");
     title.append(titleText, element("p", detail, "ph-meta"));
-    const actions = element("div", undefined, "ph-actions");
     if (mode === "links") {
-      actions.classList.add("ph-links");
-      for (const url of entry.links) {
-        const linkActions = element("div", undefined, "ph-actions");
-        const sourceLabel = url === entry.player ? "Open player" :
-          url === entry.related ? entry.game.relatedLabel || "Related publisher" : "Open source";
-        const link = externalLink(sourceLabel, url);
-        link.textContent = `${sourceLabel} · ${url.hostname}`;
-        linkActions.append(link, button("Copy link", () => copyLink(entry, url)));
-        if (openBrowser) linkActions.append(button("Open in viewer", () => openBrowser(url.href)));
-        actions.append(linkActions);
-      }
-    } else {
-      actions.append(button("Game details", () => openGame(entry.game.id)));
-      if (mode === "reviews") makeReview(entry, title, actions, savedChecks);
+      const hosts = [...new Set(entry.links.map(url => url.hostname))];
+      title.append(element("p", hosts.join(" · "), "ph-meta"));
     }
+    const actions = element("div", undefined, "ph-actions");
+    actions.append(button(canPlayHere(entry) ? "Play in arcade" : "Game details", () => openGame(entry.game.id)));
+    if (!canPlayHere(entry)) {
+      const alternatives = element("a", "Browse in-page games", "ph-button");
+      const query = new URLSearchParams({ option: "in-page" });
+      if (entry.category && entries.some(candidate => candidate.category === entry.category && canPlayHere(candidate))) {
+        query.set("category", entry.category);
+      }
+      alternatives.href = "#games?" + query;
+      actions.append(alternatives);
+    }
+    if (mode === "reviews") makeReview(entry, title, actions, savedChecks);
     if (isFavorite && toggleFavorite) {
       const favorite = button("", () => {
         toggleFavorite(entry.game.id);

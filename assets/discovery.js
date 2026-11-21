@@ -382,7 +382,7 @@ function homeMediaPicks(catalog, preferred, format) {
   return selection.slice(0, 3).map(format);
 }
 
-export async function populateHomeMedia(target) {
+export async function populateHomeMedia(target, { watching = false } = {}) {
   const [films, music, videos] = await Promise.allSettled([
     Promise.all([filmData(), import(`./film-playback.js${version}`)]),
     musicData(),
@@ -397,7 +397,7 @@ export async function populateHomeMedia(target) {
       title: 'Featured films',
       records: homeMediaPicks(fullFilms, [featuredFilm.id, 'little-bear-movie', 'waterwalker'], filmItem),
       href: '#movies', browse: 'Browse movies',
-      shortcut: ['Family films', '#movies?collection=family']
+      shortcut: watching ? ['Recently added films', '#movies?collection=additions'] : ['Family films', '#movies?collection=family']
     });
     if (lane) shelves.append(lane);
   }
@@ -413,12 +413,13 @@ export async function populateHomeMedia(target) {
     if (lane) shelves.append(lane);
   }
   if (videos.status === 'fulfilled') {
-    const gaming = videos.value.getCuratedVideos().filter(video => video.tags.includes('Gaming'));
+    const topic = watching ? 'Education' : 'Gaming';
+    const picks = videos.value.getCuratedVideos().filter(video => video.tags.includes(topic));
     const lane = homeMediaLane({
-      title: 'Gaming videos',
-      records: homeMediaPicks(gaming, ['NWjkbAQOGY8', '7fRbU-uUNQA', 'ftnaXStTPBY'], videoItem),
-      href: '#youtube?format=all&topic=Gaming', browse: 'Browse videos',
-      shortcut: ['MrBeast videos', '#youtube?format=all&q=MrBeast']
+      title: watching ? 'Learning videos' : 'Gaming videos',
+      records: homeMediaPicks(picks, watching ? [] : ['NWjkbAQOGY8', '7fRbU-uUNQA', 'ftnaXStTPBY'], videoItem),
+      href: `#youtube?format=all&topic=${topic}`, browse: 'Browse videos',
+      shortcut: watching ? ['New videos', '#youtube?format=new'] : ['MrBeast videos', '#youtube?format=all&q=MrBeast']
     });
     if (lane) shelves.append(lane);
   }

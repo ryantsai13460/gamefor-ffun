@@ -2,6 +2,7 @@ import { createBeatBeacon, createCometCourier, createPinpointPutt } from "./bonu
 import { createHarborDispatch, createTidalRescue } from "./harbor-games.js";
 import { createKiteBreeze, createPicnicPack } from "./family-games.js";
 import { createCloverRoll } from "./clover-roll.js";
+import { createClockCourier, createFractionKitchen } from "./learning-games.js";
 
 const storageKey = "ffun-original-games-v1";
 const directions = {
@@ -1912,6 +1913,8 @@ const localGames = {
   "picnic-pack": { title: "Picnic Pack", run: context => playCanvas(context, createPicnicPack) },
   "kite-breeze": { title: "Kite Breeze", run: context => playCanvas(context, createKiteBreeze) },
   "clover-roll": { title: "Clover Roll", run: context => playCanvas(context, createCloverRoll) },
+  "fraction-kitchen": { title: "Fraction Kitchen", run: context => playCanvas(context, createFractionKitchen) },
+  "clock-courier": { title: "Clock Courier", run: context => playCanvas(context, createClockCourier) },
   ...Object.fromEntries(Object.entries(classicGames).map(([id, { title }]) => [
     id, { title, run: context => playCanvas(context, () => classicArcade(id)) }
   ])),

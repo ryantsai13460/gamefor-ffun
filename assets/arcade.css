@@ -9,6 +9,12 @@
 :root {
   color-scheme: dark;
   scroll-padding-top: 84px;
+  --sidebar-width: 226px;
+  --content-gutter: clamp(20px, 3.3vw, 56px);
+  font-family: Geist, "Segoe UI", system-ui, sans-serif;
+  font-size: 16px;
+}
+:root, .theme-sample {
   --bg: #0c1423;
   --sidebar: #111d30;
   --panel: #18263c;
@@ -25,15 +31,11 @@
   --accent-wash: #352b22;
   --accent-border: #896d46;
   --ready: #83e0cb;
-  --sidebar-width: 226px;
-  --content-gutter: clamp(20px, 3.3vw, 56px);
-  font-family: Geist, "Segoe UI", system-ui, sans-serif;
-  font-size: 16px;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 body { margin: 0; color: var(--text); background: var(--bg); }
-body[data-theme="graphite"] {
+:is(body, .theme-sample)[data-theme="graphite"] {
   --bg: #14141a;
   --sidebar: #1d1c25;
   --panel: #26252f;
@@ -48,7 +50,7 @@ body[data-theme="graphite"] {
   --accent-wash: #342944;
   --accent-border: #807095;
 }
-body[data-theme="ocean"] {
+:is(body, .theme-sample)[data-theme="ocean"] {
   --bg: #0a1924;
   --sidebar: #0f2230;
   --panel: #153344;
@@ -64,7 +66,7 @@ body[data-theme="ocean"] {
   --accent-wash: #183743;
   --accent-border: #54899c;
 }
-body[data-theme="pine"] {
+:is(body, .theme-sample)[data-theme="pine"] {
   --bg: #101d19;
   --sidebar: #142820;
   --panel: #1e382e;
@@ -80,7 +82,7 @@ body[data-theme="pine"] {
   --accent-wash: #294634;
   --accent-border: #678968;
 }
-body[data-theme="violet"] {
+:is(body, .theme-sample)[data-theme="violet"] {
   --bg: #181427;
   --sidebar: #201a34;
   --panel: #302747;
@@ -96,7 +98,7 @@ body[data-theme="violet"] {
   --accent-wash: #3e2f53;
   --accent-border: #8772a7;
 }
-body[data-theme="ember"] {
+:is(body, .theme-sample)[data-theme="ember"] {
   --bg: #221816;
   --sidebar: #2b1d1a;
   --panel: #3c2925;
@@ -327,7 +329,11 @@ select.field { cursor: pointer; }
 .game-backdrop[data-game-background="pine"] { --game-backdrop-color: #27775d; }
 .game-backdrop[data-game-background="orchid"] { --game-backdrop-color: #8e59bb; }
 .game-backdrop[data-game-background="amber"] { --game-backdrop-color: #b67a32; }
-.game-backdrop:is([data-game-background="ocean"], [data-game-background="pine"], [data-game-background="orchid"], [data-game-background="amber"], [data-game-background="color"]) {
+.game-backdrop[data-game-background="lagoon"] { --game-backdrop-color: #4aa995; }
+.game-backdrop[data-game-background="berry"] { --game-backdrop-color: #bf548e; }
+.game-backdrop[data-game-background="cobalt"] { --game-backdrop-color: #4b74c8; }
+.game-backdrop[data-game-background="dune"] { --game-backdrop-color: #bc9e56; }
+.game-backdrop:is([data-game-background="ocean"], [data-game-background="pine"], [data-game-background="orchid"], [data-game-background="amber"], [data-game-background="lagoon"], [data-game-background="berry"], [data-game-background="cobalt"], [data-game-background="dune"], [data-game-background="color"]) {
   background-color: color-mix(in srgb, var(--game-backdrop-color) var(--game-backdrop-tint, 32%), #131b2a);
 }
 .game-backdrop[data-game-background="color"] { --game-backdrop-tint: 22%; }
