@@ -1,10 +1,17 @@
-import {
-  answerBlip, blipModelAvailability, blipModes, portableBlipAvailability,
-  prepareBlipModel, preparePortableBlipModel, releasePortableBlipModel
-} from './blip-answer.js';
 import { BLIP_FILE_ACCEPT, BLIP_FILE_LIMITS, normalizeBlipAttachments, readBlipFiles } from './blip-files.js';
 import { mountBlipMusic } from './blip-music.js';
-import { BLIP_LIMITS, createBlipStore } from './blip-store.js';
+import { formatBlipReply } from './blip-format.js';
+import { gatewayConnected, hostedBlipReply, renderGatewaySettings } from './service-gateway.js';
+
+const assetVersion = new URL(import.meta.url).search;
+const [{ BLIP_LIMITS, createBlipStore }, {
+  answerBlip, blipModelAvailability, blipModes, cpuBlipAvailability, portableBlipAvailability,
+  prepareBlipModel, prepareCpuBlipModel, preparePortableBlipModel,
+  releaseCpuBlipModel, releasePortableBlipModel
+}] = await Promise.all([
+  import(`./blip-store.js${assetVersion}`),
+  import(`./blip-answer.js${assetVersion}`)
+]);
 
 const examples = [
   ['Make a plan', 'Help me make a 20-minute study plan.', 'study'],
@@ -15,6 +22,7 @@ const examples = [
 
 const messageSources = {
   model: 'On-device AI',
+  hosted: 'Connected AI model',
   local: 'Local reply',
   calculator: 'Calculator',
   conversion: 'Unit converter',
@@ -42,11 +50,16 @@ function button(text, action, className) {
   return node;
 }
 
-function messageView(message) {
+function messageView(message, { onCopy, onRetry } = {}) {
   const item = element('article', `blip-message blip-message--${message.role}`);
   item.append(element('h3', 'blip-message-author', message.role === 'user' ? 'You' : 'blip.ai'));
   if (message.kind) item.append(element('p', 'blip-answer-source', messageSources[message.kind]));
-  if (message.text) item.append(element('p', 'blip-message-text', message.text));
+  if (message.text) {
+    const body = element('div', 'blip-message-text');
+    if (message.role === 'assistant') formatBlipReply(body, message.text);
+    else body.textContent = message.text;
+    item.append(body);
+  }
   for (const file of message.attachments || []) {
     const preview = element('details', 'blip-file-preview');
     preview.append(
@@ -67,6 +80,12 @@ function messageView(message) {
     const credits = element('div', 'blip-credits');
     credits.append(reference, license);
     item.append(credits);
+  }
+  if (onCopy || onRetry) {
+    const actions = element('div', 'blip-answer-actions');
+    if (onCopy) actions.append(button('Copy response', onCopy, 'blip-button'));
+    if (onRetry) actions.append(button('Regenerate', onRetry, 'blip-button'));
+    item.append(actions);
   }
   return item;
 }
@@ -90,10 +109,15 @@ export function renderBlip(target) {
             <h2>On-device AI</h2>
             <p data-blip="model-status" role="status">Checking this browser for a model…</p>
             <button class="blip-button blip-button--primary" type="button" data-blip="enable" hidden>Enable on-device AI</button>
+            <p data-blip="cpu-status" role="status" hidden></p>
+            <button class="blip-button blip-button--primary" type="button" data-blip="cpu" hidden>Start CPU AI</button>
             <p data-blip="portable-status" role="status"></p>
             <button class="blip-button" type="button" data-blip="portable" hidden>Start local AI</button>
             <label class="blip-check"><input type="checkbox" data-blip="references"> Use Wikipedia as a fallback</label>
             <p>Short questions in chats without files can use this lookup.</p>
+            <div data-blip="gateway"></div>
+            <label class="blip-check"><input type="checkbox" data-blip="hosted"> Use the connected model for chats without files</label>
+            <p>When enabled, the current question and recent messages are sent to your backend.</p>
           </div>
         </details>
       </div>
@@ -120,6 +144,7 @@ export function renderBlip(target) {
             <h2>What are you curious about?</h2>
             <p>Ask a question or try one of these prompts.</p>
             <div class="blip-prompts" data-blip="prompts"></div>
+            <button class="blip-button blip-welcome-setup" type="button" data-blip="setup-shortcut" hidden>Set up AI for generated replies</button>
           </div>
           <div class="blip-messages" data-blip="messages"></div>
         </div>
@@ -179,12 +204,15 @@ export function renderBlip(target) {
   const nameInput = part('chat-name');
   const nameLabel = nameInput.closest('label');
   const stopMusic = mountBlipMusic(part('music'));
+  renderGatewaySettings(part('gateway'), 'Connect an AI provider');
   const musicLink = element('a', 'blip-button', 'Open Music library');
   musicLink.href = '#music';
   part('music').append(musicLink);
   let edit;
   let nativeStatus = 'unavailable';
+  let cpuStatus = 'unavailable';
   let portableStatus = 'unavailable';
+  let setupRunning = false;
 
   const currentChat = () => {
     const { chats, activeId } = store.getState();
@@ -262,8 +290,39 @@ export function renderBlip(target) {
     input.disabled = !chat;
     input.value = drafts.get(chat?.id) || '';
     part('welcome').hidden = Boolean(chat?.messages.length);
-    part('messages').replaceChildren(...(chat?.messages || []).map(messageView));
+    const messages = chat?.messages || [];
+    const items = messages.map((message, index) => messageView(message, {
+      onCopy: message.role === 'assistant' && message.text ? async () => {
+        try {
+          await navigator.clipboard.writeText(message.text);
+          status.textContent = 'Response copied.';
+        } catch {
+          status.textContent = 'Clipboard unavailable. Select the response to copy it.';
+        }
+      } : undefined,
+      onRetry: message.role === 'assistant' && index === messages.length - 1 && !pending.has(chat.id)
+        ? () => retryReply(chat, message.id) : undefined
+    }));
+    part('messages').replaceChildren(...items);
+    drawPartial(chat?.id);
     drawComposer(chat);
+    transcript.scrollTop = transcript.scrollHeight;
+  }
+
+  function drawPartial(id) {
+    let partial = part('messages').querySelector('.blip-reply-stream');
+    const text = pending.get(id)?.partial;
+    if (!text) {
+      partial?.remove();
+      return;
+    }
+    if (!partial) {
+      partial = messageView({ role: 'assistant', kind: 'hosted' });
+      partial.classList.add('blip-reply-stream');
+      partial.append(element('p', 'blip-message-text'));
+      part('messages').append(partial);
+    }
+    partial.lastElementChild.textContent = text;
     transcript.scrollTop = transcript.scrollHeight;
   }
 
@@ -353,45 +412,75 @@ export function renderBlip(target) {
       const compact = (text || attachments[0].name).replace(/\s+/g, ' ');
       store.renameChat(chat.id, compact.length > 60 ? compact.slice(0, 59).trimEnd() + '…' : compact);
     }
-    const request = { controller: new AbortController(), label: stages.checking };
-    pending.set(chat.id, request);
     drafts.delete(chat.id);
     draftFiles.delete(chat.id);
     fileNotices.delete(chat.id);
-    draw();
     input.focus({ preventScroll: true });
+    await runReply(chat, text, attachments);
+  });
+
+  function retryReply(chat, messageId) {
+    if (pending.has(chat.id)) return;
+    const previousUser = chat.messages.findLastIndex(message => message.role === 'user');
+    if (previousUser < 0) return;
+    const user = chat.messages[previousUser];
+    void runReply({ ...chat, messages: chat.messages.slice(0, previousUser) }, user.text, user.attachments || [], messageId);
+  }
+
+  async function runReply(chat, text, attachments, replaceId) {
+    const request = { controller: new AbortController(), label: stages.checking };
+    pending.set(chat.id, request);
+    draw();
     let reply;
     try {
       const contextFiles = attachments.length ? attachments :
         chat.messages.findLast(message => message.attachments?.length)?.attachments || [];
-      reply = await answerBlip({
-        text,
-        attachments: contextFiles,
-        history: chat.messages,
-        mode: chat.mode,
-        wikipedia: part('references').checked && !contextFiles.length,
-        signal: request.controller.signal,
-        onStage(stage) {
-          if (request.controller.signal.aborted) return;
-          request.label = stages[stage] || stages.checking;
-          if (store.getState().activeId === chat.id) status.textContent = request.label;
-        }
-      });
-    } catch {
+      const useHosted = part('hosted').checked && !contextFiles.length;
+      if (useHosted && gatewayConnected()) {
+        request.label = 'Waiting for the connected model…';
+        if (store.getState().activeId === chat.id) status.textContent = request.label;
+        const answer = await hostedBlipReply({
+          text, history: chat.messages, mode: chat.mode,
+          signal: AbortSignal.any([request.controller.signal, AbortSignal.timeout(65000)]),
+          onUpdate(value) {
+            request.partial = value;
+            if (store.getState().activeId === chat.id) drawPartial(chat.id);
+          }
+        });
+        reply = { kind: 'hosted', text: answer };
+      } else {
+        reply = await answerBlip({
+          text,
+          attachments: contextFiles,
+          history: chat.messages,
+          mode: chat.mode,
+          wikipedia: part('references').checked && !contextFiles.length,
+          signal: request.controller.signal,
+          onStage(stage) {
+            if (request.controller.signal.aborted) return;
+            request.label = stages[stage] || stages.checking;
+            if (store.getState().activeId === chat.id) status.textContent = request.label;
+          }
+        });
+      }
+    } catch (error) {
       if (!request.controller.signal.aborted) {
-        reply = { kind: 'unavailable', text: 'Something interrupted the answer. You can try again.' };
+        reply = { kind: 'unavailable', text: error.message || 'Something interrupted the answer. You can try again.' };
       }
     }
     if (pending.get(chat.id) !== request || lifetime.signal.aborted) return;
     pending.delete(chat.id);
     if (!reply || request.controller.signal.aborted) return;
     const active = store.getState().activeId === chat.id;
-    const saved = store.addMessage(chat.id, 'assistant', reply.text.slice(0, BLIP_LIMITS.message), reply);
+    const bounded = reply.text.slice(0, BLIP_LIMITS.message);
+    const saved = replaceId
+      ? reply.kind !== 'unavailable' && store.replaceAssistantReply(chat.id, replaceId, bounded, reply)
+      : store.addMessage(chat.id, 'assistant', bounded, reply);
     if (active) {
       draw();
-      status.textContent = saved ? 'Reply added.' : 'The reply could not be saved.';
+      status.textContent = saved ? 'Reply added.' : reply.kind === 'unavailable' ? bounded : 'The reply could not be saved.';
     } else if (saved) drawRail();
-  });
+  }
 
   function stopReply(id) {
     const request = pending.get(id);
@@ -404,7 +493,7 @@ export function renderBlip(target) {
     const chat = currentChat();
     if (!chat) return;
     stopReply(chat.id);
-    drawComposer(chat);
+    draw();
     status.textContent = 'Reply stopped.';
     input.focus({ preventScroll: true });
   });
@@ -455,64 +544,69 @@ export function renderBlip(target) {
 
   function drawModels() {
     const nativeReady = nativeStatus === 'available';
+    const cpuReady = cpuStatus === 'available';
     const portableReady = portableStatus === 'available';
-    const canEnable = ['downloadable', 'downloading'].includes(nativeStatus);
-    const canDownload = !nativeReady && ['downloadable', 'downloading'].includes(portableStatus);
+    const ready = nativeReady || cpuReady || portableReady;
+    const canEnable = !ready && ['downloadable', 'downloading'].includes(nativeStatus);
+    const canStartCpu = !ready && ['downloadable', 'downloading'].includes(cpuStatus);
+    const canDownload = !ready && ['downloadable', 'downloading'].includes(portableStatus);
+    const canSetUp = canEnable || canStartCpu || canDownload;
     part('enable').hidden = !canEnable;
+    part('cpu').hidden = !canStartCpu;
     part('portable').hidden = !canDownload;
-    part('settings-label').textContent = (canEnable || canDownload) && !portableReady ? 'Set up AI' : 'AI settings';
-    modelSettings.dataset.ready = String(nativeReady || portableReady);
+    part('setup-shortcut').hidden = !canSetUp;
+    part('settings-label').textContent = canSetUp ? 'Set up AI' : 'AI settings';
+    modelSettings.dataset.ready = String(ready);
     part('model-status').textContent = nativeReady ? 'The browser model is ready.'
       : canEnable ? 'Enable the browser model to use conversational AI.'
       : 'This browser’s built-in model is unavailable.';
+    part('cpu-status').hidden = !cpuReady && !canStartCpu;
+    part('cpu-status').textContent = cpuReady ? 'CPU AI is ready.'
+      : 'Runs on your processor. First-time setup downloads about 108 MB. Prompts and files stay on this device.';
     part('portable-status').textContent = portableReady ? 'The portable local model is ready.'
-      : canDownload ? 'First-time setup downloads about 220 MB. The model, prompts, and files stay on this device.'
-      : nativeReady ? '' : 'Local replies, file previews, calculations, and optional Wikipedia lookups are available.';
+      : canDownload ? 'The WebGPU option downloads about 220 MB on first use.'
+      : ready || canSetUp ? '' : 'Local replies, file previews, calculations, and optional Wikipedia lookups are available.';
   }
 
-  Promise.allSettled([blipModelAvailability(), portableBlipAvailability()]).then(([native, portable]) => {
+  Promise.allSettled([blipModelAvailability(), cpuBlipAvailability(), portableBlipAvailability()]).then(([native, cpu, portable]) => {
     if (lifetime.signal.aborted) return;
     nativeStatus = native.value || 'unavailable';
+    cpuStatus = cpu.value || 'unavailable';
     portableStatus = portable.value || 'unavailable';
     drawModels();
   });
-  part('enable').addEventListener('click', async () => {
-    const enable = part('enable');
-    const modelStatus = part('model-status');
-    enable.disabled = true;
-    modelStatus.textContent = 'Preparing the browser model…';
-    try {
-      await prepareBlipModel(lifetime.signal, fraction => {
-        if (!lifetime.signal.aborted) modelStatus.textContent = `Downloading model · ${Math.round(fraction * 100)}%`;
-      });
-      if (!lifetime.signal.aborted) {
-        nativeStatus = 'available';
-        drawModels();
+
+  const setupButtons = ['enable', 'cpu', 'portable'].map(part);
+  for (const [control, notice, prepare, ready] of [
+    ['enable', 'model-status', prepareBlipModel, () => { nativeStatus = 'available'; }],
+    ['cpu', 'cpu-status', prepareCpuBlipModel, () => { cpuStatus = 'available'; }],
+    ['portable', 'portable-status', preparePortableBlipModel, () => { portableStatus = 'available'; }]
+  ]) {
+    part(control).addEventListener('click', async () => {
+      if (setupRunning) return;
+      setupRunning = true;
+      const message = part(notice);
+      for (const button of setupButtons) button.disabled = true;
+      message.textContent = 'Preparing the local model…';
+      try {
+        await prepare(lifetime.signal, (fraction, description) => {
+          if (!lifetime.signal.aborted) message.textContent = `${description || 'Preparing local AI'} · ${Math.round(fraction * 100)}%`;
+        });
+        if (!lifetime.signal.aborted) {
+          ready();
+          drawModels();
+        }
+      } catch {
+        if (!lifetime.signal.aborted) message.textContent = 'The model could not start. Try again or choose another available model.';
+      } finally {
+        setupRunning = false;
+        for (const button of setupButtons) button.disabled = false;
       }
-    } catch {
-      if (!lifetime.signal.aborted) modelStatus.textContent = 'The browser could not prepare its model. Try again.';
-    } finally {
-      enable.disabled = false;
-    }
-  });
-  part('portable').addEventListener('click', async () => {
-    const download = part('portable');
-    const notice = part('portable-status');
-    download.disabled = true;
-    notice.textContent = 'Preparing the local model…';
-    try {
-      await preparePortableBlipModel(lifetime.signal, (fraction, description) => {
-        if (!lifetime.signal.aborted) notice.textContent = `${description || 'Preparing local AI'} · ${Math.round(fraction * 100)}%`;
-      });
-      if (!lifetime.signal.aborted) {
-        portableStatus = 'available';
-        drawModels();
-      }
-    } catch {
-      if (!lifetime.signal.aborted) notice.textContent = 'The portable model could not start here. Try again or use the local tools.';
-    } finally {
-      download.disabled = false;
-    }
+    });
+  }
+  part('setup-shortcut').addEventListener('click', () => {
+    modelSettings.open = true;
+    modelSettings.querySelector('summary').focus({ preventScroll: true });
   });
   for (const [popover, other] of [[modelSettings, musicSettings], [musicSettings, modelSettings]]) {
     popover.addEventListener('toggle', () => { if (popover.open) other.open = false; });
@@ -526,6 +620,7 @@ export function renderBlip(target) {
     for (const id of pending.keys()) stopReply(id);
     if (dialog.open) dialog.close();
     stopMusic();
+    void releaseCpuBlipModel();
     void releasePortableBlipModel();
   };
 }

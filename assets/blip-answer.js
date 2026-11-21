@@ -1,8 +1,10 @@
 import { localAssistantAnswer, searchModelAvailability, searchWikipedia } from './search-answer.js';
 import { portableBlipReady, runPortableBlipPrompt } from './blip-portable.js';
+import { cpuBlipReady, runCpuBlipPrompt } from './blip-cpu.js';
 
 export { prepareSearchModel as prepareBlipModel, searchModelAvailability as blipModelAvailability } from './search-answer.js';
 export { portableBlipAvailability, preparePortableBlipModel, releasePortableBlipModel } from './blip-portable.js';
+export { cpuBlipAvailability, prepareCpuBlipModel, releaseCpuBlipModel } from './blip-cpu.js';
 
 export const blipModes = Object.freeze({
   quick: Object.freeze({
@@ -204,6 +206,18 @@ export async function answerBlip({ text, history = [], mode = 'quick', wikipedia
     const answer = await promptModel(message, history, mode, files, signal).catch(() => '');
     signal?.throwIfAborted();
     if (answer) return { kind: 'model', title: 'On-device AI', text: answer };
+  }
+
+  if (cpuBlipReady()) {
+    onStage?.('generating');
+    const messages = [
+      { role: 'system', content: modelInstruction(mode) },
+      ...readHistory(history, message, 1_600),
+      { role: 'user', content: filePrompt(message, files, 1_600) }
+    ];
+    const answer = await runCpuBlipPrompt(messages, mode, signal).catch(() => '');
+    signal?.throwIfAborted();
+    if (answer) return { kind: 'model', title: 'CPU on-device AI', text: answer };
   }
 
   if (portableBlipReady()) {

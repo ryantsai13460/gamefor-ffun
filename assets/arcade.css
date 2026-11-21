@@ -33,6 +33,21 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 body { margin: 0; color: var(--text); background: var(--bg); }
+body[data-theme="graphite"] {
+  --bg: #14141a;
+  --sidebar: #1d1c25;
+  --panel: #26252f;
+  --panel-deep: #1b1a23;
+  --panel-hover: #333140;
+  --line: #4e485e;
+  --line-soft: #393643;
+  --control-line: #83798e;
+  --accent: #d8c1ff;
+  --accent-hover: #e6d8ff;
+  --accent-dark: #231633;
+  --accent-wash: #342944;
+  --accent-border: #807095;
+}
 button, input, select { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: default; opacity: .55; }
@@ -435,6 +450,11 @@ select.field { cursor: pointer; }
 .search-resource-source { color: var(--muted); font-size: .85rem; overflow-wrap: anywhere; }
 .search-resource-dialog .media-player { min-height: min(480px, 57vh); }
 .web-search-game > strong { font-size: 1.05rem; }
+.gateway-settings { max-width: 100%; }
+.gateway-settings summary { cursor: pointer; font-weight: 650; }
+.gateway-configuration { display: grid; gap: 8px; margin-top: 10px; }
+.gateway-configuration label { display: grid; gap: 4px; min-width: 0; }
+.gateway-configuration .field { width: 100%; }
 
 .web-search-google,
 .search-map-panel {

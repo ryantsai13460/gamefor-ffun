@@ -9,7 +9,7 @@ const defaultTitle = 'New chat';
 const version = 1;
 const maxSerializedLength = 2_000_000;
 const roles = new Set(['user', 'assistant']);
-const answerKinds = new Set(['model', 'local', 'calculator', 'conversion', 'wikipedia', 'unavailable']);
+const answerKinds = new Set(['model', 'hosted', 'local', 'calculator', 'conversion', 'wikipedia', 'unavailable']);
 const idPattern = /^[a-z0-9_-]{1,96}$/i;
 
 function isObject(value) {
@@ -262,6 +262,18 @@ export function createBlipStore({ storage = browserStorage() } = {}) {
       const unread = chat.unread || (role === 'assistant' && state.activeId !== id);
       saveChat(Object.freeze({ ...chat, updatedAt: now, messages, unread }), { first: true });
       return message;
+    },
+    replaceAssistantReply(id, messageId, value, details) {
+      const chat = getChat(id);
+      const last = chat?.messages.at(-1);
+      if (last?.role !== 'assistant' || last.id !== messageId) return null;
+      const now = Math.max(chat.updatedAt, Date.now());
+      const reply = messageRecord(messageId, 'assistant', value, now, details);
+      if (!reply) return null;
+      const messages = Object.freeze([...chat.messages.slice(0, -1), reply]);
+      const unread = chat.unread || state.activeId !== id;
+      saveChat(Object.freeze({ ...chat, updatedAt: now, messages, unread }), { first: true });
+      return reply;
     },
   });
 }

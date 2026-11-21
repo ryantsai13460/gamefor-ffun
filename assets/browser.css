@@ -1,6 +1,7 @@
 .proxy-viewer {
   min-width: 0;
   color: var(--text, #f4f4f6);
+  container: proxy-viewer / inline-size;
 }
 
 .proxy-heading {
@@ -127,6 +128,31 @@
   width: 2.125rem;
   height: 2.125rem;
   font-size: 1.1rem;
+}
+
+.proxy-panel-actions,
+.proxy-saved-tools {
+  display: flex;
+  align-items: center;
+  gap: .2rem;
+}
+
+.proxy-saved-tools {
+  margin-inline-start: auto;
+}
+
+.proxy-saved-trigger {
+  width: auto;
+  min-width: 0;
+  padding-inline: .6rem;
+  color: var(--muted, #a6a9b1);
+  font-size: .82rem;
+  font-weight: 650;
+}
+
+.proxy-save-favorite[aria-pressed="true"] {
+  color: var(--accent, #f4c542);
+  background: var(--accent-wash, #302619);
 }
 
 .proxy-toolbar {
@@ -388,6 +414,109 @@
   margin-top: .45rem;
 }
 
+.proxy-saved {
+  width: min(32rem, calc(100% - 1.5rem));
+  max-height: min(35rem, calc(100% - 1.5rem));
+  padding: 0;
+  color: var(--text, #f4f4f6);
+  background: var(--panel, #151822);
+  border: 1px solid var(--line, #303441);
+  border-radius: .85rem;
+}
+
+.proxy-saved::backdrop {
+  background: #040609b8;
+}
+
+.proxy-saved-heading {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .45rem .65rem .45rem 1rem;
+  border-bottom: 1px solid var(--line, #303441);
+  background: var(--panel, #151822);
+}
+
+.proxy-saved-heading h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.proxy-saved-content {
+  padding: .4rem .65rem .75rem;
+}
+
+.proxy-saved-empty {
+  padding: .5rem;
+  color: var(--muted, #a6a9b1);
+  line-height: 1.5;
+}
+
+.proxy-saved-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.proxy-saved-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .35rem;
+  min-width: 0;
+  padding: .22rem 0;
+}
+
+.proxy-saved-list li + li {
+  border-top: 1px solid var(--line-soft, #26262e);
+}
+
+.proxy-saved-link {
+  display: grid;
+  gap: .25rem;
+  min-width: 0;
+  min-height: 2.625rem;
+  padding: .4rem .5rem;
+  color: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: .4rem;
+  font: inherit;
+  text-align: start;
+}
+
+.proxy-saved-link:hover {
+  background: var(--panel-hover, #23232b);
+}
+
+.proxy-saved-link strong,
+.proxy-saved-link small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proxy-saved-link strong {
+  font-size: .9rem;
+}
+
+.proxy-saved-link small {
+  color: var(--muted, #a6a9b1);
+  font-size: .78rem;
+}
+
+.proxy-saved-link:focus-visible {
+  outline-offset: -2px;
+}
+
+.proxy-clear-history {
+  margin: .5rem 0 0 .15rem;
+}
+
 .proxy-window:fullscreen {
   display: flex;
   flex-direction: column;
@@ -422,6 +551,40 @@
 
   .proxy-status-row {
     flex-wrap: wrap;
+  }
+}
+
+@container proxy-viewer (max-width: 35rem) {
+  .proxy-viewer .proxy-toolbar {
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+
+  .proxy-viewer .proxy-address {
+    flex-basis: 100%;
+    order: 3;
+  }
+}
+
+@container proxy-viewer (max-width: 26rem) {
+  .proxy-viewer .proxy-tab-row {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .proxy-viewer .proxy-tabs {
+    flex: 1 1 70%;
+  }
+
+  .proxy-saved-tools {
+    justify-content: flex-end;
+    flex: 0 0 100%;
+    padding-top: .15rem;
+    border-top: 1px solid var(--line-soft, #26262e);
+  }
+
+  .proxy-saved-trigger {
+    height: 2.35rem;
   }
 }
 

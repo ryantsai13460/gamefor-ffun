@@ -74,6 +74,9 @@ export function restorePreferences(saved, byId) {
     recent: ids(saved?.recent).slice(0, 30),
     compact: saved?.compact === true,
     artwork: saved?.artwork !== false,
+    theme: saved?.theme === 'graphite' ? 'graphite' : 'midnight',
+    hiddenHome: Array.isArray(saved?.hiddenHome) ? [...new Set(saved.hiddenHome
+      .filter(id => ['destinations', 'featured', 'recent', 'new', 'built-in'].includes(id)))] : [],
     launches
   };
 }

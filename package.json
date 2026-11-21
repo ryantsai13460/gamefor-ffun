@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "python3 scripts/preview.py",
     "test": "node --test tests/*.test.js",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "test:gateway": "node --test server/worker.test.js"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1"
