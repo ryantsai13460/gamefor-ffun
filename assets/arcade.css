@@ -266,11 +266,39 @@ select.field { cursor: pointer; }
 .settings-option { display: flex; align-items: center; gap: 9px; color: var(--text); }
 .settings-option input { width: 17px; height: 17px; accent-color: var(--accent); }
 .settings-grid .info-panel { align-content: start; }
+.game-background-settings { margin-top: 13px; }
+.game-background-settings label { display: grid; gap: 6px; max-width: 100%; min-width: 0; }
+.game-background-settings input[type="file"] { width: min(100%, 320px); }
+.game-background-settings input[type="file"]::file-selector-button {
+  margin-inline-end: 8px; padding: 4px 8px; border: 1px solid var(--control-line);
+  border-radius: 5px; color: var(--text); background: var(--panel-hover); font: inherit;
+}
+.game-background-settings [role="status"]:empty { display: none; }
+.game-backdrop {
+  border: 1px solid var(--line-soft); border-radius: 12px;
+  background-color: var(--panel-deep); background-position: center; background-size: cover;
+}
+.game-backdrop[data-game-background="grid"] {
+  background-color: var(--panel);
+  background-image: linear-gradient(to right, #94acd019 1px, transparent 1px), linear-gradient(to bottom, #94acd019 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.game-backdrop[data-game-background="race"] {
+  --game-background-image: url("./local-art/ffun-circuit-v1.webp");
+  background-position: center 54%;
+}
+.game-backdrop:is([data-game-background="race"], [data-game-background="custom"]) {
+  background-image: linear-gradient(90deg, #101b2ef0 10%, #101b2ee8 57%, #101b2e78), var(--game-background-image);
+}
+.game-background-preview {
+  display: grid; align-items: end; width: 100%; min-height: 106px; padding: 12px;
+  color: var(--text); font-size: .85rem; font-weight: 650;
+}
 
 .player-back { margin-bottom: 17px; }
 .player-heading {
   display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; gap: 16px;
-  margin-bottom: 15px;
+  margin-bottom: 15px; padding: clamp(10px, 2.2vw, 20px);
 }
 .player-heading .card-art { border-radius: 10px; }
 .player-heading h1 { font-size: clamp(1.75rem, 4vw, 3.1rem); letter-spacing: -.05em; }

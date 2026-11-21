@@ -22,17 +22,18 @@ The catalog lives in `assets/catalog.js`. The library derives its counts from th
 | Original built-in puzzles, Pattern Pulse and Sum Trail | 2 |
 | Original arcade games, Comet Courier, Pinpoint Putt, and Beat Beacon | 3 |
 | Harbor Dispatch and Tidal Rescue | 2 |
-| **Current searchable catalog** | **558** |
+| Picnic Pack and Kite Breeze | 2 |
+| **Current searchable catalog** | **560** |
 
 The GitHub source is commit [`4deda5c`](https://github.com/ryantsai13460/gamefor-ffun/tree/4deda5c1ce9058184123d85792198fee5bc09a7c). Memory Match came from commit [`41ea241`](https://github.com/ryantsai13460/gamefor-ffun/commit/41ea241). The [public Base44 library](https://proxy-arcade-play.base44.app/library/games) supplied 58 records, including six titles already in the GitHub catalog. Slither.io appears in both Base44 sources and counts once. The [Base44 homepage](https://proxy-arcade-play.base44.app/) also lists Minecraft Classic and Suika Game, which are absent from both main libraries. Suika Game is the commercial original, with a separate listing from Suika Game: Merge Fruits. Catch the Star is the standalone clicker, while Catch the Stars is the built-in falling-stars game.
 
-The current upload is a written brief. The earlier upgrade ZIP in the workspace contains 551 entries. Each of those entries retains its ID, title, category, collection, and original aliases in the current catalog. The 548 entries from the GitHub and Base44 libraries form the recovered set within the 558 total.
+The earlier upgrade ZIP in the workspace contains 551 entries. Each retains its ID, title, category, collection, and original aliases. The 548 entries from the GitHub and Base44 libraries form the recovered set within the 560 total.
 
 ## Links and artwork
 
 External entries link to HTTPS publisher or distributor pages checked against the game title. Fancade and Stacktris use [Fancade’s documented embeddable player](https://www.fancade.com/wiki/Fancade_Web#Embedding). The previously featured Miniplay titles, Snow Rider 3D, Tennis Masters, and Crazy Roll 3D, have a separate set of publisher links on Home. External gameplay can require a download, purchase, account, device capability, or supported region. Resent Client retains its original listing with a related link to the official Minecraft Classic game. Blash.io retains its listing and links to the publisher’s notice.
 
-Artwork comes from game-specific publisher or distributor metadata or from captured gameplay of this site's local games. This audit added eight gameplay screenshots and twelve publisher or distributor images. The catalog has 555 artwork entries, including all 20 built-in games. Resent Client, Blash.io, and Roams.io use title cards. The catalog keeps the source attribution and the interface uses a title card if an image fails to load.
+Artwork comes from game-specific publisher or distributor metadata or from captured gameplay of this site's local games. The catalog has 557 artwork entries, including captured gameplay for Picnic Pack and Kite Breeze and artwork for all 22 built-in games. Resent Client, Blash.io, and Roams.io use title cards. The catalog keeps source attribution and the interface uses a title card if an image fails to load.
 
 The source pass checked 536 distinct game-source URLs for an HTTP response and compared page contents for 78 titles. Artwork checks also compared 425 existing Miniplay image identifiers against their game pages. The reachability check establishes that a source responded. Test coverage for actual gameplay is recorded separately. [Verification report](qa.md)
 

@@ -8,6 +8,7 @@ import { findCuratedVideos, getVideoCollections, parseYouTubeVideo } from '../as
 import { expansionVideos } from '../assets/media-expansion.js';
 import { discoveryVideos } from '../assets/media-discovery-videos.js';
 import { entertainmentVideos } from '../assets/media-entertainment-videos.js';
+import { familyVideos } from '../assets/media-family-videos.js';
 import { featuredFilm, filmCatalog } from '../assets/film-catalog.js';
 import { filmPlayback } from '../assets/film-playback.js';
 import { featuredTrack, musicCatalog } from '../assets/music-catalog.js';
@@ -17,7 +18,7 @@ const site = 'https://ryantsai13460.github.io/gamefor-ffun/#browse';
 
 test('the video expansions preserve the library and use unique official player IDs', () => {
   const library = getVideoCollections();
-  assert.equal(library.count, 1353);
+  assert.equal(library.count, 1397);
   assert.equal(library.added, 600);
   assert.equal(expansionVideos.length, 500);
   assert.equal(expansionVideos.filter(({ short }) => short).length, 250);
@@ -25,7 +26,9 @@ test('the video expansions preserve the library and use unique official player I
   assert.equal(discoveryVideos.filter(({ short }) => short).length, 50);
   assert.equal(entertainmentVideos.length, 100);
   assert.equal(entertainmentVideos.filter(({ short }) => short).length, 51);
-  for (const video of [...expansionVideos, ...discoveryVideos, ...entertainmentVideos]) {
+  assert.equal(familyVideos.length, 44);
+  assert.equal(familyVideos.filter(({ short }) => short).length, 24);
+  for (const video of [...expansionVideos, ...discoveryVideos, ...entertainmentVideos, ...familyVideos]) {
     assert.match(video.id, /^[A-Za-z0-9_-]{11}$/);
     assert.ok(video.title && video.creator && video.tags.length);
     const thumbnail = new URL(video.thumbnail);
@@ -34,6 +37,17 @@ test('the video expansions preserve the library and use unique official player I
     assert.equal(findCuratedVideos(video.id)[0], video);
   }
   assert.equal(library.topics.filter(({ count }) => count > 0).length, 10);
+});
+
+test('MrBeast creator searches find official full videos and Shorts across name variants', () => {
+  const official = familyVideos.filter(({ creator }) => creator === 'MrBeast');
+  assert.equal(official.filter(({ short }) => !short).length, 7);
+  assert.equal(official.filter(({ short }) => short).length, 12);
+  for (const query of ['MrBeast', 'Mr.Beast', 'Mr Beast', '@MrBeast']) {
+    assert.deepEqual(new Set(findCuratedVideos(query)), new Set(official));
+    assert.deepEqual(new Set(findCuratedVideos(`${query} full videos`)), new Set(official.filter(({ short }) => !short)));
+    assert.deepEqual(new Set(findCuratedVideos(`${query} shorts`)), new Set(official.filter(({ short }) => short)));
+  }
 });
 
 test('the cinema catalog separates complete films from trailers and uses legitimate playback routes', () => {
@@ -79,12 +93,24 @@ test('the expanded music catalog has unique provider IDs and attributable chart 
   }
 });
 
-test('the catalog includes 548 main library games, three additional recovered games and seven originals', () => {
-  assert.equal(games.length, 558);
+test('expiring family film offers preserve their records and only advertise active viewing windows', () => {
+  const bear = filmCatalog.find(film => film.id === 'little-bear-movie');
+  assert.ok(bear.genres.includes('Family'));
+  assert.equal(bear.format, 'feature');
+  assert.equal(bear.rating, 'G');
+  assert.deepEqual(filmPlayback(bear), {
+    provider: 'Tubi', external: 'https://tubitv.com/movies/274712/little-bear-movie'
+  });
+  assert.equal(filmPlayback({ ...bear, availableUntil: '2000-01-01T00:00:00Z' }), null);
+  assert.equal(filmPlayback({ ...bear, availableUntil: '2000-01-01T00:00:00Z', trailer: 'wJO_vIDZn-I' }, true).id, 'wJO_vIDZn-I');
+});
+
+test('the catalog includes 548 main library games, three additional recovered games and nine originals', () => {
+  assert.equal(games.length, 560);
   assert.equal(games.filter(({ collection }) => collection === 'github' || collection === 'base44-library').length, 548);
   assert.equal(games.filter(({ collection }) => collection === 'base44-home').length, 2);
   assert.equal(games.filter(({ collection }) => collection === 'history').length, 1);
-  assert.equal(games.filter(({ collection }) => collection === 'original').length, 7);
+  assert.equal(games.filter(({ collection }) => collection === 'original').length, 9);
   assert.equal(new Set(games.map(({ id }) => id)).size, games.length);
   assert.equal(new Set(games.map(({ title }) => normalize(title))).size, games.length);
   assert.equal([...library.categoryCounts.values()].reduce((sum, count) => sum + count, 0), games.length);
@@ -114,7 +140,7 @@ test('catalog records have distinct sources, correct status, and safe relative a
     }
     if (typeof game.local === 'string') await readFile(new URL(game.local, new URL('../', import.meta.url)));
   }
-  assert.deepEqual(statusCounts, { local: 20, embed: 2, external: 534, unverified: 2 });
+  assert.deepEqual(statusCounts, { local: 22, embed: 2, external: 534, unverified: 2 });
 });
 
 test('search spans titles, punctuated names, legacy aliases, categories and availability', () => {

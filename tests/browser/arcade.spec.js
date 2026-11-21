@@ -31,10 +31,10 @@ test('navigation, catalog pagination, filtering, favorites, play history and set
   await expect(page.locator('.hero-art .art-image.is-ready')).toBeVisible();
 
   await go(page, 'All Games');
-  await expect(page.locator('.library-results')).toHaveText('1–24 of 558 games');
+  await expect(page.locator('.library-results')).toHaveText(`1–24 of ${games.length} games`);
   await expect(page.locator('.game-card')).toHaveCount(24);
   await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(page.locator('.library-results')).toHaveText('25–48 of 558 games');
+  await expect(page.locator('.library-results')).toHaveText(`25–48 of ${games.length} games`);
   await page.getByRole('button', { name: 'Previous', exact: true }).click();
   await expect(page.locator('.pagination-output')).toHaveText('Page 1 of 24');
 
@@ -79,7 +79,7 @@ test('navigation, catalog pagination, filtering, favorites, play history and set
   await go(page, 'New Games');
   await expect(page.locator('.game-card').first()).toBeVisible();
   await go(page, 'Built-in Games');
-  await expect(page.locator('.game-card')).toHaveCount(20);
+  await expect(page.locator('.game-card')).toHaveCount(games.filter(game => game.local).length);
 
   const global = page.getByRole('searchbox', { name: 'Search the arcade' });
   await global.fill('slither.io');
@@ -181,7 +181,7 @@ test('Proxy Gemini respects frame blocking and keeps links and search explicit',
     body: '<h1>Restricted preview content</h1>'
   }));
   await page.goto('/#browse');
-  await expect(page.locator('.proxy-playable-group').nth(0).getByRole('button')).toHaveCount(20);
+  await expect(page.locator('.proxy-playable-group').nth(0).getByRole('button')).toHaveCount(games.filter(game => game.local).length);
   await expect(page.locator('.proxy-playable-group').nth(1).getByRole('button')).toHaveCount(2);
   for (const app of browserApps) {
     await page.getByRole('button', { name: 'Open ' + app.title, exact: true }).click();
@@ -295,7 +295,7 @@ test('Explore connects the new videos, collections, cinema, arcade and tools', a
   await expect(page.locator('.media-result-count')).toHaveText('600 videos');
   await page.getByRole('navigation', { name: 'Browse video topics' }).getByRole('link', { name: 'Science' }).click();
   await expect(page.getByRole('combobox', { name: 'Video topic' })).toHaveValue('Science');
-  await expect(page.locator('.media-result-count')).toHaveText('110 videos');
+  await expect(page.locator('.media-result-count')).toHaveText('118 videos');
 
   await go(page, 'Explore', 'Explore the arcade');
   await page.getByRole('link', { name: /^Cinema \d+ films and trailers$/ }).click();
@@ -638,12 +638,13 @@ test('Google essay searches show an answer, videos and writing tools together', 
 });
 
 test('Google and Proxy Gemini link to built-in and publisher-authorized in-page games', async ({ page }) => {
+  const inPage = games.filter(game => game.local || arcadeEmbed(game)).length;
   for (const route of ['web-search?mode=google', 'browse']) {
     await page.goto('/#' + route);
     await page.getByRole('link', { name: 'Games you can play here', exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'Play option' })).toHaveValue('in-page');
-    await expect(page.locator('.library-results')).toHaveText('1–22 of 22 games');
-    await expect(page.locator('.game-card')).toHaveCount(22);
+    await expect(page.locator('.library-results')).toHaveText(`1–${inPage} of ${inPage} games`);
+    await expect(page.locator('.game-card')).toHaveCount(inPage);
     await expect(page.locator('.game-card').getByText('External', { exact: true })).toHaveCount(0);
   }
 });
@@ -713,11 +714,11 @@ test('Music replaces lyric videos with creator uploads and keeps the searchable 
   const songs = page.getByRole('list', { name: 'Chart songs' });
   await expect(page.getByText('Showing 25 of 550 chart songs')).toBeVisible();
   await page.getByRole('button', { name: 'Watch lyrics', exact: true }).click();
-  await expect(page.getByText('Showing 25 of 69 lyric videos')).toBeVisible();
+  await expect(page.getByText('Showing 25 of 84 lyric videos')).toBeVisible();
   const lyricVideos = page.getByRole('list', { name: 'Lyric videos' });
   await expect(lyricVideos.locator('img')).toHaveCount(0);
   await page.getByLabel('Lyric channel').selectOption('7clouds');
-  await expect(page.getByText('Showing 25 of 45 lyric videos')).toBeVisible();
+  await expect(page.getByText('Showing 25 of 55 lyric videos')).toBeVisible();
   await expect(lyricVideos.getByRole('link', { name: '7clouds', exact: true })).toHaveCount(25);
   await lyricVideos.getByRole('button', { name: 'Play lyrics video for Housewife by Tate McRae' }).click();
   const creatorPlayer = page.getByRole('dialog', { name: 'Lyrics for Housewife' });
@@ -727,6 +728,12 @@ test('Music replaces lyric videos with creator uploads and keeps the searchable 
   await page.getByLabel('Lyric channel').selectOption('Unique Vibes');
   await expect(lyricVideos.getByRole('link', { name: '7clouds', exact: true })).toHaveCount(0);
   await expect(lyricVideos.getByRole('link', { name: 'Unique Vibes', exact: true }).first()).toBeVisible();
+  await page.getByLabel('Lyric channel').selectOption('7clouds Rock');
+  await lyricVideos.getByRole('button', { name: /Play lyrics video for Hall of Fame/ }).click();
+  const hallOfFame = page.getByRole('dialog', { name: 'Lyrics for Hall of Fame' });
+  await expect(hallOfFame.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/rPlwqDjzJ14/);
+  await expect(hallOfFame.getByRole('link', { name: 'Watch on YouTube · 7clouds Rock' })).toBeVisible();
+  await hallOfFame.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.getByRole('link', { name: /^Find lyric videos for / })).toHaveCount(0);
   await page.getByRole('button', { name: 'All chart songs', exact: true }).click();
   await expect(songs.getByRole('listitem')).toHaveCount(25);

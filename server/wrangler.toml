@@ -5,11 +5,15 @@ workers_dev = true
 
 [vars]
 ALLOWED_ORIGINS = "https://ryantsai13460.github.io"
+CHAT_PROVIDER = "auto"
 OPENAI_MODEL = "gpt-4.1-mini"
 # Optional. Configure these only after checking your provider's model access and cost.
 # OPENAI_ADVANCED_MODEL = "your-authorized-model"
 # OPENAI_ADVANCED_MAX_TOKENS = "1800"
 # OPENAI_ADVANCED_REASONING_EFFORT = "medium"
+
+[ai]
+binding = "AI"
 
 [[ratelimits]]
 name = "CLIENT_RATE_LIMITER"

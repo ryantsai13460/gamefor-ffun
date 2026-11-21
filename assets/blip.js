@@ -3,7 +3,8 @@ const [{ BLIP_FILE_ACCEPT, BLIP_FILE_LIMITS, normalizeBlipAttachments, readBlipF
   answerBlip, blipModelAvailability, blipModes, cpuBlipAvailability, portableBlipAvailability,
   prepareBlipModel, prepareCpuBlipModel, preparePortableBlipModel,
   releaseCpuBlipModel, releasePortableBlipModel
-}, { formatBlipReply }, { gatewayConnected, getGatewayCapabilities, hostedBlipReply, renderGatewaySettings }, { mountBlipMusic }] = await Promise.all([
+}, { formatBlipReply }, { gatewayChatOptIn, gatewayConnected, getGatewayCapabilities, hostedBlipReply,
+  renderGatewaySettings, setGatewayChatOptIn }, { mountBlipMusic }] = await Promise.all([
   import(`./blip-files.js${assetVersion}`),
   import(`./blip-store.js${assetVersion}`),
   import(`./blip-answer.js${assetVersion}`),
@@ -183,6 +184,15 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
         <details class="blip-popover blip-settings-popover">
           <summary><span class="blip-model-dot" aria-hidden="true"></span><span data-blip="settings-label">AI settings</span></summary>
           <div class="blip-popover-content">
+            <h2>Online AI</h2>
+            <p>Get generated replies without downloading a model. Ask the arcade owner for a backend URL and access code.</p>
+            <div data-blip="gateway"></div>
+            <label class="blip-check"><input type="checkbox" data-blip="hosted"> Use the connected model for chats without files</label>
+            <p>Online replies send your current question and recent messages to the selected provider through the backend. Chats with attachments stay on your device.</p>
+            <p data-blip="gateway-capabilities" role="status"></p>
+            <label class="blip-check"><input type="checkbox" data-blip="advanced" disabled> Use Advanced replies</label>
+            <label class="blip-check"><input type="checkbox" data-blip="research" disabled> Research current question with Brave Search</label>
+            <p>With the connected model enabled, questions up to 200 characters go to Brave Search through your backend and use its search quota.</p>
             <h2>On-device AI</h2>
             <p data-blip="model-status" role="status">Checking this browser for a model…</p>
             <button class="blip-button blip-button--primary" type="button" data-blip="enable" hidden>Enable on-device AI</button>
@@ -192,13 +202,6 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
             <button class="blip-button" type="button" data-blip="portable" hidden>Start local AI</button>
             <label class="blip-check"><input type="checkbox" data-blip="references"> Use Wikipedia as a fallback</label>
             <p>Short questions in chats without files can use this lookup.</p>
-            <div data-blip="gateway"></div>
-            <label class="blip-check"><input type="checkbox" data-blip="hosted"> Use the connected model for chats without files</label>
-            <p>When enabled, the current question and recent messages are sent to your backend.</p>
-            <label class="blip-check"><input type="checkbox" data-blip="advanced" disabled> Use Advanced replies</label>
-            <p data-blip="gateway-capabilities" role="status">Connect an AI provider to check for Advanced replies.</p>
-            <label class="blip-check"><input type="checkbox" data-blip="research" disabled> Research current question with Brave Search</label>
-            <p>With the connected model enabled, questions up to 200 characters go to Brave Search through your backend and use its search quota.</p>
           </div>
         </details>
       </div>
@@ -238,7 +241,10 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
             <h2>What are you curious about?</h2>
             <p>Ask a question or try one of these prompts.</p>
             <div class="blip-prompts" data-blip="prompts"></div>
-            <button class="blip-button blip-welcome-setup" type="button" data-blip="setup-shortcut" hidden>Review local AI options</button>
+            <div class="blip-welcome-setup">
+              <button class="blip-button" type="button" data-blip="welcome-online">Set up online chat</button>
+              <button class="blip-button" type="button" data-blip="setup-shortcut" hidden>Review local AI options</button>
+            </div>
           </div>
           <div class="blip-messages" data-blip="messages"></div>
           <aside class="blip-recovery" data-blip="recovery" aria-label="Reply recovery" hidden>
@@ -247,6 +253,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
             <progress class="blip-recovery-progress" data-blip="setup-progress" aria-label="Local AI setup progress" max="100" hidden></progress>
             <p class="blip-recovery-status" data-blip="setup-status" role="status"></p>
             <div class="blip-recovery-actions">
+              <button class="blip-button" type="button" data-blip="recovery-online" hidden>Set up online chat</button>
               <button class="blip-button blip-button--primary" type="button" data-blip="start-local" hidden>Start local AI</button>
               <button class="blip-button" type="button" data-blip="start-cpu" hidden>Use CPU AI instead</button>
               <button class="blip-button blip-button--primary" type="button" data-blip="retry-last" hidden>Retry last message</button>
@@ -354,7 +361,11 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
   let capabilities;
   let capabilityRequest;
   let capabilityProblem;
-  renderGatewaySettings(part('gateway'), 'Connect an AI provider', refreshGatewayCapabilities, result => {
+  part('hosted').checked = gatewayChatOptIn();
+  renderGatewaySettings(part('gateway'), 'Connect an AI provider', () => {
+    part('hosted').checked = gatewayChatOptIn();
+    void refreshGatewayCapabilities();
+  }, result => {
     capabilityRequest?.abort();
     capabilityRequest = undefined;
     capabilities = result;
@@ -370,18 +381,21 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
   let setupNote;
 
   function updateHostedOptions() {
-    const hosted = part('hosted').checked;
+    const optIn = part('hosted');
+    optIn.disabled = !gatewayConnected() || capabilities?.chat === false || [401, 403, 503].includes(capabilityProblem?.status);
+    const hosted = optIn.checked && !optIn.disabled;
     const advanced = part('advanced');
     advanced.disabled = !hosted || capabilities?.advanced !== true;
     part('research').disabled = !hosted || capabilities?.research === false;
     if (advanced.disabled) advanced.checked = false;
     if (part('research').disabled) part('research').checked = false;
     const notice = part('gateway-capabilities');
-    notice.textContent = !gatewayConnected() ? 'Connect an AI provider to check for Advanced replies.'
+    notice.textContent = !gatewayConnected() ? 'Connect a backend to use online chat.'
       : capabilityRequest ? 'Checking the connected gateway…'
       : capabilityProblem ? capabilityProblem.message
+      : capabilities?.chatProvider === 'workers-ai' ? 'Workers AI is configured. Replies use the owner’s Cloudflare allowance.'
       : capabilities?.advanced ? 'Advanced replies allow more detail and may use more tokens.'
-      : capabilities?.chat === false ? 'Hosted chat needs an OpenAI API key on this gateway.'
+      : capabilities?.chat === false ? 'This gateway needs a Workers AI binding or an OpenAI key to offer chat.'
       : 'This gateway’s Advanced replies are unavailable.';
     drawEngineState(currentChat());
     drawRecovery(currentChat());
@@ -700,7 +714,10 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
     drawComposer(chat);
     input.focus({ preventScroll: true });
   });
-  part('hosted').addEventListener('change', updateHostedOptions);
+  part('hosted').addEventListener('change', event => {
+    setGatewayChatOptIn(event.currentTarget.checked);
+    updateHostedOptions();
+  });
   part('advanced').addEventListener('change', () => drawEngineState(currentChat()));
   part('pin').addEventListener('click', () => {
     const chat = currentChat();
@@ -836,13 +853,13 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
     try {
       const contextFiles = attachments.length ? attachments :
         chat.messages.findLast(message => message.attachments?.length)?.attachments || [];
-      const useHosted = !localOnly && !contextFiles.length && hostedAvailable();
+      const useHosted = !localOnly && !contextFiles.length && hostedFor(chat);
       if (useHosted) {
         const research = part('research').checked;
         const advanced = part('advanced').checked;
         let sources = [];
         request.engine = 'hosted';
-        request.engineLabel = advanced ? 'Connected AI · Advanced' : 'Connected AI';
+        request.engineLabel = hostedEngineLabel();
         request.label = research ? 'Researching and waiting for the connected model…' : 'Waiting for the connected model…';
         if (isActive()) {
           status.textContent = request.label;
@@ -864,7 +881,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
           attachments: contextFiles,
           history: chat.messages,
           mode: chat.mode,
-          wikipedia: !localOnly && part('references').checked && !contextFiles.length,
+          wikipedia: !localOnly && part('references').checked && !contextFiles.length && !chatHasFiles(chat),
           preferGenerated: localOnly,
           signal: request.controller.signal,
           onUpdate,
@@ -985,25 +1002,37 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
   }
 
   function hostedAvailable() {
-    return part('hosted').checked && gatewayConnected() && capabilities?.chat !== false
-      && ![401, 403, 503].includes(capabilityProblem?.status);
+    return gatewayChatOptIn() && gatewayConnected() && !part('hosted').disabled;
+  }
+
+  function chatHasFiles(chat) {
+    return Boolean(chat && (chat.localOnly || draftFiles.get(chat.id)?.length || chat.messages.some(message => message.attachments?.length)));
   }
 
   function hostedFor(chat) {
-    return Boolean(chat && hostedAvailable() &&
-      !draftFiles.get(chat.id)?.length && !chat.messages.some(message => message.attachments?.length));
+    return Boolean(chat && hostedAvailable() && !chatHasFiles(chat));
+  }
+
+  function hostedEngineLabel() {
+    if (capabilities?.chatProvider === 'workers-ai') return 'Workers AI';
+    return part('advanced').checked ? 'Connected AI · Advanced' : 'Connected AI';
   }
 
   function drawEngineState(chat) {
     const state = part('engine-state');
     const request = pending.get(chat?.id);
     const ready = readyModel();
+    const online = hostedFor(chat);
     const label = request?.engineLabel ? request.engineLabel + ' · Generating' : modelSetup
-        ? modelSetup.label : hostedFor(chat)
-        ? part('advanced').checked ? 'Connected AI · Advanced' : 'Connected AI'
+        ? modelSetup.label : online
+        ? hostedEngineLabel()
         : ready ? ready.label + ' ready' : ([...modelStates.values()].includes('checking') ? 'Checking local AI' : 'Local tools');
     state.textContent = 'Reply engine · ' + label;
-    state.dataset.ready = String(!modelSetup && (Boolean(ready) || hostedFor(chat)));
+    const engineReady = Boolean(ready || online);
+    state.dataset.ready = String(!modelSetup && engineReady);
+    modelSettings.dataset.ready = String(engineReady);
+    part('settings-label').textContent = !engineReady && localModels.some(canPrepare) ? 'Set up AI' : 'AI settings';
+    part('welcome-online').hidden = online || chatHasFiles(chat);
   }
 
   function drawRecovery(chat) {
@@ -1045,14 +1074,13 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
     part('cancel-setup').hidden = !setupHere;
     part('cancel-setup').disabled = Boolean(setupHere && modelSetup.controller.signal.aborted);
     part('recovery-settings').hidden = Boolean(setupHere);
+    part('recovery-online').hidden = Boolean(modelSetup) || hostedFor(chat) || chatHasFiles(chat);
   }
 
   function drawModels() {
     const ready = readyModel();
     const canSetUp = localModels.some(canPrepare);
     part('setup-shortcut').hidden = !canSetUp || Boolean(ready) || Boolean(modelSetup);
-    part('settings-label').textContent = canSetUp && !ready ? 'Set up AI' : 'AI settings';
-    modelSettings.dataset.ready = String(Boolean(ready));
     for (const model of localModels) {
       const state = modelStates.get(model.id);
       const control = part(model.control);
@@ -1119,6 +1147,17 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
     modelSettings.querySelector('summary').focus({ preventScroll: true });
   }
 
+  function showOnlineSettings() {
+    modelSettings.open = true;
+    const details = part('gateway').querySelector('details');
+    details.open = true;
+    const form = details.querySelector('form');
+    const optIn = part('hosted');
+    const control = gatewayConnected() && !optIn.disabled ? optIn
+      : form.elements.endpoint.value ? form.elements.access : form.elements.endpoint;
+    control.focus();
+  }
+
   function refreshModelState(model) {
     const previous = modelStates.get(model.id);
     void model.availability().catch(() => 'unavailable').then(state => {
@@ -1145,6 +1184,8 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
     }
   });
   part('recovery-settings').addEventListener('click', showModelSettings);
+  part('recovery-online').addEventListener('click', showOnlineSettings);
+  part('welcome-online').addEventListener('click', showOnlineSettings);
   part('setup-shortcut').addEventListener('click', showModelSettings);
   for (const [popover, other] of [[modelSettings, musicSettings], [musicSettings, modelSettings]]) {
     popover.addEventListener('toggle', () => { if (popover.open) other.open = false; });

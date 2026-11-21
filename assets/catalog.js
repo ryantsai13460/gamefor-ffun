@@ -558,5 +558,7 @@ export const games = [
   {"id": "pinpoint-putt", "title": "Pinpoint Putt", "category": "Sports", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/pinpoint-putt.webp", "artCredit": "Gamefor Ffun gameplay"},
   {"id": "beat-beacon", "title": "Beat Beacon", "category": "Music", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/beat-beacon.webp", "artCredit": "Gamefor Ffun gameplay"},
   {"id": "harbor-dispatch", "title": "Harbor Dispatch", "category": "Strategy", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/harbor-dispatch.webp", "artCredit": "Gamefor Ffun gameplay"},
-  {"id": "tidal-rescue", "title": "Tidal Rescue", "category": "Adventure", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/tidal-rescue.webp", "artCredit": "Gamefor Ffun gameplay"}
+  {"id": "tidal-rescue", "title": "Tidal Rescue", "category": "Adventure", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/tidal-rescue.webp", "artCredit": "Gamefor Ffun gameplay"},
+  {"id": "picnic-pack", "title": "Picnic Pack", "category": "Puzzle", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/picnic-pack.webp", "artCredit": "Gamefor Ffun gameplay"},
+  {"id": "kite-breeze", "title": "Kite Breeze", "category": "Arcade", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/kite-breeze.webp", "artCredit": "Gamefor Ffun gameplay"}
 ];

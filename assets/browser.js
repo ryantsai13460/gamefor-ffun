@@ -54,6 +54,16 @@ export function youtubeVideoId(url) {
   return /^[A-Za-z0-9_-]{11}$/.test(id || "") ? id : "";
 }
 
+function youtubeStart(url) {
+  const timestamp = url.searchParams.get("t") || url.searchParams.get("start") ||
+    new URLSearchParams(url.hash.slice(1)).get("t") || "";
+  if (/^\d{1,9}$/.test(timestamp)) return Number(timestamp);
+  const parts = /^(?:(\d{1,6})h)?(?:(\d{1,6})m)?(?:(\d{1,6})s)?$/.exec(timestamp);
+  if (!parts) return 0;
+  const seconds = Number(parts[1] || 0) * 3600 + Number(parts[2] || 0) * 60 + Number(parts[3] || 0);
+  return seconds <= 2_147_483_647 ? seconds : 0;
+}
+
 export function resolveBrowserAddress(input, pageUrl) {
   if (typeof input !== "string" || input.length > addressLimit) return null;
   const address = input.trim();
@@ -94,10 +104,16 @@ export function resolveBrowserAddress(input, pageUrl) {
   const videoId = youtubeVideoId(url);
   if (videoId) {
     const watchPath = url.pathname.startsWith("/shorts/") ? `shorts/${videoId}` : `watch?v=${videoId}`;
+    const watch = new URL(watchPath, "https://www.youtube.com/");
+    const embed = new URL(`https://www.youtube-nocookie.com/embed/${videoId}`);
+    const start = youtubeStart(url);
+    if (start) {
+      watch.searchParams.set("t", `${start}s`);
+      embed.searchParams.set("start", String(start));
+    }
     return {
       kind: "youtube", title: "YouTube", address: url.href,
-      url: `https://www.youtube.com/${watchPath}`,
-      embed: `https://www.youtube-nocookie.com/embed/${videoId}`,
+      url: watch.href, embed: embed.href,
     };
   }
 
@@ -267,7 +283,7 @@ function createBrowser() {
   }
   let active = createTab();
   const items = [active];
-  const searchCache = new WeakMap();
+  let searchCache = new WeakMap();
   let searchWeb;
   let present = false;
   const current = () => active.entries[active.index];
@@ -318,19 +334,60 @@ function createBrowser() {
     syncFavorite();
   }
 
-  function showSaved(kind) {
-    const favorites = kind === "favorites";
-    const title = favorites ? "Favorite pages" : "Browsing history";
+  function createDialog(title, contents) {
     const dialog = element("dialog", "proxy-saved");
     const heading = element("h2", "", title);
     const close = control("Close " + title.toLowerCase(), "×", () => dialog.close());
     close.autofocus = true;
     const header = element("div", "proxy-saved-heading");
     header.append(heading, close);
-    const contents = element("div", "proxy-saved-content");
     dialog.setAttribute("aria-label", title);
     dialog.addEventListener("close", () => dialog.remove(), { once: true });
     dialog.append(header, contents);
+    windowPanel.append(dialog);
+    return { dialog, close };
+  }
+
+  function showShare() {
+    const page = current();
+    if (!page.address) return;
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.username = "";
+    url.password = "";
+    url.hash = `browse?${new URLSearchParams({ address: page.address })}`;
+
+    const contents = element("div", "proxy-saved-content proxy-share-content");
+    const label = element("label", "", "Viewer link");
+    const field = element("input", "field");
+    field.readOnly = true;
+    field.value = url.href;
+    label.append(field);
+    const status = element("p");
+    status.setAttribute("role", "status");
+    const copy = control("Copy link", "Copy link", async () => {
+      try {
+        await navigator.clipboard.writeText(field.value);
+        status.textContent = "Link copied.";
+      } catch {
+        field.focus();
+        field.select();
+        status.textContent = "The link is selected. Use your device’s Copy command.";
+      }
+    });
+    copy.className = "button";
+    contents.append(element("p", "", "This link opens the current address in Proxy Gemini."), label, copy, status);
+    const { dialog } = createDialog("Share page", contents);
+    dialog.showModal();
+    field.focus();
+    field.select();
+  }
+
+  function showSaved(kind) {
+    const favorites = kind === "favorites";
+    const title = favorites ? "Favorite pages" : "Browsing history";
+    const contents = element("div", "proxy-saved-content");
+    const { dialog, close } = createDialog(title, contents);
 
     function drawSaved() {
       const entries = browsing[kind];
@@ -381,7 +438,6 @@ function createBrowser() {
     }
 
     drawSaved();
-    windowPanel.append(dialog);
     dialog.showModal();
   }
 
@@ -462,6 +518,13 @@ function createBrowser() {
     showPage();
     renderTabs();
     address.focus();
+  }
+
+  function openResultInTab(page) {
+    const tab = createTab([home, page], 1);
+    items.splice(items.indexOf(active) + 1, 0, tab);
+    recordVisit(page);
+    activate(tab);
   }
 
   function duplicateTab() {
@@ -679,9 +742,11 @@ function createBrowser() {
           openPreview.className = "button";
           actions.append(openPreview);
         }
+        const openTab = control(`New viewer tab for ${result.title}`, "New viewer tab", () => openResultInTab(destination));
+        openTab.className = "button";
         const official = external(destination.url, "Open in new tab", "proxy-source");
         official.setAttribute("aria-label", `Open ${result.title} in new tab`);
-        actions.append(official);
+        actions.append(openTab, official);
         row.append(actions);
         list.append(row);
       }
@@ -706,9 +771,15 @@ function createBrowser() {
     const request = shortQuery && searchWeb?.(page.title,
       AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]));
     if (!request) {
-      panel.append(element("p", "proxy-search-unconfigured", shortQuery
-        ? "Connect a provider in Web Search to see live results here."
-        : "Use a query of up to 200 characters for results from a connected provider."));
+      const note = element("p", "proxy-search-unconfigured");
+      if (shortQuery) {
+        const settings = element("a", "proxy-source", "Connect a provider in Web Search");
+        settings.href = "#web-search";
+        note.append(settings, " to see live results here.");
+      } else {
+        note.textContent = "Use a query of up to 200 characters for results from a connected provider.";
+      }
+      panel.append(note);
       return;
     }
     preview.canRefresh = true;
@@ -894,6 +965,7 @@ function createBrowser() {
     forward.disabled = active.index === active.entries.length - 1;
     refresh.disabled = page.kind !== "local" && page.kind !== "built-in" && page.kind !== "search" && !page.embed;
     homeButton.disabled = page.kind === "home";
+    share.disabled = !page.address;
     syncFavorite();
 
     if (reset || !active.preview || page.kind === "home") {
@@ -929,6 +1001,8 @@ function createBrowser() {
     showPage(true, true);
   });
   const homeButton = control("Home", "⌂", () => visit(home));
+  const share = control("Share current page", "Share", showShare);
+  share.classList.add("proxy-saved-trigger", "proxy-share-trigger");
   const saveFavorite = control("Save current page to favorites", "☆", toggleFavorite);
   saveFavorite.classList.add("proxy-save-favorite");
   const expand = control("Fullscreen", "⛶", async () => {
@@ -974,7 +1048,7 @@ function createBrowser() {
   for (const tool of [duplicate, reopen, favorites, history]) tool.classList.add("proxy-saved-trigger");
   savedTools.append(duplicate, reopen, favorites, history);
   const panelActions = element("div", "proxy-panel-actions");
-  panelActions.append(saveFavorite, expand);
+  panelActions.append(share, saveFavorite, expand);
   const dismissPreview = control("Hide preview", "Hide preview", hidePreview);
   dismissPreview.className = "button proxy-preview-dismiss";
   dismissPreview.hidden = true;
@@ -1006,6 +1080,7 @@ function createBrowser() {
     suspend() {
       for (const tab of items) unloadTab(tab);
       windowPanel.querySelector("dialog[open]")?.close();
+      searchCache = new WeakMap();
       present = false;
     },
   };

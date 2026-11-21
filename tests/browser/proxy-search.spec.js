@@ -47,6 +47,15 @@ test('Proxy Gemini searches the connected provider and preserves the official fa
   const official = results.getByRole('link', { name: 'Open HTML reference in new tab' });
   await expect(official).toHaveAttribute('href', 'https://example.com/reference');
   await expect(official).toHaveAttribute('target', '_blank');
+  await results.getByRole('button', { name: 'New viewer tab for HTML reference', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'example.com' })).toHaveAttribute('aria-selected', 'true');
+  await expect(viewerAddress(page)).toHaveValue('https://example.com/reference');
+  await expect(page.getByRole('link', { name: 'Open in new tab', exact: true })).toHaveAttribute('href', 'https://example.com/reference');
+  await page.getByRole('button', { name: 'Close example.com tab' }).click();
+  await expect(results.getByRole('heading', { name: 'HTML reference' })).toBeVisible();
+  expect(page.context().pages()).toHaveLength(1);
+  expect(requests).toBe(1);
+
   await results.getByRole('button', { name: 'Preview HTML reference' }).click();
   await expect(page.locator('.proxy-frame')).toHaveAttribute('sandbox', 'allow-scripts');
   await expect(page.getByText(/the site may block embedding/)).toBeVisible();
@@ -61,6 +70,68 @@ test('Proxy Gemini searches the connected provider and preserves the official fa
   await expect(page.getByRole('link', { name: 'Search web and YouTube' })).toHaveAttribute('href', '#web-search?q=learn+about+html');
   await page.setViewportSize({ width: 320, height: 700 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+
+  await page.evaluate(() => { location.hash = '#web-search'; });
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.getByText('Connect a web search provider', { exact: true }).click();
+  await page.getByRole('button', { name: 'Disconnect' }).click();
+  await page.getByRole('link', { name: 'Proxy Gemini', exact: true }).click();
+  await expect(viewerAddress(page)).toHaveValue('learn about html');
+  await expect(page.getByText('Connect a provider in Web Search to see live results here.')).toBeVisible();
+  await expect(results.getByRole('heading', { name: 'HTML reference' })).toHaveCount(0);
+  await page.getByRole('link', { name: 'Connect a provider in Web Search' }).click();
+  await expect(page).toHaveURL(/#web-search$/);
+  await page.getByText('Connect a web search provider', { exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Connect backend' })).toBeVisible();
+  expect(requests).toBe(2);
+});
+
+test('Proxy Gemini shares committed addresses and preserves YouTube timestamps', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      async writeText(value) {
+        if (window.copiedViewerLink) throw new DOMException('Clipboard unavailable', 'NotAllowedError');
+        window.copiedViewerLink = value;
+      }
+    } });
+  });
+  await page.route('https://www.youtube-nocookie.com/embed/M7lc1UVf-VE?*', route => route.fulfill({
+    contentType: 'text/html', body: '<p>Official player fixture</p>'
+  }));
+  await page.goto('/?site-option=not-shared#browse');
+  const share = page.getByRole('button', { name: 'Share current page' });
+  await expect(share).toBeDisabled();
+  const address = viewerAddress(page);
+  const shortLink = 'https://youtu.be/M7lc1UVf-VE?t=1m30s';
+  await address.fill(shortLink);
+  await address.press('Enter');
+  const frame = page.locator('.proxy-frame');
+  await expect(frame).toHaveAttribute('src', /^https:\/\/www\.youtube-nocookie\.com\/embed\/M7lc1UVf-VE\?start=90&/);
+  await expect(page.getByRole('link', { name: 'Open in new tab', exact: true }))
+    .toHaveAttribute('href', 'https://www.youtube.com/watch?v=M7lc1UVf-VE&t=90s');
+  await address.fill('javascript:alert(1)');
+  await address.press('Enter');
+  await share.click();
+  const dialog = page.getByRole('dialog', { name: 'Share page' });
+  const shareField = dialog.getByRole('textbox', { name: 'Viewer link' });
+  await expect(shareField).toBeFocused();
+  const sharedUrl = new URL(await shareField.inputValue());
+  expect(sharedUrl.origin).toBe(new URL(page.url()).origin);
+  expect(sharedUrl.search).toBe('');
+  expect(sharedUrl.hash).toBe(`#browse?${new URLSearchParams({ address: shortLink })}`);
+  const copy = dialog.getByRole('button', { name: 'Copy link' });
+  await copy.click();
+  await expect(dialog.getByRole('status')).toHaveText('Link copied.');
+  expect(await page.evaluate(() => window.copiedViewerLink)).toBe(sharedUrl.href);
+  await copy.click();
+  await expect(dialog.getByRole('status')).toContainText('The link is selected');
+  expect(await shareField.evaluate(input => input.selectionEnd - input.selectionStart)).toBe(sharedUrl.href.length);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(share).toBeFocused();
+  await page.goto(sharedUrl.href);
+  await expect(address).toHaveValue(shortLink);
+  await expect(frame).toHaveAttribute('src', /start=90&/);
 });
 
 test('Proxy Gemini keeps address errors by tab and updates the recent pages on Home', async ({ page }) => {

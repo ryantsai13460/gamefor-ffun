@@ -58,6 +58,7 @@ export function renderExplore(target, { gamesSection, localCount, arcadeFeature 
   actions.append(destination(added ? 'Browse new videos' : 'Browse YouTube',
     videoLibraryLink('', added ? 'new' : 'all'), 'button primary'));
   actions.append(destination('Play a built-in game', '#games?local=1', 'button'));
+  actions.append(destination('Family videos', videoLibraryLink('Family'), 'button'));
   copy.append(title, description, actions);
   const cover = tile({
     name: arcadeFeature.title,
@@ -78,6 +79,11 @@ export function renderExplore(target, { gamesSection, localCount, arcadeFeature 
     { name: 'Music', description: 'Find lyrics for songs on current charts', href: '#music', color: 'ai' }
   ]) watchList.append(tile(entry));
   watch.append(watchList);
+  const family = create('div', 'interaction-row');
+  family.append(destination('Full family films', '#movies?collection=family', 'button'),
+    destination('MrBeast videos and Shorts', '#youtube?format=all&q=MrBeast', 'button'),
+    destination('Watch lyric videos', '#music?lyrics=watch', 'button'));
+  watch.append(family);
 
   const collections = section('Video collections');
   const topicList = create('div', 'explore-topic-grid');

@@ -23,5 +23,10 @@ export const otherChannelLyrics = [
   {"id": "-KRSsVt8XFc", "title": "Trying on Shoes (Clean)", "artist": "Tate McRae", "channel": "Cloudy Hits", "channelUrl": "https://www.youtube.com/@CloudyHits"},
   {"id": "Z3zoL0PXiTI", "title": "Eternity", "artist": "Alex Warren", "channel": "Cloudy Hits", "channelUrl": "https://www.youtube.com/@CloudyHits"},
   {"id": "Cx9Nj9raJ0o", "title": "Survive", "artist": "Lewis Capaldi", "channel": "Cloudy Hits", "channelUrl": "https://www.youtube.com/@CloudyHits"},
-  {"id": "JJ3z9d6BN24", "title": "Cover Me in Sunshine", "artist": "P!nk & Willow Sage Hart", "channel": "AweLyrics", "channelUrl": "https://www.youtube.com/@AweLyrics"}
+  {"id": "JJ3z9d6BN24", "title": "Cover Me in Sunshine", "artist": "P!nk & Willow Sage Hart", "channel": "AweLyrics", "channelUrl": "https://www.youtube.com/@AweLyrics"},
+  {"id": "rPlwqDjzJ14", "title": "Hall of Fame", "artist": "The Script feat. will.i.am", "channel": "7clouds Rock", "channelUrl": "https://www.youtube.com/@7cloudsRock"},
+  {"id": "bsd0d_N8QKI", "title": "Unstoppable", "artist": "Sia", "channel": "7clouds R&B", "channelUrl": "https://www.youtube.com/@7cloudsRNB"},
+  {"id": "wvl48FYDo5Y", "title": "A Sky Full of Stars", "artist": "Coldplay", "channel": "Taj Tracks", "channelUrl": "https://www.youtube.com/@TajTracks"},
+  {"id": "eMY-qbs75ug", "title": "Try Everything", "artist": "Shakira", "channel": "Pillow", "channelUrl": "https://www.youtube.com/@PillowMusic"},
+  {"id": "cNgRWYIQCds", "title": "Count on Me", "artist": "Bruno Mars", "channel": "Pillow", "channelUrl": "https://www.youtube.com/@PillowMusic"}
 ];

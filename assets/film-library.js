@@ -8,6 +8,7 @@ const COLLECTIONS = [
   { id: 'all', title: 'All films' },
   { id: 'full', title: 'Full films' },
   { id: 'features', title: 'Feature films' },
+  { id: 'family', title: 'Family films' },
   { id: 'additions', title: 'Recently added' },
   { id: 'open', title: 'Open films' },
   { id: 'shorts', title: 'Animated shorts' },
@@ -250,7 +251,7 @@ function filmCard(film, params, open, onSave) {
   link.setAttribute('aria-label', `Open ${film.title} film page`);
   const info = element('div', 'film-card-info');
   info.append(element('h3', '', film.title),
-    element('p', 'film-meta', [film.year, runtime(film), ...film.genres].filter(Boolean).join(' · ')),
+    element('p', 'film-meta', [film.year, runtime(film), film.rating, ...film.genres].filter(Boolean).join(' · ')),
     element('p', 'film-type', viewingLabel(film)));
   link.append(artFor(film), info);
   const body = element('div', 'film-card-body');
@@ -352,7 +353,7 @@ function renderFilmDetail(target, id, params) {
     element('p', 'film-detail-description', film.description), meta);
   if (film.regionLimited) copy.append(element('p', 'film-meta', 'Availability varies by region.'));
   if (credit) copy.append(sourceLink('Source and credits', credit, 'text-action film-credit'));
-  if (film.license && film.license !== film.credit) {
+  if (film.license && film.license !== film.credit && (full || !film.availableUntil)) {
     const license = filmHttps(film.licenseUrl);
     copy.append(license ? sourceLink(film.license, license, 'text-action film-credit') : element('p', 'film-meta', film.license));
   }
@@ -376,7 +377,12 @@ function renderFilmDetail(target, id, params) {
     playerActions.prepend(resume);
   }
   panel.append(playerTitle, playerActions, player);
-  if (!full) panel.append(element('p', 'film-meta', 'This page lists the trailer or release source. A verified full-film source is unavailable.'));
+  if (!full) {
+    const message = film.availableUntil
+      ? 'The verified viewing window has ended. Check the provider for current availability.'
+      : 'This page lists the trailer or release source. A verified full-film source is unavailable.';
+    panel.append(element('p', 'film-meta', message));
+  }
   const related = element('section', 'film-shelf');
   const relatedTitles = relatedFilms(film);
   if (relatedTitles.length) {
@@ -537,6 +543,8 @@ export function renderFilms(target, { collection, params = new URLSearchParams(l
     }
     if (id === 'full') return filmCatalog.filter(film => fullSources.get(film.id));
     if (id === 'features') return filmCatalog.filter(film => fullSources.get(film.id) && filmFormat(film) === 'feature');
+    if (id === 'family') return filmCatalog.filter(film => film.genres.includes('Family') && fullSources.get(film.id))
+      .sort((first, second) => Number(filmFormat(second) === 'feature') - Number(filmFormat(first) === 'feature'));
     if (id === 'additions') return filmCatalog.filter(film => fullSources.get(film.id) && addedDates.has(film.id))
       .sort((first, second) => addedDates.get(second.id) - addedDates.get(first.id));
     if (id === 'shorts') return filmCatalog.filter(film => filmFormat(film) === 'short' && fullSources.get(film.id) && film.genres.includes('Animation'));
@@ -574,7 +582,7 @@ export function renderFilms(target, { collection, params = new URLSearchParams(l
       if (additions.length) results.append(section('Recently added', additions.slice(0, SHELF_SIZE), 'additions'));
       const opened = openHistory(state).sort(([, first], [, second]) => second.opens - first.opens);
       if (opened.length) results.append(section('Most opened on this device', opened.slice(0, SHELF_SIZE).map(([id]) => getFilm(id))));
-      for (const id of ['features', 'open', 'shorts', 'trailers']) {
+      for (const id of ['family', 'features', 'open', 'shorts', 'trailers']) {
         const { title } = COLLECTIONS.find(value => value.id === id);
         const entries = collectionFilms(id, state);
         if (entries.length) results.append(section(title, entries.slice(0, SHELF_SIZE), id));

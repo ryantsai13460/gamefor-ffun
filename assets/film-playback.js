@@ -12,6 +12,7 @@ export function filmHttps(value) {
 }
 
 export function filmPlayback(film, trailer = false) {
+  if (!trailer && Date.parse(film.availableUntil) <= Date.now()) return null;
   const id = trailer ? film.trailer : film.fullVideo;
   if (videoId.test(id || '') && (trailer || id !== film.trailer)) {
     return {

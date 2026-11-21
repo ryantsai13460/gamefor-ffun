@@ -149,6 +149,7 @@ function restoreState(raw) {
       updatedAt,
       pinned: chat.pinned === true,
       unread: chat.unread === true,
+      localOnly: chat.localOnly === true || messages.some(message => message.attachments?.length),
       messages: Object.freeze(messages),
     }));
   }
@@ -247,7 +248,7 @@ export function createBlipStore({ storage = browserStorage() } = {}) {
       const messages = Object.freeze(chat.messages.slice(0, index));
       return saveChat(Object.freeze({
         id: forkId, title, mode: chat.mode, createdAt: messages[0]?.createdAt ?? now,
-        updatedAt: now, unread: false, messages,
+        updatedAt: now, unread: false, localOnly: chat.localOnly, messages,
       }), { activeId: forkId, first: true });
     },
 
@@ -306,7 +307,8 @@ export function createBlipStore({ storage = browserStorage() } = {}) {
       if (!message) return null;
       const messages = Object.freeze([...chat.messages, message].slice(-BLIP_LIMITS.messages));
       const unread = chat.unread || (role === 'assistant' && state.activeId !== id);
-      saveChat(Object.freeze({ ...chat, updatedAt: now, messages, unread }), { first: true });
+      const localOnly = chat.localOnly === true || Boolean(message.attachments?.length);
+      saveChat(Object.freeze({ ...chat, updatedAt: now, messages, unread, localOnly }), { first: true });
       return message;
     },
     replaceAssistantReply(id, messageId, value, details) {

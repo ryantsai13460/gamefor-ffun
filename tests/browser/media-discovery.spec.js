@@ -127,3 +127,24 @@ test('local YouTube discovery appends on scroll and the Shorts feed stays naviga
   await expect(page.getByRole('dialog', { name: 'Minecraft, But I Shrunk', exact: true }).locator('iframe'))
     .toHaveAttribute('src', /embed\/80VtSQHvWBo/);
 });
+
+test('MrBeast variants find the official creator in both video formats', async ({ page }) => {
+  await page.route(/^https:\/\//, route => route.abort());
+  await page.goto('/#youtube?format=videos&q=Mr.Beast');
+  await expect(page.locator('.media-video')).toHaveCount(7);
+  await button(page, 'Watch I Built 10 Schools Around The World').click();
+  const player = page.getByRole('dialog', { name: 'I Built 10 Schools Around The World' });
+  await expect(player.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/5OLs1GWB4OA/);
+  await button(player, 'Close').click();
+
+  await page.getByRole('searchbox', { name: 'Search titles, creators, or topics' }).fill('@MrBeast');
+  await button(page, 'Shorts').click();
+  await expect(page.locator('.media-video')).toHaveCount(12);
+  await button(page, 'Watch Can I Beat Magnus Carlsen?').click();
+  const shortPlayer = page.getByRole('dialog', { name: 'Can I Beat Magnus Carlsen?', exact: true });
+  await expect(shortPlayer.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/WjCH5JUNzao/);
+  await button(shortPlayer, 'Close').click();
+  await button(page, 'Scroll Shorts').click();
+  const feed = page.getByRole('dialog', { name: 'Shorts feed' });
+  await expect(feed.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/WjCH5JUNzao/);
+});
