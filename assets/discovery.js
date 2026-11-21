@@ -101,10 +101,13 @@ function heading(title, description) {
   return header;
 }
 
-function shelf(title, records, href, label) {
+function shelf(title, records, href, label, shortcut) {
   const section = element('section', 'section-block');
   const caption = element('div', 'section-heading');
-  caption.append(element('h2', '', title), link(label, href));
+  const actions = element('div', 'interaction-row');
+  if (shortcut) actions.append(shortcut);
+  actions.append(link(label, href));
+  caption.append(element('h2', '', title), actions);
   const grid = element('div', 'discovery-grid');
   grid.append(...records.map(card));
   section.append(caption, grid);
@@ -330,7 +333,8 @@ export async function populateHomeMedia(target) {
   if (films.status === 'fulfilled') {
     const { featuredFilm, filmCatalog } = films.value;
     const selection = [...new Set([featuredFilm, ...filmCatalog.filter(film => film.fullVideo || film.embed || film.fullWatch)])].slice(0, 4);
-    target.append(shelf('Featured films', selection.map(filmItem), '#movies', 'Browse movies'));
+    target.append(shelf('Featured films', selection.map(filmItem), '#movies', 'Browse movies',
+      link('Family films', '#movies?collection=family')));
   }
   if (music.status === 'fulfilled') {
     const { featuredTrack, musicCatalog } = music.value;
@@ -340,6 +344,7 @@ export async function populateHomeMedia(target) {
   }
   if (videos.status === 'fulfilled') {
     const featured = videos.value.getCuratedVideos().filter(video => video.tags.includes('Gaming')).slice(0, 4);
-    if (featured.length) target.append(shelf('Gaming videos', featured.map(videoItem), '#youtube?format=all&topic=Gaming', 'Browse videos'));
+    if (featured.length) target.append(shelf('Gaming videos', featured.map(videoItem), '#youtube?format=all&topic=Gaming', 'Browse videos',
+      link('MrBeast videos', '#youtube?format=all&q=MrBeast')));
   }
 }

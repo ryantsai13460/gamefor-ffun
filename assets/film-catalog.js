@@ -1,9 +1,10 @@
 // Official film and trailer sources. Release years are film release dates, not web upload dates.
 // Each title links to its rights holder, creator, or authorized viewing provider.
 const release = new URL(import.meta.url).search;
-const [{ nfbFilms }, { archiveFilms }] = await Promise.all([
+const [{ nfbFilms }, { archiveFilms }, { familyFilms }] = await Promise.all([
   import(`./film-nfb.js${release}`),
-  import(`./film-archive.js${release}`)
+  import(`./film-archive.js${release}`),
+  import(`./film-family.js${release}`)
 ]);
 
 export const filmCatalog = [
@@ -680,7 +681,8 @@ export const filmCatalog = [
     "where": "https://www.disneyplus.com/browse/entity-8b489955-d30c-45b6-90ee-ae70f92bd431"
   },
   ...nfbFilms,
-  ...archiveFilms
+  ...archiveFilms,
+  ...familyFilms
 ];
 
 export const featuredFilm = filmCatalog[0];

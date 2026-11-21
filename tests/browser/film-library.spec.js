@@ -39,6 +39,34 @@ test('film details preserve browse filters and distinguish full features from tr
   await expect(player).toContainText('A verified full-film source is unavailable.');
 });
 
+test('Family films leads with complete features and keeps regional provider links honest', async ({ page }) => {
+  await page.goto('/#movies?collection=family');
+  const collections = page.getByRole('group', { name: 'Film collections' });
+  const query = page.getByRole('searchbox', { name: 'Search films' });
+  await expect(collections.getByRole('button', { name: 'Family films', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.film-card .film-type').first()).toHaveText('Full feature film');
+
+  await query.fill('Minecraft');
+  await expect(page.getByText('No films match your search.')).toBeVisible();
+  await query.fill('Little Bear Movie');
+  await page.getByRole('link', { name: 'Open Little Bear Movie film page' }).click();
+  const player = page.locator('.film-detail-play');
+  await expect(page.locator('.film-details-meta')).toContainText('75 min');
+  await expect(page.getByText('Availability varies by region.')).toBeVisible();
+  await expect(player.getByRole('link', { name: 'Watch Full Movie' })).toHaveAttribute(
+    'href', 'https://tubitv.com/movies/274712/little-bear-movie'
+  );
+  await expect(player.locator('iframe')).toHaveCount(0);
+
+  await page.getByRole('link', { name: 'Back to Movies', exact: true }).click();
+  await expect(collections.getByRole('button', { name: 'Family films', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(query).toHaveValue('Little Bear Movie');
+  await query.fill('The Tooth');
+  await page.getByRole('link', { name: 'Open The Tooth film page' }).click();
+  await player.getByRole('button', { name: 'Play full short', exact: true }).click();
+  await expect(player.locator('iframe')).toHaveAttribute('src', 'https://www.nfb.ca/film/tooth/embed/player/');
+});
+
 test('YouTube film progress starts on playback and resumes with working fullscreen controls', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 820 });
   await page.route('https://www.youtube-nocookie.com/embed/eRsGyueVLvQ?*', route => route.fulfill({

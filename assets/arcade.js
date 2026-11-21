@@ -3,10 +3,12 @@ import { createSearchFullscreen } from './search-fullscreen.js';
 
 const assetVersion = new URL(import.meta.url).search;
 const [{ games }, { createLibrary, gameAvailability, normalize, queryLibrary, restorePreferences },
-  { gatewayConnected, renderGatewaySettings, searchGateway }] = await Promise.all([
+  { gatewayConnected, renderGatewaySettings, searchGateway },
+  { gameBackgroundOptions, readGameBackground, saveGameBackground, showGameBackground, prepareGameBackground }] = await Promise.all([
   import(`./catalog.js${assetVersion}`),
   import(`./library.js${assetVersion}`),
-  import(`./service-gateway.js${assetVersion}`)
+  import(`./service-gateway.js${assetVersion}`),
+  import(`./game-background.js${assetVersion}`)
 ]);
 
 const storageKey = 'gamefor-ffun-complete-v2';
@@ -133,6 +135,7 @@ function loadPreferences() {
 }
 
 let prefs = loadPreferences();
+let gameBackground = readGameBackground();
 function savePreferences() {
   try {
     localStorage.setItem(storageKey, JSON.stringify(prefs));
@@ -377,7 +380,8 @@ function renderHome(target) {
     ['featured', 'Featured games', picks, 'All games', '#games'],
     ['recent', 'Recently played', records(prefs.recent), 'Play history', '#recent'],
     ['popular', 'Popular on this device', popular, 'Trending games', '#trending'],
-    ['new', 'New games', games.filter(game => game.isNew).sort((a, b) => Number(Boolean(b.art)) - Number(Boolean(a.art))), 'New games', '#new'],
+    ['new', 'New games', games.filter(game => game.isNew).sort((a, b) => Number(Boolean(b.local)) - Number(Boolean(a.local))
+      || Number(Boolean(b.art)) - Number(Boolean(a.art))), 'New games', '#new'],
     ['built-in', 'Built-in arcade', games.filter(game => game.local).sort((a, b) => Number(Boolean(b.art)) - Number(Boolean(a.art))), 'Built-in games', '#games?local=1']
   ]) {
     if (prefs.hiddenHome.includes(key)) continue;
@@ -1041,7 +1045,7 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   };
 }
 
-function renderSettings(target) {
+function renderSettings(target, params) {
   target.append(heading('Settings', 'Your changes are saved in this browser.'));
   const row = element('div', 'settings-grid');
   const visuals = element('section', 'info-panel');
@@ -1092,6 +1096,72 @@ function renderSettings(target) {
     }));
   row.append(visuals, home, privacy);
   target.append(row);
+  const panel = gameBackgroundSettings();
+  target.append(panel);
+  if (params.get('panel') === 'background') {
+    panel.focus({ preventScroll: true });
+    panel.scrollIntoView({ block: 'start' });
+  }
+}
+
+function gameBackgroundSettings() {
+  const panel = element('section', 'info-panel game-background-settings');
+  panel.id = 'game-background-settings';
+  panel.tabIndex = -1;
+  const title = element('h2', '', 'Game backgrounds');
+  title.id = 'game-background-heading';
+  panel.setAttribute('aria-labelledby', title.id);
+  const { wrapper, field } = selectField('Game background', gameBackgroundOptions, gameBackground.preset);
+  const customOption = [...field.options].find(option => option.value === 'custom');
+  const preview = element('div', 'game-backdrop game-background-preview', 'Preview');
+  preview.setAttribute('aria-hidden', 'true');
+  const upload = element('input', 'field');
+  upload.type = 'file';
+  upload.accept = 'image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp';
+  const uploadLabel = element('label', '', 'Choose a background image');
+  uploadLabel.append(upload);
+  const status = element('p', 'muted');
+  status.setAttribute('role', 'status');
+  let revision = 0;
+  const remove = action('Remove saved image', () => {
+    revision++;
+    changeBackground({
+      preset: gameBackground.preset === 'custom' ? 'clean' : gameBackground.preset, image: ''
+    }, 'Saved image removed.');
+    upload.focus();
+  });
+  function update() {
+    field.value = gameBackground.preset;
+    customOption.disabled = !gameBackground.image;
+    remove.hidden = !gameBackground.image;
+    showGameBackground(preview, gameBackground);
+  }
+  function changeBackground(background, message) {
+    gameBackground = background;
+    status.textContent = saveGameBackground(background) ? message : 'Browser storage is unavailable. This change lasts for this visit.';
+    update();
+  }
+  field.addEventListener('change', () => {
+    revision++;
+    changeBackground({ ...gameBackground, preset: field.value }, 'Game background updated.');
+  });
+  upload.addEventListener('change', async () => {
+    const [file] = upload.files;
+    upload.value = '';
+    if (!file) return;
+    const request = ++revision;
+    status.textContent = 'Preparing your image…';
+    try {
+      const image = await prepareGameBackground(file);
+      if (request === revision && panel.isConnected) changeBackground({ preset: 'custom', image }, 'Your background image was saved in this browser.');
+    } catch (error) {
+      if (request === revision && panel.isConnected) status.textContent = error.message;
+    }
+  });
+  update();
+  panel.append(title, element('p', '', 'Choose a backdrop for game pages. Your image stays in this browser.'),
+    preview, wrapper, uploadLabel, remove, status);
+  return panel;
 }
 
 function renderCredits(target) {
@@ -1119,7 +1189,8 @@ function renderGame(target, id) {
   const embedUrl = verifiedSource(arcadeEmbed(game));
   const relatedUrl = verifiedSource(game.relatedUrl);
   const localFile = typeof game.local === 'string' && game.local.match(/^(?:\.\/)?([\w.-]+\.html)$/)?.[1];
-  const header = element('header', 'player-heading');
+  const header = element('header', 'player-heading game-backdrop');
+  showGameBackground(header, gameBackground);
   const headingCopy = element('div');
   headingCopy.append(element('p', '', `${game.category} · ${labels[availability]}`), element('h1', '', game.title));
   if (game.description) headingCopy.append(element('p', '', game.description));
@@ -1127,7 +1198,8 @@ function renderGame(target, id) {
   target.append(header);
   const controls = element('div', 'player-actions interaction-row');
   controls.append(favoriteButton(game, false),
-    link('Find wiki and videos', hashFor('web-search', { q: game.title }), 'button', 'search'));
+    link('Find wiki and videos', hashFor('web-search', { q: game.title }), 'button', 'search'),
+    link('Customize background', '#settings?panel=background', 'button'));
   const status = element('p', 'player-status');
   status.setAttribute('role', 'status');
   const stage = element('div', 'player-stage');
@@ -1197,6 +1269,8 @@ function renderGame(target, id) {
 
   function showStart(title, text) {
     const welcome = empty(title, text);
+    welcome.classList.add('game-backdrop');
+    showGameBackground(welcome, gameBackground);
     welcome.append(action('Play game', () => start(true), 'button primary start-game', 'play'));
     stage.replaceChildren(welcome);
   }
@@ -1427,7 +1501,7 @@ async function renderRoute(focus = true) {
         break;
       }
       case 'settings':
-        renderSettings(target);
+        renderSettings(target, route.params);
         break;
       case 'credits':
         renderCredits(target);
