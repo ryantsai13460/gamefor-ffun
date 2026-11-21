@@ -162,9 +162,13 @@ export function renderMusic(target, params) {
   const heading = element('header', 'music-library-heading');
   const lyricsLink = element('a', 'button', 'Chart lyrics');
   lyricsLink.href = '#music';
+  const channelsLink = element('a', 'button', '7clouds channels');
+  channelsLink.href = '#music?lyrics=channels';
   const headingCopy = element('div');
   headingCopy.append(element('h1', '', 'Music'), element('p', '', 'Find songs by title or artist and play official uploads here.'));
-  heading.append(headingCopy, lyricsLink);
+  const musicViews = element('div', 'interaction-row');
+  musicViews.append(lyricsLink, channelsLink);
+  heading.append(headingCopy, musicViews);
 
   const feature = element('section', 'music-feature');
   const featureCaption = element('div', 'music-feature-copy');

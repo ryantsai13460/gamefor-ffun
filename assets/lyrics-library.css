@@ -18,6 +18,9 @@
   border-color: var(--accent);
   color: var(--accent);
 }
+.seven-clouds-channels label { display: grid; gap: 6px; max-width: 100%; min-width: 0; }
+.seven-clouds-channels .field { max-width: 100%; min-width: 0; }
+.seven-clouds-channels .media-player { width: min(100%, 900px); margin: 0; }
 .lyrics-track h3 { font-size: 1rem; overflow-wrap: anywhere; }
 .lyrics-track p { margin-top: 3px; font-size: .84rem; overflow-wrap: anywhere; }
 .lyrics-song-actions, .lyrics-provider-actions {
