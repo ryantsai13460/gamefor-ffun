@@ -16,11 +16,11 @@ const mainCatalogCount = games.filter(game => game.collection === 'github' || ga
 const categories = [...library.categoryCounts.keys()].sort((a, b) => a.localeCompare(b));
 const altFeatured = ['2048', 'subway', 'ffun-skyline-v1', 'minecraft-classic', 'snake', 'retrobowl', 'stickman', 'drivemad', 'memory-match', 'pong'];
 const drawerMedia = matchMedia('(max-width: 860px)');
-const routes = new Set(['home', 'explore', 'games', 'categories', 'trending', 'new', 'favorites', 'recent', 'youtube', 'movies', 'browse', 'web-search', 'play-hub', 'settings', 'credits', 'play']);
+const routes = new Set(['home', 'explore', 'games', 'categories', 'trending', 'new', 'favorites', 'recent', 'youtube', 'movies', 'browse', 'web-search', 'blip', 'play-hub', 'settings', 'credits', 'play']);
 const routeNames = {
   home: 'Home', explore: 'Explore', games: 'All Games', categories: 'Categories', trending: 'Trending',
   new: 'New Games', favorites: 'Favorites', recent: 'Recently Played',
-  youtube: 'YouTube', movies: 'Movies', browse: 'Proxy Gemini', 'web-search': 'Web Search', 'play-hub': 'Play Hub',
+  youtube: 'YouTube', movies: 'Movies', browse: 'Proxy Gemini', 'web-search': 'Web Search', blip: 'blip.ai', 'play-hub': 'Play Hub',
   settings: 'Settings', credits: 'Credits'
 };
 const labels = { local: 'Built in', embed: 'In-page player', external: 'External', unverified: 'Link unverified' };
@@ -331,7 +331,7 @@ function renderHome(target) {
     ['Explore', '#explore', 'layers', 'games'],
     ['Video library', '#youtube?format=all', 'video', 'video'],
     ['Cinema', '#movies', 'film', 'film'],
-    ['AI Help', '#web-search?mode=ai', 'spark', 'ai']
+    ['blip.ai chat', '#blip', 'spark', 'ai']
   ]) {
     const destination = link(name, href, 'explore-tile', symbol);
     destination.dataset.color = color;
@@ -995,6 +995,12 @@ async function renderRoute(focus = true) {
           import('./film-library.js'), import('./media.js')
         ]);
         if (token === version) cleanup = renderFilms(target, { watchDialog, collection: route.params.get('collection') });
+        break;
+      }
+      case 'blip': {
+        target.append(element('p', 'boot-note', 'Loading blip.ai…'));
+        const { renderBlip } = await import('./blip.js');
+        if (token === version) cleanup = renderBlip(target);
         break;
       }
       case 'web-search': {

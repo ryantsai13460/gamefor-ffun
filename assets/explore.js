@@ -94,7 +94,7 @@ export function renderExplore(target, { gamesSection, localCount, arcadeFeature 
   for (const entry of [
     { name: 'Web Search', description: 'Search articles and YouTube in tabs', href: '#web-search', color: 'search' },
     { name: 'Google Search', description: 'Google results, Images, News, and Shopping', href: '#web-search?mode=google', color: 'google' },
-    { name: 'AI Help', description: 'Ask a question, calculate, or convert units', href: '#web-search?mode=ai', color: 'ai' }
+    { name: 'blip.ai chat', description: 'Save chats, choose a thinking method, and listen to music', href: '#blip', color: 'ai' }
   ]) toolsList.append(tile(entry));
   tools.append(toolsList);
 
