@@ -47,5 +47,6 @@ test('the gateway connects without browser storage and fits Unicode history with
   const trimmedHistory = messages.slice(0, -1);
   expect(trimmedHistory.length).toBeGreaterThan(0);
   expect(trimmedHistory.length).toBeLessThan(history.length);
+  expect(trimmedHistory.length % 2).toBe(0);
   expect(trimmedHistory).toEqual(history.slice(-trimmedHistory.length).map(({ role, text }) => ({ role, content: text })));
 });

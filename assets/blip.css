@@ -428,6 +428,7 @@
 
 .blip-message--user .blip-message-author { color: var(--blip-ink); }
 .blip-answer-source { margin-bottom: 5px; color: var(--blip-faint); font-size: .76rem; }
+.blip-answer-limit { margin-top: 8px; color: var(--blip-warning); font-size: .76rem; }
 .blip-message[data-reply-kind="unavailable"] .blip-answer-source { color: var(--blip-warning); }
 .blip-message-text { color: var(--blip-ink); line-height: 1.53; white-space: pre-wrap; }
 .blip-message-text :is(p, h4, pre, ul, ol) { margin: 0 0 6px; }

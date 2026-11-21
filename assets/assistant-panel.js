@@ -1,11 +1,18 @@
 const assetVersion = new URL(import.meta.url).search;
-const {
+const [{
+  assistantReferences,
+  builtInSearchGuide,
   generateSearchAnswer,
   localAssistantAnswer,
   prepareSearchModel,
+  searchAnswerInstructions,
+  searchAnswerPrompt,
   searchModelAvailability,
-  searchWikipedia,
-} = await import(`./search-answer.js${assetVersion}`);
+}, { cpuBlipAvailability, cpuBlipReady, prepareCpuBlipModel, runCpuBlipPrompt }, { formatBlipReply },
+{ gatewayConnected, hostedBlipReply, renderGatewaySettings }] = await Promise.all([
+  import(`./search-answer.js${assetVersion}`), import(`./blip-cpu.js${assetVersion}`),
+  import(`./blip-format.js${assetVersion}`), import(`./service-gateway.js${assetVersion}`)
+]);
 
 const examples = [
   ['Explain a topic', 'How does a rainbow form?'],
@@ -37,10 +44,12 @@ function button(className, text) {
 }
 
 export function renderAssistantPanel(target, { onQuery, findVideos = () => [], onSearchTopic } = {}) {
+  const panelId = ++panelCount;
   const root = element('section', 'assistant-panel');
   const title = element('h2', 'assistant-title', 'AI Help');
   const description = element('p', 'muted assistant-intro', 'Ask for an explanation, writing help, or a plan. Calculations and unit conversions work locally.');
   const form = element('form', 'assistant-form');
+  form.id = `assistant-form-${panelId}`;
   form.setAttribute('role', 'search');
   form.setAttribute('aria-label', 'Ask AI');
   const promptLabel = element('label', 'assistant-field');
@@ -61,7 +70,7 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
   form.append(promptLabel, formActions);
 
   const contextNote = element('div', 'assistant-context');
-  contextNote.id = `assistant-context-${++panelCount}`;
+  contextNote.id = `assistant-context-${panelId}`;
   contextNote.hidden = true;
   const contextTopic = element('strong');
   const newQuestion = button('button', 'Start a new question');
@@ -94,29 +103,80 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
   modelStatus.setAttribute('role', 'status');
   const enable = button('button', 'Enable on-device AI');
   enable.hidden = true;
-  settings.append(sourceOption, sourceDetail, modelStatus, enable);
+  const cpuStatus = element('p', 'muted assistant-model-status');
+  cpuStatus.setAttribute('role', 'status');
+  const enableCpu = button('button', 'Download CPU model (271 MB)');
+  enableCpu.hidden = true;
+  const stopCpu = button('button', 'Cancel model download');
+  stopCpu.hidden = true;
+  const cpuActions = element('div', 'assistant-actions');
+  cpuActions.append(enableCpu, stopCpu);
+  settings.append(sourceOption, sourceDetail, modelStatus, enable, cpuStatus, cpuActions);
   details.append(settings);
+
+  const connected = element('details', 'assistant-options assistant-connected');
+  connected.append(element('summary', '', 'Connected AI'));
+  const connectedSettings = element('div', 'assistant-settings');
+  const connectedStatus = element('p', 'muted');
+  connectedStatus.setAttribute('role', 'status');
+  const connectedPrivacy = element('p', 'muted', 'Asking the connected model shares your question and, for a follow-up, the previous question and answer with your provider. These requests use the owner’s quota.');
+  const researchOption = element('label', 'settings-option assistant-source-option');
+  const research = element('input');
+  research.type = 'checkbox';
+  const researchHelp = element('p', 'muted', 'Web research sends questions of up to 200 characters to Brave Search and adds citations when the connected gateway provides sources.');
+  researchHelp.id = `assistant-research-${panelId}`;
+  research.setAttribute('aria-describedby', researchHelp.id);
+  researchOption.append(research, element('span', '', 'Use web research for sources'));
+  const hostedSubmit = button('button', 'Ask connected AI');
+  hostedSubmit.type = 'submit';
+  hostedSubmit.setAttribute('form', form.id);
+  connectedSettings.append(connectedStatus, connectedPrivacy);
+  renderGatewaySettings(connectedSettings, 'Connect an AI provider', () => {
+    research.checked = false;
+    syncConnected();
+  });
+  connectedSettings.append(researchOption, researchHelp, hostedSubmit);
+  connected.append(connectedSettings);
+  connected.addEventListener('toggle', syncConnected);
 
   const status = element('p', 'muted assistant-status');
   status.setAttribute('role', 'status');
+  const announcement = element('p', 'sr-only');
+  announcement.setAttribute('role', 'status');
   const result = element('article', 'assistant-result');
   result.hidden = true;
-  result.setAttribute('aria-live', 'polite');
   const resultTitle = element('h3', 'assistant-result-title');
-  const reply = element('p', 'assistant-result-text');
+  resultTitle.id = `assistant-answer-${panelId}`;
+  result.setAttribute('aria-labelledby', resultTitle.id);
+  const reply = element('div', 'assistant-result-text');
   const credits = element('div', 'assistant-credits');
+  const related = element('div', 'assistant-related');
   const copy = button('button assistant-copy', 'Copy answer');
   const followUp = button('button', 'Ask a follow-up');
   const searchTopic = element('a', 'button', 'Search web and YouTube');
   const resultActions = element('div', 'assistant-actions');
   resultActions.append(copy, followUp, searchTopic);
-  result.append(resultTitle, reply, credits, resultActions);
+  result.append(resultTitle, reply, credits, related, resultActions);
 
   const lifetime = new window.AbortController();
   let pending;
   let lastAnswer;
   let followingUp = false;
   let modelReady = false;
+  let cpuSetup;
+
+  function syncConnected() {
+    const ready = gatewayConnected();
+    hostedSubmit.disabled = research.disabled = !ready;
+    if (!ready) research.checked = false;
+    connectedStatus.textContent = ready ? 'A gateway is configured in this tab. Check the backend to verify its features.'
+      : 'Connect your authorized gateway to use hosted answers.';
+  }
+  syncConnected();
+
+  function syncFollowUp() {
+    followUp.hidden = !lastAnswer?.canContinue || (!modelReady && !cpuBlipReady() && !lastAnswer.connected);
+  }
 
   function showModelStatus(availability) {
     modelReady = availability === 'available';
@@ -128,7 +188,15 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
       : canEnable
         ? 'Enable on-device AI to prepare the model in this browser.'
         : 'On-device AI is unavailable in this browser. Wikipedia, calculations, and conversions are still available.';
-    followUp.hidden = !modelReady || !lastAnswer?.canContinue;
+    syncFollowUp();
+  }
+
+  function showCpuStatus(availability) {
+    enableCpu.hidden = availability !== 'downloadable';
+    cpuStatus.textContent = availability === 'available' ? 'The CPU model is ready to answer locally.'
+      : availability === 'downloading' ? 'The CPU model is being prepared.'
+      : availability === 'downloadable' ? 'The optional CPU model runs on this device after its download.' : '';
+    syncFollowUp();
   }
 
   enable.addEventListener('click', async () => {
@@ -146,22 +214,94 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
     }
   });
 
-  function showAnswer({ label, text, source, question, topic, canContinue = false }) {
-    lastAnswer = { question, topic, text, source, canContinue };
-    status.textContent = '';
-    result.hidden = false;
+  enableCpu.addEventListener('click', async () => {
+    const setup = new AbortController();
+    cpuSetup = setup;
+    const signal = AbortSignal.any([setup.signal, lifetime.signal]);
+    enableCpu.disabled = true;
+    stopCpu.hidden = false;
+    try {
+      await prepareCpuBlipModel(signal, (fraction, stage) => {
+        if (!signal.aborted) cpuStatus.textContent = `${stage} · ${Math.round(fraction * 100)}%`;
+      });
+      if (!signal.aborted) showCpuStatus('available');
+    } catch {
+      if (!lifetime.signal.aborted) cpuStatus.textContent = setup.signal.aborted
+        ? 'Model download canceled.' : 'The CPU model could not be prepared. You can try again.';
+    } finally {
+      cpuSetup = undefined;
+      enableCpu.disabled = false;
+      stopCpu.hidden = true;
+    }
+  });
+  stopCpu.addEventListener('click', () => cpuSetup?.abort());
+
+  function drawAnswer(answer) {
+    result.hidden = !answer;
+    if (!answer) return;
+    const { label, text, topic, sources = [], videos = [], formatted } = answer;
     resultTitle.textContent = label;
-    reply.textContent = text;
+    reply.replaceChildren();
+    if (formatted) {
+      // Only reference numbers may turn into links. Model-written URLs are unverified.
+      formatBlipReply(reply, text.replace(/\[([^\]\n]+)\]\([^\s)]+\)/gu, '$1'), sources);
+    } else {
+      reply.textContent = text;
+    }
     copy.hidden = label === 'AI unavailable';
-    followUp.hidden = !modelReady || !canContinue;
+    syncFollowUp();
     searchTopic.hidden = !topic;
     if (topic) searchTopic.href = `#web-search?${new URLSearchParams({ q: topic })}`;
     resultActions.hidden = copy.hidden && followUp.hidden && searchTopic.hidden;
     credits.replaceChildren();
-    if (source) {
-      credits.append(link(source.url, `Wikipedia · ${source.title}`),
-        link('https://creativecommons.org/licenses/by-sa/4.0/', 'CC BY-SA 4.0'));
+    if (sources.length) {
+      const list = element('ol');
+      for (const source of sources) {
+        const item = element('li');
+        item.append(link(source.url, source.title));
+        list.append(item);
+      }
+      credits.append(element('h4', '', 'Sources'), list);
+      if (sources.some(source => source.text)) {
+        credits.append(link('https://creativecommons.org/licenses/by-sa/4.0/', 'Wikipedia excerpts · CC BY-SA 4.0'));
+      }
     }
+    related.replaceChildren();
+    if (videos.length) {
+      const list = element('ul');
+      for (const video of videos) {
+        const item = element('li');
+        const url = video.short ? `https://www.youtube.com/shorts/${video.id}` : `https://www.youtube.com/watch?v=${video.id}`;
+        item.append(link(url, [video.title, video.creator].filter(Boolean).join(' · ')));
+        list.append(item);
+      }
+      related.append(element('h4', '', 'Related videos'), list);
+    }
+  }
+
+  function showAnswer(answer, message = '') {
+    lastAnswer = answer;
+    drawAnswer(answer);
+    status.textContent = message;
+    announcement.textContent = answer.label === 'AI unavailable' ? 'Answer unavailable.' : `${answer.label} ready.`;
+  }
+
+  function showPartial(label, text) {
+    result.hidden = false;
+    resultTitle.textContent = label;
+    reply.textContent = text;
+    credits.replaceChildren();
+    related.replaceChildren();
+    resultActions.hidden = true;
+  }
+
+  function relatedVideos(topic) {
+    const matches = new Map();
+    for (const video of findVideos(topic)) {
+      if (/^[A-Za-z0-9_-]{11}$/.test(video.id) && video.title && !matches.has(video.id)) matches.set(video.id, video);
+      if (matches.size >= 3) break;
+    }
+    return [...matches.values()];
   }
 
   function setFollowUp(enabled) {
@@ -178,7 +318,7 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
     pending?.abort();
     pending = undefined;
     stop.hidden = true;
-    result.hidden = !lastAnswer;
+    drawAnswer(lastAnswer);
     status.textContent = '';
     setFollowUp(enabled);
     input.value = '';
@@ -198,7 +338,7 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
     pending?.abort();
     pending = undefined;
     stop.hidden = true;
-    result.hidden = !lastAnswer;
+    drawAnswer(lastAnswer);
     status.textContent = 'Answer stopped.';
     input.focus();
   });
@@ -213,6 +353,9 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
     pending?.abort();
     pending = undefined;
     stop.hidden = true;
+    drawAnswer(lastAnswer);
+    const online = event.submitter === hostedSubmit;
+    const withResearch = online && research.checked;
     const context = followingUp ? lastAnswer : undefined;
     const topic = context?.topic ?? question.slice(0, 200);
     if (!context) onQuery?.(question);
@@ -221,44 +364,97 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
       showAnswer({ label: computed.title, text: computed.text, question });
       return;
     }
+    if (online && !gatewayConnected()) {
+      syncConnected();
+      status.textContent = 'Connect your authorized gateway before asking the connected model.';
+      return;
+    }
+    if (withResearch && question.length > 200) {
+      status.textContent = 'Shorten the question to 200 characters or turn off web research.';
+      return;
+    }
 
     const request = new window.AbortController();
     pending = request;
     const { signal } = request;
     const withTimeout = duration => window.AbortSignal.any([signal, window.AbortSignal.timeout(duration)]);
-    const shouldLookUp = !context && useWikipedia.checked && question.length <= 200;
+    const guide = !context && builtInSearchGuide(question);
+    const shouldLookUp = !online && !context && !guide && useWikipedia.checked && question.length <= 200;
     stop.hidden = false;
-    result.hidden = !context;
+    announcement.textContent = '';
+    drawAnswer(context);
     status.textContent = context ? 'Working on your follow-up…'
       : shouldLookUp ? 'Looking up context and checking the browser model…' : 'Checking the browser model…';
 
     try {
-      const articles = shouldLookUp ? await searchWikipedia(question, withTimeout(5000), 1).catch(() => []) : [];
+      const videos = relatedVideos(topic);
+      let connectedFailure = '';
+      if (online) {
+        const label = withResearch ? 'Connected research answer' : 'Connected AI answer';
+        status.textContent = withResearch ? 'Looking up live sources and waiting for the model…' : 'Waiting for the connected model…';
+        let sources = [];
+        try {
+          const text = await hostedBlipReply({
+            text: question,
+            history: context ? [{ role: 'user', text: context.question }, { role: 'assistant', text: context.text }] : [],
+            mode: 'think', research: withResearch, signal: withTimeout(65000),
+            onSources(value) { sources = value; },
+            onUpdate(value) { if (!signal.aborted) showPartial(label, value); }
+          });
+          if (signal.aborted) return;
+          showAnswer({ label, text, sources, videos, question, topic, formatted: true, canContinue: true, connected: true });
+          if (context) {
+            input.value = '';
+            setFollowUp(true);
+          }
+          return;
+        } catch (error) {
+          if (signal.aborted) return;
+          connectedFailure = error.message || 'The connected model could not answer.';
+          status.textContent = 'The connected model could not finish. Checking local options…';
+          drawAnswer(context);
+        }
+      }
+
+      const sources = context?.sources || (shouldLookUp ? await assistantReferences(question, withTimeout(5000)).catch(() => []) : []);
       if (signal.aborted) return;
-      const source = context?.source ?? articles[0];
-      const videos = findVideos(topic);
-      const answer = await generateSearchAnswer(question, source, videos, withTimeout(12000), context).catch(() => '');
+      let label = 'On-device AI answer';
+      let answer = await generateSearchAnswer(question, sources, videos, withTimeout(30000), context,
+        value => { if (!signal.aborted) showPartial(label, value); }).catch(() => '');
+      if (!answer && !signal.aborted && cpuBlipReady()) {
+        label = 'CPU on-device AI answer';
+        status.textContent = 'The CPU model is answering on this device…';
+        answer = await runCpuBlipPrompt([
+          { role: 'system', content: searchAnswerInstructions },
+          { role: 'user', content: searchAnswerPrompt(question, sources, videos, context) }
+        ], 'think', withTimeout(90000), value => { if (!signal.aborted) showPartial(label, value); }).catch(() => '');
+      }
       if (signal.aborted) return;
       if (answer) {
-        showModelStatus('available');
-        showAnswer({ label: 'On-device AI answer', text: answer, source, question, topic: source?.title || topic, canContinue: true });
+        if (label === 'On-device AI answer') showModelStatus('available');
+        showAnswer({ label, text: answer, sources, videos, question, topic, canContinue: true, formatted: true },
+          connectedFailure ? 'The connected model could not finish. This answer was generated on this device.' : '');
         if (context) {
           input.value = '';
           setFollowUp(true);
         }
       } else if (context) {
-        status.textContent = 'The on-device model could not answer the follow-up. You can try again or start a new question.';
-      } else if (source) {
-        showAnswer({ label: 'Wikipedia excerpt', text: source.text, source, question, topic: source.title, canContinue: true });
+        drawAnswer(context);
+        status.textContent = connectedFailure || 'A ready local model could not answer this follow-up. Try again or start a new question.';
+      } else if (guide) {
+        showAnswer({ ...guide, question, topic, videos, formatted: true },
+          connectedFailure ? 'The connected model could not finish. A built-in guide is available.' : '');
+      } else if (sources.length) {
+        showAnswer({ label: 'Wikipedia excerpt', text: sources[0].text, sources, videos, question, topic: sources[0].title, canContinue: true });
       } else {
-        const message = shouldLookUp
-          ? 'A ready browser model and a Wikipedia excerpt are unavailable for this question.'
-          : 'A ready browser model is unavailable. For a short topic question, you can enable Wikipedia lookup under Sources and on-device AI.';
-        showAnswer({ label: 'AI unavailable', text: message, question, topic });
+        const message = connectedFailure || (shouldLookUp
+          ? 'A ready local model and a related Wikipedia excerpt are unavailable for this question.'
+          : 'A ready local model is unavailable. You can enable a model or look up a short topic under Sources and on-device AI.');
+        showAnswer({ label: 'AI unavailable', text: message, question, topic, videos });
       }
     } catch {
       if (!signal.aborted) {
-        result.hidden = !lastAnswer;
+        drawAnswer(lastAnswer);
         status.textContent = 'The answer could not be completed. Try again.';
       }
     } finally {
@@ -271,17 +467,20 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
 
   copy.addEventListener('click', async () => {
     try {
-      await window.navigator.clipboard.writeText(reply.textContent);
+      await window.navigator.clipboard.writeText(lastAnswer.text);
       status.textContent = 'Answer copied.';
     } catch {
       status.textContent = 'Select the answer text to copy it.';
     }
   });
 
-  root.append(title, description, contextNote, form, suggestions, details, status, result);
+  root.append(title, description, contextNote, form, suggestions, details, connected, status, announcement, result);
   target.append(root);
   searchModelAvailability().catch(() => 'unavailable').then(availability => {
     if (!lifetime.signal.aborted) showModelStatus(availability);
+  });
+  cpuBlipAvailability().catch(() => 'unavailable').then(availability => {
+    if (!lifetime.signal.aborted) showCpuStatus(availability);
   });
 
   return () => {

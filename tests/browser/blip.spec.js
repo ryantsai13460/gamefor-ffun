@@ -52,7 +52,7 @@ test('blip.ai keeps conversations and thinking methods separate across reloads',
   await input.press('Enter');
   await expect(page.getByText('Keep using the same guitar practice plan.')).toBeVisible();
   const calls = await page.evaluate(() => window.blipPrompts);
-  expect(calls[1].initialPrompts[0].content).toContain('Explain the key factors or steps');
+  expect(calls[1].initialPrompts[0].content).toContain('Give a conclusion and the key reasons the user can check');
   expect(calls[1].initialPrompts.slice(1)).toEqual([
     { role: 'user', content: 'Help me practice guitar.' },
     { role: 'assistant', content: 'Start with a ten-minute guitar practice.' }
@@ -356,8 +356,9 @@ test('connected Blip streams authorized replies and regenerates the last answer'
     expect(route.request().postDataJSON()).toEqual(expected);
     const text = ['**First example**\n\n```js\nconst score = 1;\n```', '**Updated example**', '**Advanced example**'][requests - 1];
     const event = JSON.stringify({ choices: [{ delta: { content: text } }] });
+    const limit = requests === 2 ? 'data: {"choices":[{"finish_reason":"length"}]}\n\n' : '';
     await route.fulfill({ status: 200, headers, contentType: 'text/event-stream',
-      body: `data: ${event}\n\ndata: [DONE]\n\n` });
+      body: `data: ${event}\n\n${limit}data: [DONE]\n\n` });
   });
   await page.goto('/#blip');
   await page.locator('.blip-settings-popover > summary').click();
@@ -377,6 +378,15 @@ test('connected Blip streams authorized replies and regenerates the last answer'
   await expect(page.getByRole('button', { name: 'Copy response', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
   await expect(page.locator('.blip-message strong')).toHaveText('Updated example');
+  await expect(page.getByText('This reply reached its model limit.')).toBeVisible();
+  const input = page.getByRole('textbox', { name: 'Message blip.ai' });
+  const continueButton = page.getByRole('button', { name: 'Draft a continuation' });
+  await input.fill('My unsent notes');
+  await continueButton.click();
+  await expect(input).toHaveValue('My unsent notes');
+  await input.clear();
+  await continueButton.click();
+  await expect(input).toHaveValue('Continue the previous reply from the last unfinished point.');
   expect(requests).toBe(2);
   await page.locator('.blip-settings-popover > summary').click();
   await page.getByRole('checkbox', { name: 'Use Advanced replies' }).check();
@@ -437,7 +447,7 @@ test('Blip offers no-download Workers AI after opt-in and keeps attached chats l
   await expect(page.getByText('Develop your minor pieces early.')).toBeVisible();
 
   await page.getByRole('link', { name: 'Home', exact: true }).click();
-  await page.getByRole('link', { name: 'blip.ai', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Arcade navigation' }).getByRole('link', { name: 'blip.ai', exact: true }).click();
   settings = page.locator('.blip-settings-popover > summary');
   await settings.click();
   await expect(optIn).toBeChecked();

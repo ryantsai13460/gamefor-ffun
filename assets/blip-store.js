@@ -86,6 +86,7 @@ function messageRecord(id, role, value, createdAt, details) {
     if (attachments.length) message.attachments = attachments;
   } else if (isObject(details)) {
     if (answerKinds.has(details.kind)) message.kind = details.kind;
+    if (details.truncated === true && ['model', 'hosted'].includes(message.kind)) message.truncated = true;
     const source = wikipediaSource(details.source);
     if (source) message.source = source;
     const sources = researchSources(details.sources);

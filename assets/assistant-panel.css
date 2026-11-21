@@ -22,7 +22,6 @@
 .assistant-form,
 .assistant-actions,
 .assistant-examples,
-.assistant-credits,
 .google-direct-links {
   display: flex;
   align-items: center;
@@ -90,11 +89,17 @@
 }
 
 .assistant-status:empty,
-.assistant-credits:empty {
+.assistant-credits:empty,
+.assistant-model-status:empty,
+.assistant-related:empty,
+.assistant-actions:not(:has(> :not([hidden]))) {
   display: none;
 }
 
 .assistant-result {
+  --blip-background: var(--panel-deep);
+  --blip-line: var(--line);
+  --blip-tint: var(--panel-hover);
   display: grid;
   justify-items: start;
   gap: .7rem;
@@ -107,11 +112,55 @@
 }
 
 .assistant-result-text {
+  min-width: 0;
+  width: 100%;
   white-space: pre-wrap;
 }
 
-.assistant-credits {
-  gap: .5rem .85rem;
+.assistant-result-text :is(p, h4, ul, ol, pre) {
+  margin-block: 0 .55rem;
+}
+
+.assistant-result-text :is(ul, ol),
+.assistant-credits ol,
+.assistant-related ul {
+  margin-block: .25rem;
+  padding-inline-start: 1.45em;
+}
+
+.assistant-result-text a,
+.assistant-credits a,
+.assistant-related a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: .17em;
+}
+
+.assistant-result-text pre {
+  padding: .65rem;
+  border-radius: .45rem;
+  background: var(--panel-deep);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.assistant-result-text .blip-table-frame {
+  border-color: var(--line);
+}
+
+.assistant-credits,
+.assistant-related {
+  width: 100%;
+  padding-block-start: .65rem;
+  border-block-start: 1px solid var(--line);
+  line-height: 1.5;
+  font-size: .875rem;
+}
+
+.assistant-credits h4,
+.assistant-related h4 {
+  margin: 0;
+  font-size: .94rem;
 }
 
 .assistant-copy {

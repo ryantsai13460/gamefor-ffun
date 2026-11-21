@@ -84,7 +84,7 @@ function downloadTranscript(chat) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function messageView(message, { onEdit, onRetry } = {}) {
+function messageView(message, { onEdit, onRetry, onContinue } = {}) {
   const item = element('article', `blip-message blip-message--${message.role}`);
   if (message.kind) item.dataset.replyKind = message.kind;
   item.append(element('h3', 'blip-message-author', message.role === 'user' ? 'You' : 'blip.ai'));
@@ -134,7 +134,8 @@ function messageView(message, { onEdit, onRetry } = {}) {
     item.append(citations);
   }
   const canCopy = message.role === 'assistant' && body;
-  if (canCopy || onEdit || onRetry) {
+  if (message.truncated) item.append(element('p', 'blip-answer-limit', 'This reply reached its model limit.'));
+  if (canCopy || onEdit || onRetry || onContinue) {
     const actions = element('div', 'blip-answer-actions');
     if (canCopy) {
       const feedback = element('span', 'blip-copy-feedback');
@@ -159,6 +160,7 @@ function messageView(message, { onEdit, onRetry } = {}) {
     }
     if (onEdit) actions.append(button('Edit & resend', onEdit, 'blip-button'));
     if (onRetry) actions.append(button('Regenerate', onRetry, 'blip-button'));
+    if (onContinue) actions.append(button('Draft a continuation', onContinue, 'blip-button'));
     item.append(actions);
   }
   return item;
@@ -593,7 +595,9 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
     const items = messages.map((message, index) => messageView(message, {
       onEdit: message.role === 'user' && !pending.has(chat.id) ? () => beginMessageEdit(chat, message) : undefined,
       onRetry: message.role === 'assistant' && index === messages.length - 1 && !pending.has(chat.id) && modelSetup?.turn?.chatId !== chat.id
-        ? () => retryReply(chat, message.id) : undefined
+        ? () => retryReply(chat, message.id) : undefined,
+      onContinue: message.truncated && index === messages.length - 1 && !pending.has(chat.id)
+        ? () => draftContinuation(chat) : undefined,
     }));
     part('messages').replaceChildren(...items);
     drawPartial(chat?.id);
@@ -603,6 +607,17 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
 
   function nearTranscriptEnd() {
     return transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 90;
+  }
+
+  function draftContinuation(chat) {
+    input.focus({ preventScroll: true });
+    if (input.value.trim() || draftFiles.get(chat.id)?.length || revisions.has(chat.id)) {
+      status.textContent = 'Finish or clear your current draft before adding a continuation.';
+      return;
+    }
+    const next = 'Continue the previous reply from the last unfinished point.';
+    drafts.set(chat.id, next);
+    input.value = next;
   }
 
   function drawPartial(id) {
@@ -858,6 +873,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
         const research = part('research').checked;
         const advanced = part('advanced').checked;
         let sources = [];
+        let truncated = false;
         request.engine = 'hosted';
         request.engineLabel = hostedEngineLabel();
         request.label = research ? 'Researching and waiting for the connected model…' : 'Waiting for the connected model…';
@@ -872,9 +888,10 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
           depth: advanced ? 'advanced' : undefined,
           signal: AbortSignal.any([request.controller.signal, AbortSignal.timeout(advanced ? 95_000 : 65_000)]),
           onSources(value) { sources = value; },
+          onFinish(value) { truncated = value; },
           onUpdate,
         });
-        reply = { kind: 'hosted', text: answer, sources };
+        reply = { kind: 'hosted', text: answer, sources, truncated };
       } else {
         reply = await answerBlip({
           text,
