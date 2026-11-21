@@ -1,4 +1,5 @@
 import { arcadeEmbed, isMiniplayAddress } from './embedded-content.js';
+import { createSearchFullscreen } from './search-fullscreen.js';
 import { gatewayConnected, renderGatewaySettings, searchGateway } from './service-gateway.js';
 
 const assetVersion = new URL(import.meta.url).search;
@@ -403,7 +404,13 @@ function renderLibrary(target, route) {
     source = games.filter(game => prefs.launches[game.id] > 0);
     description = 'Ranked by game launches in this browser.';
   }
-  target.append(heading(isLocal ? 'Built-in Games' : routeNames[name], description));
+  const title = heading(isLocal ? 'Built-in Games' : routeNames[name], description);
+  const fullscreen = name === 'games' ? createSearchFullscreen(target, { label: 'Game library' }) : null;
+  if (fullscreen) {
+    title.classList.add('game-library-heading');
+    title.append(fullscreen.controls);
+  }
+  target.append(title);
 
   if (source.length === 0) {
     const details = {
@@ -415,7 +422,7 @@ function renderLibrary(target, route) {
     const blank = empty(...(details[name] || ['No games here yet', 'Browse the full arcade library.']));
     blank.append(link('Browse games', '#games', 'button primary'));
     target.append(blank);
-    return;
+    return fullscreen?.dispose;
   }
 
   const controls = element('div', 'library-controls');
@@ -504,6 +511,7 @@ function renderLibrary(target, route) {
   });
   for (const select of [category, availability, sort]) select.field.addEventListener('change', resetPage);
   draw();
+  return fullscreen?.dispose;
 }
 
 function renderCategories(target) {
@@ -523,9 +531,12 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   const { media, searchWikipedia, renderGoogleSearch, renderSearchMaps, renderAssistantPanel, gameSearchSources, openSearchResource } = modules;
   const { findCuratedVideos, openSearchVideoDialog, openShortsFeed, openYouTubeSearchVideo, parseYouTubeVideo, searchConnectedVideos } = media;
   const windowPanel = element('section', 'proxy-window web-search-window');
+  const fullscreen = createSearchFullscreen(windowPanel, { label: 'Game search' });
+  const toolbar = element('div', 'search-fullscreen-toolbar');
   const nav = element('div', 'proxy-tab-row web-search-tabs');
   nav.setAttribute('role', 'group');
   nav.setAttribute('aria-label', 'Web Search tools');
+  toolbar.append(nav, fullscreen.controls);
   const searchPanel = element('div');
   const aiPanel = element('div');
   const googlePanel = element('div', 'proxy-stage web-search-stage');
@@ -628,7 +639,7 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   renderGatewaySettings(stage, 'Connect a web search provider', () => { webProviderEnabled = gatewayConnected(); });
   searchPanel.append(form, stage);
 
-  windowPanel.append(nav, ...panels.values());
+  windowPanel.append(toolbar, ...panels.values());
   target.append(windowPanel);
 
   let pending;
@@ -882,6 +893,7 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
     disposeMap?.();
     disposeGoogle?.();
     disposeAssistant?.();
+    fullscreen.dispose();
   };
 }
 
@@ -1143,7 +1155,7 @@ async function renderRoute(focus = true) {
         break;
       case 'explore': {
         target.append(element('p', 'boot-note', 'Loading collections…'));
-        const { renderExplore } = await import('./explore.js');
+        const { renderExplore } = await import(`./explore.js${assetVersion}`);
         if (token === version) {
           const newLocalGames = games.filter(game => game.local && game.collection === 'original').slice(-3);
           renderExplore(target, {
@@ -1159,7 +1171,7 @@ async function renderRoute(focus = true) {
       case 'recent':
       case 'new':
       case 'trending':
-        renderLibrary(target, route);
+        cleanup = renderLibrary(target, route) || (() => {});
         break;
       case 'categories':
         renderCategories(target);
@@ -1183,8 +1195,10 @@ async function renderRoute(focus = true) {
       }
       case 'music': {
         target.append(element('p', 'boot-note', 'Loading music…'));
-        const { renderMusic } = await import(`./music-library.js${assetVersion}`);
-        if (token === version) cleanup = renderMusic(target, route.params);
+        const render = route.params.has('view')
+          ? (await import(`./music-library.js${assetVersion}`)).renderMusic
+          : (await import(`./lyrics-library.js${assetVersion}`)).renderLyrics;
+        if (token === version) cleanup = render(target, route.params);
         break;
       }
       case 'blip': {
@@ -1198,7 +1212,7 @@ async function renderRoute(focus = true) {
           { gameSearchSources }, { openSearchResource }] = await Promise.all([
           import(`./media.js${assetVersion}`), import('./search-answer.js'), import('./search-google.js'),
           import('./search-map.js'), import('./assistant-panel.js'), import('./search-tabs.js'),
-          import('./search-game-sources.js'), import('./search-resource.js')
+          import('./search-game-sources.js'), import(`./search-resource.js${assetVersion}`)
         ]);
         if (token === version) {
           target.append(heading('Web Search', 'Search, watch, and ask questions in separate tabs.'));

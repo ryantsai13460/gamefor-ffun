@@ -4,7 +4,7 @@ The previous GitHub entry page contained duplicate document markup and ended ins
 
 ## Passed
 
-The suite includes ten Node tests and 25 Chromium browser tests. Separate DOM smoke tests exercised game rules, media imports, and assistant behavior.
+The suite includes ten Node tests, nine gateway tests, and 30 Chromium browser tests. Separate DOM smoke tests exercised game rules, media imports, and assistant behavior.
 
 | Area | Checks |
 | --- | --- |
@@ -14,8 +14,8 @@ The suite includes ten Node tests and 25 Chromium browser tests. Separate DOM sm
 | Player | All 18 built-in games launch in Chromium. Checked fullscreen, restart, keyboard interaction, standalone click-to-score, and puzzle progression. Targeted game tests covered scoring, touch and keyboard input, and completion of Comet Courier, Pinpoint Putt, and Beat Beacon. |
 | Viewer and Play Hub | Checked tabs, history, refresh, local game, native fullscreen, navigation inside a website preview, a browser-enforced frame restriction, optional external links, saved device checks, and JSON report export. Preview responses were controlled in the browser tests. |
 | Media | Verified the additional 500 videos through official YouTube oEmbed metadata and public creator indexes. Tests check 1,153 unique total entries, ten populated topics, and 48 cinema listings. Browser tests cover collection navigation, playback dialog controls, and official YouTube and NFB player routes. |
-| Music | Browser tests cover artist and title lookup and the in-page YouTube player. |
-| Shorts and Web Search | Browser tests cover Shorts navigation, tab state, 116 violin results, sandboxed Google results, and in-page access to the Territorial.io game preview, official wiki, and official YouTube trailer. |
+| Music | Browser tests cover pagination and source filters for 550 chart songs, spelling variants for Housewife and Dracula, authorized lyrics destinations, and the in-page video player. |
+| Shorts and Web Search | Browser tests cover Shorts navigation, tab state, 116 violin results, sandboxed Google results, native fullscreen in Web Search and All Games, and in-page access to the Territorial.io fullscreen game preview, official wiki, and official YouTube trailer. |
 | blip.ai | Chromium tests cover chat context with a simulated native model, saved chats, cancellation, local greetings and conversions, opt-in Wikipedia references, locally saved text attachments, and background music across chat switches. |
 | Layout and accessibility | Chromium at 1440px, 768px, and 390px. Checked horizontal overflow, mobile drawer dismissal and keyboard focus, and image placeholders with third-party images blocked. |
 

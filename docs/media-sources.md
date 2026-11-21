@@ -22,7 +22,9 @@ The cinema library has 17 Blender Open Movies, 19 animated shorts, and 12 studio
 
 ## Music library
 
-Music uses official artist and label uploads through YouTube’s embedded player. Chart picks come from the Billboard Hot 100 for the week of November 21, 2026. [Billboard Hot 100](https://ca.billboard.com/charts/hot-100/2026-11-21)
+The chart lyrics catalog contains 550 distinct songs from the Billboard Hot 100 and Apple Music national Top Songs charts dated November 21, 2026. Each row displays the rank on its source chart. The catalog stores track metadata and opens Apple Music or an official lyric video for the lyrics. Apple Music may require sign-in or a subscription. [Billboard Hot 100](https://ca.billboard.com/charts/hot-100/2026-11-21) · [Apple Music chart feeds](https://rss.marketingtools.apple.com/)
+
+The Music videos collection uses official artist and label uploads through YouTube’s embedded player.
 
 ## Creator library and search service
 

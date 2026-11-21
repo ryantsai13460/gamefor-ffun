@@ -104,7 +104,11 @@ export function renderMusic(target, params) {
 
   const page = element('section', 'music-library');
   const heading = element('header', 'music-library-heading');
-  heading.append(element('h1', '', 'Music'), element('p', '', 'Find songs by title or artist and play official uploads here.'));
+  const lyricsLink = element('a', 'button', 'Chart lyrics');
+  lyricsLink.href = '#music';
+  const headingCopy = element('div');
+  headingCopy.append(element('h1', '', 'Music'), element('p', '', 'Find songs by title or artist and play official uploads here.'));
+  heading.append(headingCopy, lyricsLink);
 
   const feature = element('section', 'music-feature');
   const featureCaption = element('div', 'music-feature-copy');

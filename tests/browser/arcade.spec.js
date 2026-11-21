@@ -566,6 +566,10 @@ test('searching Territorial.io from Google shows its preview, wiki and videos wi
   const game = page.getByRole('dialog', { name: 'Territorial.io', exact: true });
   await expect(game.locator('iframe')).toHaveAttribute('src', 'https://territorial.io/');
   await expect(game.locator('iframe')).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin allow-pointer-lock allow-presentation');
+  await game.getByRole('button', { name: 'Fullscreen', exact: true }).click();
+  await expect(game.locator('.search-resource-body:fullscreen')).toBeVisible();
+  await game.getByRole('button', { name: 'Exit fullscreen', exact: true }).click();
+  await expect(game.locator('.search-resource-body:fullscreen')).toHaveCount(0);
   await game.getByRole('button', { name: 'Close', exact: true }).click();
   const categories = page.getByRole('group', { name: 'Result category' });
   await categories.getByRole('button', { name: 'Wiki', exact: true }).click();
@@ -584,13 +588,13 @@ test('searching Territorial.io from Google shows its preview, wiki and videos wi
   expect(page.context().pages()).toHaveLength(1);
 });
 
-test('Music finds official songs and opens the player inside the arcade', async ({ page }) => {
+test('Music videos finds official songs and opens the player inside the arcade', async ({ page }) => {
   const musicRequests = [];
   page.on('request', request => {
     const url = new URL(request.url());
     if (/\/assets\/music-(library|catalog)\.js$/.test(url.pathname)) musicRequests.push(url);
   });
-  await page.goto('/#music');
+  await page.goto('/#music?view=videos');
   await expect(page.getByRole('button', { name: 'Play featured track, Hall of Fame', exact: true })).toBeVisible();
   const entry = await page.locator('script[src*="/arcade.js"]').getAttribute('src');
   const release = new URL(entry, page.url()).search;
@@ -610,6 +614,51 @@ test('Music finds official songs and opens the player inside the arcade', async 
   await search.fill('Benson Boone');
   await expect(page.getByRole('button', { name: 'Play Beautiful Things', exact: true })).toBeVisible();
   expect(page.context().pages()).toHaveLength(1);
+});
+
+test('Music opens a searchable chart with official lyrics sources', async ({ page }) => {
+  await page.goto('/#music');
+  const songs = page.getByRole('list', { name: 'Chart songs' });
+  await expect(page.getByText('Showing 25 of 550 chart songs')).toBeVisible();
+  await expect(songs.getByRole('listitem')).toHaveCount(25);
+  await page.getByRole('button', { name: 'Load more songs' }).click();
+  await expect(songs.getByRole('listitem')).toHaveCount(50);
+  await page.getByLabel('Chart source').selectOption({ label: 'Billboard Hot 100' });
+  await expect(page.getByText('Showing 25 of 25 chart songs')).toBeVisible();
+
+  const search = page.getByRole('searchbox', { name: 'Song or artist' });
+  await search.fill('house wifre');
+  await songs.getByRole('button', { name: 'Lyrics for Housewife by Tate McRae' }).click();
+  const housewife = page.getByRole('dialog', { name: 'Lyrics for Housewife' });
+  await expect(housewife.getByRole('link', { name: 'Official lyric video on Apple Music' }))
+    .toHaveAttribute('href', /music\.apple\.com\/us\/music-video\/housewife-official-lyric-video\//);
+  await housewife.getByRole('button', { name: 'Close', exact: true }).click();
+
+  await search.fill('drcula');
+  await songs.getByRole('button', { name: 'Lyrics for Dracula by Tame Impala & JENNIE' }).click();
+  const dracula = page.getByRole('dialog', { name: 'Lyrics for Dracula' });
+  await dracula.getByRole('button', { name: 'Play official lyric video here' }).click();
+  await expect(dracula.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/0UPDBODtxzw/);
+  await dracula.getByRole('button', { name: 'Close', exact: true }).click();
+  await search.fill('Benson Boone');
+  await expect(page.getByRole('link', { name: 'Music videos' })).toHaveAttribute('href', '#music?view=videos&q=Benson+Boone');
+});
+
+test('Web Search and All Games use fullscreen without losing the query', async ({ page }) => {
+  await page.goto('/#web-search?q=territorial.io');
+  const webSearch = page.locator('.web-search-window');
+  await webSearch.getByRole('button', { name: 'Fullscreen', exact: true }).click();
+  await expect(page.locator('.web-search-window:fullscreen')).toBeVisible();
+  await expect(webSearch.getByRole('combobox', { name: 'Search the web' })).toHaveValue('territorial.io');
+  await webSearch.getByRole('button', { name: 'Exit fullscreen', exact: true }).click();
+  await expect(page.locator('.web-search-window:fullscreen')).toHaveCount(0);
+
+  await page.goto('/#games?q=snake');
+  await page.getByRole('button', { name: 'Fullscreen', exact: true }).click();
+  await expect(page.locator('.route-games:fullscreen')).toBeVisible();
+  await expect(page.getByLabel('Search games', { exact: true })).toHaveValue('snake');
+  await page.getByRole('button', { name: 'Exit fullscreen', exact: true }).click();
+  await expect(page.locator('.route-games:fullscreen')).toHaveCount(0);
 });
 
 test('game pages launch unified wiki and video search', async ({ page }) => {

@@ -1,0 +1,61 @@
+.lyrics-library { display: grid; gap: 16px; }
+.lyrics-heading, .lyrics-feature-song {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.lyrics-heading h1 { font-size: clamp(2rem, 5vw, 3rem); letter-spacing: -.05em; }
+.lyrics-heading p { margin-top: 6px; }
+.lyrics-feature {
+  display: grid;
+  gap: 12px;
+  padding: 17px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--panel-deep);
+}
+.lyrics-feature h2 { font-size: 1.25rem; }
+.lyrics-feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); gap: 10px; }
+.lyrics-feature-song {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 9px;
+  background: var(--panel);
+}
+.lyrics-feature-song h3, .lyrics-track h3 { font-size: 1rem; overflow-wrap: anywhere; }
+.lyrics-feature-song p, .lyrics-track p { margin-top: 3px; font-size: .84rem; overflow-wrap: anywhere; }
+.lyrics-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 17rem);
+  gap: 12px;
+}
+.lyrics-filters label { display: grid; gap: 5px; min-width: 0; color: var(--muted); font-size: .84rem; }
+.lyrics-filters .field { width: 100%; }
+.lyrics-count { font-size: .85rem; }
+.lyrics-song-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.lyrics-song {
+  display: grid;
+  grid-template-columns: 3ch minmax(0, 1fr) minmax(0, 13rem) max-content;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+}
+.lyrics-rank { font-size: .82rem; color: var(--accent); font-variant-numeric: tabular-nums; }
+.lyrics-source { color: var(--muted); font-size: .8rem; overflow-wrap: anywhere; }
+.lyrics-more { justify-self: start; }
+.lyrics-attribution summary { cursor: pointer; color: var(--muted); }
+.lyrics-attribution ul { padding-inline-start: 20px; }
+.lyrics-dialog-copy { margin: 12px 0; color: var(--muted); }
+.lyrics-video { margin-bottom: 12px; }
+
+@media (max-width: 650px) {
+  .lyrics-filters { grid-template-columns: minmax(0, 1fr); }
+  .lyrics-song { grid-template-columns: 3ch minmax(0, 1fr) max-content; gap: 5px 9px; }
+  .lyrics-source { grid-column: 2; grid-row: 2; }
+  .lyrics-song .button { grid-column: 3; grid-row: 1 / span 2; }
+}

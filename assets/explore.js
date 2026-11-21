@@ -72,7 +72,7 @@ export function renderExplore(target, { gamesSection, localCount, arcadeFeature 
     { name: 'YouTube library', description: `${number.format(count)} videos and Shorts`, href: videoLibraryLink(''), color: 'video' },
     { name: 'Shorts feed', description: 'Scroll through short videos', href: videoLibraryLink('', 'shorts'), color: 'short' },
     { name: 'Cinema', description: `${number.format(filmCatalog.length)} films and trailers`, href: '#movies', art: featuredFilm.art, color: 'film' },
-    { name: 'Music', description: 'Search and play official music videos', href: '#music', color: 'ai' }
+    { name: 'Music', description: 'Find lyrics for songs on current charts', href: '#music', color: 'ai' }
   ]) watchList.append(tile(entry));
   watch.append(watchList);
 
