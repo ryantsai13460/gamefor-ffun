@@ -1,5 +1,6 @@
 import { addedShorts, addedVideos } from './media-curated.js';
 import { expansionVideos } from './media-expansion.js';
+import { discoveryVideos } from './media-discovery-videos.js';
 import { videoLibraryLink, videoTopics } from './video-topics.js';
 
 const assetVersion = new URL(import.meta.url).search;
@@ -46,9 +47,9 @@ const CREATOR_VIDEOS = [
 const previousVideos = [...addedVideos, ...CREATOR_VIDEOS, ...SHORTS, ...addedShorts].map(video => ({
   ...video, tags: [video.tags.includes('Violin') ? 'Music' : 'Gaming', ...video.tags]
 }));
-const CURATED_VIDEOS = new Map([...previousVideos, ...expansionVideos]
+const CURATED_VIDEOS = new Map([...previousVideos, ...expansionVideos, ...discoveryVideos]
   .map((video) => [video.id, video]));
-const expandedIds = new Set(expansionVideos.map(video => video.id));
+const expandedIds = new Set([...discoveryVideos, ...expansionVideos].map(video => video.id));
 const videoFormats = new Map([
   ['shorts', 'Shorts'], ['videos', 'Full videos'], ['all', 'All videos'], ['new', 'New additions'],
   ['favorites', 'Favorites'], ['recent', 'Recently opened']
@@ -978,7 +979,7 @@ function youtubePage(target, params) {
     if (view === 'Favorites') videos = state.favorites.map((id) => library.get(id)).filter(Boolean);
     else if (view === 'Recently opened') videos = state.recent.map((id) => library.get(id)).filter(Boolean);
     else if (view === 'Connected search') videos = onlineResults;
-    else if (view === 'New additions') videos = [...library.values()].filter(video => expandedIds.has(video.id));
+    else if (view === 'New additions') videos = [...expandedIds].map(id => library.get(id)).filter(Boolean);
     else if (view === 'All videos') videos = [...library.values()];
     else videos = [...library.values()].filter(video => Boolean(video.short) === (view === 'Shorts'));
     const results = view === 'Connected search' ? videos : videos.filter((video) =>

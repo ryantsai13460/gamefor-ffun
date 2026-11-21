@@ -1,4 +1,5 @@
-import { normalizeBlipAttachments } from './blip-files.js';
+const assetVersion = new URL(import.meta.url).search;
+const { normalizeBlipAttachments } = await import(`./blip-files.js${assetVersion}`);
 
 export const BLIP_STORE_KEY = 'gamefor-ffun:blip:v1';
 export const BLIP_MODES = Object.freeze(['quick', 'think', 'brainstorm', 'study']);
@@ -146,6 +147,7 @@ function restoreState(raw) {
       mode: BLIP_MODES.includes(chat.mode) ? chat.mode : DEFAULT_BLIP_MODE,
       createdAt,
       updatedAt,
+      pinned: chat.pinned === true,
       unread: chat.unread === true,
       messages: Object.freeze(messages),
     }));
@@ -262,6 +264,12 @@ export function createBlipStore({ storage = browserStorage() } = {}) {
       const title = boundedText(value, BLIP_LIMITS.title);
       if (!chat || !title) return null;
       return chat.title === title ? chat : saveChat(Object.freeze({ ...chat, title }));
+    },
+
+    setPinned(id, pinned) {
+      const chat = getChat(id);
+      if (!chat || typeof pinned !== 'boolean') return null;
+      return Boolean(chat.pinned) === pinned ? chat : saveChat(Object.freeze({ ...chat, pinned }));
     },
 
     setMode(id, mode) {

@@ -20,6 +20,7 @@
 }
 
 .assistant-form,
+.assistant-actions,
 .assistant-examples,
 .assistant-credits,
 .google-direct-links {
@@ -36,6 +37,30 @@
 
 .assistant-field .field {
   width: 100%;
+}
+
+.assistant-context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .45rem 1rem;
+  padding: .55rem .7rem;
+  border: 1px solid var(--line-soft, #26262e);
+  border-inline-start: 2px solid var(--accent, #ffc361);
+  border-radius: .55rem;
+  background: var(--panel, #19191f);
+}
+
+.assistant-context strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: .875rem;
+}
+
+.assistant-context .button,
+.assistant-result .assistant-actions .button {
+  min-height: 2.35rem;
 }
 
 .assistant-options,

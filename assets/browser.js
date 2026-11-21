@@ -22,8 +22,12 @@ const youtubeHosts = new Set([
 ]);
 const browserViews = new WeakMap();
 const browsingStorageKey = "gamefor-ffun-proxy-v1";
+const closedTabsStorageKey = "gamefor-ffun-proxy-closed-v1";
 const addressLimit = 2048;
 const savedLimits = { favorites: 40, history: 30 };
+const closedTabLimit = 8;
+const closedEntryLimit = 24;
+let viewerCount = 0;
 const builtInGames = games.filter(game => game.local);
 const embeddedGames = games.filter(arcadeEmbed);
 const gameEmbeds = new Map(
@@ -128,6 +132,33 @@ function recoverBrowsingData(pageUrl) {
   return data;
 }
 
+function recoverClosedTabs(pageUrl) {
+  try {
+    const text = window.sessionStorage.getItem(closedTabsStorageKey);
+    if (!text || text.length > 1_000_000) return [];
+    const saved = JSON.parse(text);
+    if (!Array.isArray(saved)) return [];
+    const recovered = [];
+    for (const tab of saved.slice(0, closedTabLimit)) {
+      const addresses = tab?.addresses;
+      if (!Array.isArray(addresses) || addresses.length > closedEntryLimit || !Number.isInteger(tab.index)
+          || tab.index < 0 || tab.index >= addresses.length) continue;
+      const entries = [];
+      let index = -1;
+      for (const [position, address] of addresses.entries()) {
+        const page = resolveBrowserAddress(address, pageUrl);
+        if (!page) continue;
+        if (position === tab.index) index = entries.length;
+        entries.push(page);
+      }
+      if (index !== -1 && entries.some(page => page.address)) recovered.push({ entries, index });
+    }
+    return recovered;
+  } catch {
+    return [];
+  }
+}
+
 function element(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -168,7 +199,8 @@ function createBrowser() {
   const toolbar = element("div", "proxy-toolbar");
   const navigation = element("div", "proxy-navigation");
   const stage = element("div", "proxy-stage");
-  stage.id = "proxy-tab-content";
+  const viewerId = ++viewerCount;
+  stage.id = `proxy-tab-content-${viewerId}`;
   stage.setAttribute("role", "tabpanel");
   const status = element("p", "proxy-status");
   status.setAttribute("role", "status");
@@ -181,9 +213,10 @@ function createBrowser() {
   const savedStatus = element("p", "sr-only");
   savedStatus.setAttribute("role", "status");
   const browsing = recoverBrowsingData(window.location.href);
+  const closedTabs = recoverClosedTabs(window.location.href);
 
   let counter = 0;
-  const createTab = () => ({ id: ++counter, entries: [home], index: 0 });
+  const createTab = (entries = [home], index = 0) => ({ id: ++counter, entries, index });
   let active = createTab();
   const items = [active];
   let present = false;
@@ -203,6 +236,16 @@ function createBrowser() {
     if (!page.address) return;
     browsing.history = [page.address, ...browsing.history.filter(value => value !== page.address)].slice(0, savedLimits.history);
     storeBrowsing();
+  }
+
+  function saveClosedTabs() {
+    reopen.disabled = !closedTabs.length;
+    try {
+      const saved = closedTabs.map(tab => ({ addresses: tab.entries.map(page => page.address), index: tab.index }));
+      window.sessionStorage.setItem(closedTabsStorageKey, JSON.stringify(saved));
+    } catch {
+      // Closed tabs are still available in this viewer while the page is open.
+    }
   }
 
   function syncFavorite() {
@@ -246,35 +289,38 @@ function createBrowser() {
         contents.replaceChildren(element("p", "proxy-saved-empty", favorites
           ? "You can save a page using the star beside the address bar."
           : "Addresses and searches you open appear here."));
-        return;
+      } else {
+        const list = element("ul", "proxy-saved-list");
+        for (const value of entries) {
+          const page = resolveBrowserAddress(value, window.location.href);
+          if (!page?.address) continue;
+          const row = element("li");
+          const open = control(`Open ${value}`, "", () => {
+            dialog.close();
+            submit(value);
+            address.focus();
+          });
+          open.className = "proxy-saved-link";
+          open.append(element("strong", "", page.title));
+          if (page.title !== value) open.append(element("small", "", value));
+          const remove = control(`Remove ${value}`, "×", () => {
+            browsing[kind] = browsing[kind].filter(item => item !== value);
+            storeBrowsing(favorites ? "Favorite removed." : "History entry removed.");
+            if (favorites && current().kind === "home") showPage();
+            else syncFavorite();
+            drawSaved();
+            close.focus();
+          });
+          row.append(open, remove);
+          list.append(row);
+        }
+        contents.replaceChildren(list);
       }
-      const list = element("ul", "proxy-saved-list");
-      for (const value of entries) {
-        const page = resolveBrowserAddress(value, window.location.href);
-        if (!page?.address) continue;
-        const row = element("li");
-        const open = control(`Open ${value}`, "", () => {
-          dialog.close();
-          submit(value);
-          address.focus();
-        });
-        open.className = "proxy-saved-link";
-        open.append(element("strong", "", page.title));
-        if (page.title !== value) open.append(element("small", "", value));
-        const remove = control(`Remove ${value}`, "×", () => {
-          browsing[kind] = browsing[kind].filter(item => item !== value);
-          storeBrowsing(favorites ? "Favorite removed." : "History entry removed.");
-          syncFavorite();
-          drawSaved();
-          close.focus();
-        });
-        row.append(open, remove);
-        list.append(row);
-      }
-      contents.replaceChildren(list);
-      if (!favorites) {
-        const clear = control("Clear browsing history", "Clear history", () => {
+      if (!favorites && (entries.length || closedTabs.length)) {
+        const clear = control("Clear browsing history and closed tabs", "Clear history and closed tabs", () => {
           browsing.history = [];
+          closedTabs.length = 0;
+          saveClosedTabs();
           storeBrowsing("Browsing history cleared.");
           drawSaved();
           close.focus();
@@ -297,12 +343,19 @@ function createBrowser() {
       item.setAttribute("role", "presentation");
       const select = control(label, label, () => activate(tab));
       select.className = "proxy-tab-name";
-      select.id = `proxy-tab-${tab.id}`;
+      select.id = `proxy-tab-${viewerId}-${tab.id}`;
       select.setAttribute("role", "tab");
       select.setAttribute("aria-selected", String(tab === active));
       select.setAttribute("aria-controls", stage.id);
+      select.setAttribute("aria-keyshortcuts", "Delete");
       select.tabIndex = tab === active ? 0 : -1;
       select.addEventListener("keydown", event => {
+        if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        if (event.key === "Delete") {
+          event.preventDefault();
+          closeTab(tab);
+          return;
+        }
         const index = items.indexOf(tab);
         const ends = { Home: 0, End: items.length - 1 };
         const move = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
@@ -312,13 +365,17 @@ function createBrowser() {
       });
       const close = control(`Close ${label} tab`, "×", () => closeTab(tab));
       close.classList.add("proxy-tab-close");
+      close.tabIndex = tab === active ? 0 : -1;
       item.append(select, close);
       return item;
     });
     tabs.replaceChildren(...entries);
-    const tabButton = tabs.querySelector(`[id="proxy-tab-${active.id}"]`);
+    const tabButton = tabs.querySelector(`[id="proxy-tab-${viewerId}-${active.id}"]`);
     stage.setAttribute("aria-labelledby", tabButton.id);
-    if (focus) tabButton.focus();
+    if (focus) {
+      tabButton.focus({ preventScroll: true });
+      tabButton.closest(".proxy-tab").scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    }
   }
 
   function activate(tab) {
@@ -331,6 +388,14 @@ function createBrowser() {
 
   function closeTab(tab) {
     const index = items.indexOf(tab);
+    if (index === -1) return;
+    if (tab.entries.some(page => page.address)) {
+      const latestStart = Math.max(0, tab.entries.length - closedEntryLimit);
+      const start = Math.max(0, Math.min(latestStart, tab.index - Math.floor(closedEntryLimit / 2)));
+      closedTabs.unshift({ entries: tab.entries.slice(start, start + closedEntryLimit), index: tab.index - start });
+      closedTabs.length = Math.min(closedTabs.length, closedTabLimit);
+      saveClosedTabs();
+    }
     items.splice(index, 1);
     if (!items.length) items.push(createTab());
     if (active === tab) {
@@ -346,6 +411,23 @@ function createBrowser() {
     showPage();
     renderTabs();
     address.focus();
+  }
+
+  function duplicateTab() {
+    const next = createTab(active.entries.slice(), active.index);
+    items.splice(items.indexOf(active) + 1, 0, next);
+    activate(next);
+    savedStatus.textContent = "Tab duplicated.";
+  }
+
+  function reopenTab() {
+    const next = closedTabs.shift();
+    if (!next) return;
+    const tab = createTab(next.entries, next.index);
+    items.push(tab);
+    saveClosedTabs();
+    activate(tab);
+    savedStatus.textContent = "Closed tab reopened.";
   }
 
   function visit(page) {
@@ -424,7 +506,28 @@ function createBrowser() {
       group.append(list);
       playable.append(group);
     }
-    content.append(headline, message, links, bookmarks, apps, playable);
+    content.append(headline, message, links, bookmarks);
+    if (browsing.favorites.length) {
+      const favoritesSection = element("section", "proxy-playable");
+      const list = element("ul", "proxy-playable-list proxy-start-favorites");
+      for (const value of browsing.favorites.slice(0, 6)) {
+        const saved = resolveBrowserAddress(value, window.location.href);
+        if (!saved?.address) continue;
+        const item = element("li");
+        const open = control(`Open saved page ${saved.title}`, saved.title, () => submit(value));
+        open.className = "proxy-bookmark";
+        item.append(open);
+        list.append(item);
+      }
+      favoritesSection.append(element("h2", "", "Saved pages"), list);
+      if (browsing.favorites.length > 6) {
+        const all = control("Show all favorite pages", "Show all", () => showSaved("favorites"));
+        all.className = "button proxy-all-favorites";
+        favoritesSection.append(all);
+      }
+      content.append(favoritesSection);
+    }
+    content.append(apps, playable);
     return content;
   }
 
@@ -600,12 +703,14 @@ function createBrowser() {
   navigation.append(back, forward, refresh, homeButton);
   const savedTools = element("div", "proxy-saved-tools");
   savedTools.setAttribute("role", "group");
-  savedTools.setAttribute("aria-label", "Saved browsing");
+  savedTools.setAttribute("aria-label", "Tab tools and saved browsing");
   const favorites = control("Favorite pages", "Favorites", () => showSaved("favorites"));
   const history = control("Browsing history", "History", () => showSaved("history"));
-  favorites.classList.add("proxy-saved-trigger");
-  history.classList.add("proxy-saved-trigger");
-  savedTools.append(favorites, history);
+  const duplicate = control("Duplicate current tab", "Duplicate", duplicateTab);
+  const reopen = control("Reopen closed tab", "Reopen", reopenTab);
+  reopen.disabled = !closedTabs.length;
+  for (const tool of [duplicate, reopen, favorites, history]) tool.classList.add("proxy-saved-trigger");
+  savedTools.append(duplicate, reopen, favorites, history);
   const panelActions = element("div", "proxy-panel-actions");
   panelActions.append(saveFavorite, expand);
   tabsRow.append(tabs, add, savedTools);

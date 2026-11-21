@@ -1,12 +1,12 @@
-import { BLIP_FILE_ACCEPT, BLIP_FILE_LIMITS, normalizeBlipAttachments, readBlipFiles } from './blip-files.js';
 import { mountBlipMusic } from './blip-music.js';
 
 const assetVersion = new URL(import.meta.url).search;
-const [{ BLIP_LIMITS, createBlipStore }, {
+const [{ BLIP_FILE_ACCEPT, BLIP_FILE_LIMITS, normalizeBlipAttachments, readBlipFiles }, { BLIP_LIMITS, createBlipStore }, {
   answerBlip, blipModelAvailability, blipModes, cpuBlipAvailability, portableBlipAvailability,
   prepareBlipModel, prepareCpuBlipModel, preparePortableBlipModel,
   releaseCpuBlipModel, releasePortableBlipModel
-}, { formatBlipReply }, { gatewayConnected, hostedBlipReply, renderGatewaySettings }] = await Promise.all([
+}, { formatBlipReply }, { gatewayConnected, getGatewayCapabilities, hostedBlipReply, renderGatewaySettings }] = await Promise.all([
+  import(`./blip-files.js${assetVersion}`),
   import(`./blip-store.js${assetVersion}`),
   import(`./blip-answer.js${assetVersion}`),
   import(`./blip-format.js${assetVersion}`),
@@ -48,6 +48,29 @@ function button(text, action, className) {
   node.type = 'button';
   node.addEventListener('click', action);
   return node;
+}
+
+function downloadTranscript(chat) {
+  const entries = chat.messages.map(message => {
+    const parts = [message.role === 'user' ? 'You' : 'blip.ai', message.text];
+    for (const file of message.attachments || []) {
+      parts.push(`${file.name}${file.truncated ? ' (loaded excerpt)' : ''}`, file.text);
+    }
+    const sources = message.source ? [message.source, ...(message.sources || [])] : message.sources || [];
+    for (const [index, source] of sources.entries()) parts.push(`[${index + 1}] ${source.title}\n${source.url}`);
+    return parts.filter(Boolean).join('\n\n');
+  });
+  const contents = [chat.title, ...entries].join('\n\n────────\n\n');
+  const url = URL.createObjectURL(new Blob([contents], { type: 'text/plain;charset=utf-8' }));
+  const download = element('a');
+  const name = chat.title.trim().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
+  download.download = `${name || 'blip-chat'}.txt`;
+  download.href = url;
+  download.hidden = true;
+  document.body.append(download);
+  download.click();
+  download.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function messageView(message, { onEdit, onRetry } = {}) {
@@ -157,6 +180,8 @@ export function renderBlip(target) {
             <div data-blip="gateway"></div>
             <label class="blip-check"><input type="checkbox" data-blip="hosted"> Use the connected model for chats without files</label>
             <p>When enabled, the current question and recent messages are sent to your backend.</p>
+            <label class="blip-check"><input type="checkbox" data-blip="advanced" disabled> Use Advanced replies</label>
+            <p data-blip="gateway-capabilities" role="status">Connect an AI provider to check for Advanced replies.</p>
             <label class="blip-check"><input type="checkbox" data-blip="research" disabled> Research current question with Brave Search</label>
             <p>With the connected model enabled, questions up to 200 characters go to Brave Search through your backend and use its search quota.</p>
           </div>
@@ -177,6 +202,13 @@ export function renderBlip(target) {
           <button class="blip-button blip-chat-toggle" data-blip="toggle" type="button" aria-controls="blip-chats" aria-expanded="false">Chats</button>
           <h2 class="blip-thread-title" data-blip="title">New chat</h2>
           <div class="blip-thread-actions">
+            <details class="blip-popover blip-chat-actions" data-blip="chat-actions">
+              <summary>Chat tools</summary>
+              <div class="blip-popover-content">
+                <button class="blip-button" type="button" data-blip="pin">Pin chat</button>
+                <button class="blip-button" type="button" data-blip="download">Download transcript</button>
+              </div>
+            </details>
             <button class="blip-button" type="button" data-blip="rename">Rename</button>
             <button class="blip-button" type="button" data-blip="delete">Delete</button>
           </div>
@@ -205,7 +237,7 @@ export function renderBlip(target) {
           <button class="blip-button blip-attachment-clear" type="button" data-blip="clear-files" hidden>Clear attachments</button>
           <p class="blip-compose-status" data-blip="file-status" role="status"></p>
           <div class="blip-prompt-box">
-            <button class="blip-button blip-attach" type="button" data-blip="attach" title="TXT, Markdown, CSV, TSV, or JSON">Attach files</button>
+            <button class="blip-button blip-attach" type="button" data-blip="attach" title="PDF, TXT, Markdown, CSV, TSV, or JSON">Attach files</button>
             <input type="file" data-blip="file-input" aria-label="Choose files to attach" multiple hidden>
             <label class="sr-only" for="blip-prompt">Message blip.ai</label>
             <textarea id="blip-prompt" data-blip="input" rows="2" maxlength="2000" enterkeyhint="send" placeholder="Message blip.ai…"></textarea>
@@ -263,7 +295,14 @@ export function renderBlip(target) {
   const nameInput = part('chat-name');
   const nameLabel = nameInput.closest('label');
   const stopMusic = mountBlipMusic(part('music'));
-  renderGatewaySettings(part('gateway'), 'Connect an AI provider');
+  let capabilities;
+  let capabilityRequest;
+  renderGatewaySettings(part('gateway'), 'Connect an AI provider', refreshGatewayCapabilities, result => {
+    capabilityRequest?.abort();
+    capabilityRequest = undefined;
+    capabilities = result;
+    updateHostedOptions();
+  });
   const musicLink = element('a', 'blip-button', 'Open Music library');
   musicLink.href = '#music';
   part('music').append(musicLink);
@@ -272,6 +311,47 @@ export function renderBlip(target) {
   let cpuStatus = 'unavailable';
   let portableStatus = 'unavailable';
   let setupRunning = false;
+
+  function updateHostedOptions() {
+    const hosted = part('hosted').checked;
+    const advanced = part('advanced');
+    advanced.disabled = !hosted || capabilities?.advanced !== true;
+    part('research').disabled = !hosted || capabilities?.research === false;
+    if (advanced.disabled) advanced.checked = false;
+    if (part('research').disabled) part('research').checked = false;
+    const notice = part('gateway-capabilities');
+    notice.textContent = !gatewayConnected() ? 'Connect an AI provider to check for Advanced replies.'
+      : capabilityRequest ? 'Checking the connected gateway…'
+      : capabilities?.advanced ? 'Advanced replies allow more detail and may use more tokens.'
+      : capabilities?.chat === false ? 'Hosted chat needs an OpenAI API key on this gateway.'
+      : 'This gateway’s Advanced replies are unavailable.';
+  }
+
+  async function refreshGatewayCapabilities() {
+    capabilityRequest?.abort();
+    capabilityRequest = undefined;
+    capabilities = undefined;
+    if (!gatewayConnected()) {
+      updateHostedOptions();
+      return;
+    }
+    const request = new AbortController();
+    capabilityRequest = request;
+    updateHostedOptions();
+    try {
+      const result = await getGatewayCapabilities(AbortSignal.any([
+        request.signal, lifetime.signal, AbortSignal.timeout(5000)
+      ]));
+      if (capabilityRequest === request) capabilities = result;
+    } catch {
+      // Legacy gateways can still answer standard requests.
+    } finally {
+      if (capabilityRequest === request && !lifetime.signal.aborted) {
+        capabilityRequest = undefined;
+        updateHostedOptions();
+      }
+    }
+  }
 
   const currentChat = () => {
     const { chats, activeId } = store.getState();
@@ -288,7 +368,7 @@ export function renderBlip(target) {
     const query = chatSearch.value.trim().toLocaleLowerCase();
     const visible = query ? chats.filter(chat => chat.title.toLocaleLowerCase().includes(query) ||
       chat.messages.some(message => message.text.toLocaleLowerCase().includes(query))) : chats;
-    const items = visible.map(chat => {
+    const items = [...visible].sort((first, second) => Number(Boolean(second.pinned)) - Number(Boolean(first.pinned))).map(chat => {
       const item = element('li');
       const open = button(chat.title, () => {
         if (store.selectChat(chat.id)) {
@@ -297,6 +377,12 @@ export function renderBlip(target) {
           input.focus({ preventScroll: true });
         }
       }, 'blip-chat-link');
+      if (chat.pinned) {
+        const marker = element('span', 'blip-pin-mark', '●');
+        marker.setAttribute('aria-hidden', 'true');
+        open.prepend(marker);
+        open.setAttribute('aria-description', 'Pinned chat');
+      }
       if (chat.id === activeId) open.setAttribute('aria-current', 'true');
       if (chat.unread) {
         open.classList.add('has-unread');
@@ -399,6 +485,10 @@ export function renderBlip(target) {
     drawRail();
     part('title').textContent = chat?.title || 'New chat';
     part('rename').disabled = part('delete').disabled = !chat;
+    part('pin').disabled = !chat;
+    part('pin').textContent = chat?.pinned ? 'Unpin chat' : 'Pin chat';
+    part('download').disabled = !chat?.messages.length;
+    part('chat-actions').open = false;
     input.disabled = !chat;
     input.value = drafts.get(chat?.id) || '';
     part('welcome').hidden = Boolean(chat?.messages.length);
@@ -492,10 +582,17 @@ export function renderBlip(target) {
     drawComposer(chat);
     input.focus({ preventScroll: true });
   });
-  part('hosted').addEventListener('change', () => {
-    const enabled = part('hosted').checked;
-    part('research').disabled = !enabled;
-    if (!enabled) part('research').checked = false;
+  part('hosted').addEventListener('change', updateHostedOptions);
+  part('pin').addEventListener('click', () => {
+    const chat = currentChat();
+    if (chat && store.setPinned(chat.id, !chat.pinned)) {
+      drawRail();
+      part('pin').textContent = chat.pinned ? 'Pin chat' : 'Unpin chat';
+    }
+  });
+  part('download').addEventListener('click', () => {
+    const chat = currentChat();
+    if (chat?.messages.length) downloadTranscript(chat);
   });
   fileInput.addEventListener('change', async () => {
     const id = store.getState().activeId;
@@ -507,7 +604,7 @@ export function renderBlip(target) {
     drawComposer(currentChat());
     try {
       const slots = BLIP_FILE_LIMITS.count - (draftFiles.get(id)?.length || 0);
-      const { attachments, errors } = await readBlipFiles(selected.slice(0, slots));
+      const { attachments, errors } = await readBlipFiles(selected.slice(0, slots), { signal: lifetime.signal });
       if (lifetime.signal.aborted || !store.getState().chats.some(chat => chat.id === id)) return;
       const existing = draftFiles.get(id) || [];
       const combined = [...existing, ...attachments.filter(file =>
@@ -601,12 +698,14 @@ export function renderBlip(target) {
       const useHosted = part('hosted').checked && !contextFiles.length;
       if (useHosted && gatewayConnected()) {
         const research = part('research').checked;
+        const advanced = part('advanced').checked;
         let sources = [];
         request.label = research ? 'Researching and waiting for the connected model…' : 'Waiting for the connected model…';
         if (store.getState().activeId === chat.id) status.textContent = request.label;
         const answer = await hostedBlipReply({
           text, history: chat.messages, mode: chat.mode, research,
-          signal: AbortSignal.any([request.controller.signal, AbortSignal.timeout(65000)]),
+          depth: advanced ? 'advanced' : undefined,
+          signal: AbortSignal.any([request.controller.signal, AbortSignal.timeout(advanced ? 95_000 : 65_000)]),
           onSources(value) { sources = value; },
           onUpdate(value) {
             request.partial = value;
@@ -781,6 +880,7 @@ export function renderBlip(target) {
 
   if (!currentChat()) store.createChat();
   draw();
+  void refreshGatewayCapabilities();
 
   return () => {
     lifetime.abort();

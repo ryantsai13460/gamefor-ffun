@@ -1,9 +1,12 @@
 function appleLyrics(songId) {
-  return {url: `https://music.apple.com/us/song/${songId}`, label: 'Lyrics on Apple Music'};
+  return {kind: 'lyrics', url: `https://music.apple.com/us/song/${songId}`, label: 'Lyrics on Apple Music'};
 }
 
 function officialLyricVideo(videoId, appleSongId) {
-  const source = {url: `https://www.youtube.com/watch?v=${videoId}`, label: 'Official lyric video on YouTube', videoId};
+  const source = {
+    kind: 'lyric-video', url: `https://www.youtube.com/watch?v=${videoId}`,
+    label: 'Official lyric video on YouTube', videoId
+  };
   if (!appleSongId) return source;
   const {url, label} = appleLyrics(appleSongId);
   return {...source, alternateUrl: url, alternateLabel: label};
@@ -80,7 +83,14 @@ export const lyricsSources = {
   'jaiye sajana|shashwat sachdev jasmine sandlas satinder sartaaj': officialLyricVideo('xV1-V1E5ZlQ'),
   'dardos|romeo santos prince royce': officialLyricVideo('D6XR9GfBfwY'),
   'my body isn t ready|sombr': officialLyricVideo('WjnsaO-q3BE'),
-  'don t we|morgan wallen': officialLyricVideo('1xvg5fHLhWM')
+  'don t we|morgan wallen': officialLyricVideo('1xvg5fHLhWM'),
+  'snooze|sza': officialLyricVideo('bs0qR3-7lIY'),
+  'midnight sun|zara larsson': officialLyricVideo('rovyNQH7HFY'),
+  'loving life again|ella langley': officialLyricVideo('QemG9NDH2zI'),
+  'thinkin bout me|morgan wallen': officialLyricVideo('5DCdL1zdpdM'),
+  'wasted on you|morgan wallen': officialLyricVideo('OqaznqwGkrs'),
+  'i m the problem|morgan wallen': officialLyricVideo('wIA-4LeRgsc'),
+  'the cure|olivia rodrigo': officialLyricVideo('UbbrZTfjkdk')
 };
 
 export function normalizeLyricsText(value) {

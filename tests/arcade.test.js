@@ -6,18 +6,21 @@ import { createLibrary, gameAvailability, normalize, queryLibrary, restorePrefer
 import { resolveBrowserAddress } from '../assets/browser.js';
 import { findCuratedVideos, getVideoCollections, parseYouTubeVideo } from '../assets/media.js';
 import { expansionVideos } from '../assets/media-expansion.js';
+import { discoveryVideos } from '../assets/media-discovery-videos.js';
 import { featuredFilm, filmCatalog } from '../assets/film-catalog.js';
 
 const library = createLibrary(games);
 const site = 'https://ryantsai13460.github.io/gamefor-ffun/#browse';
 
-test('the video expansion preserves the library and adds 500 unique official player IDs', () => {
+test('the two video additions preserve the library and add 600 unique official player IDs', () => {
   const library = getVideoCollections();
-  assert.equal(library.count, 1153);
-  assert.equal(library.added, 500);
+  assert.equal(library.count, 1253);
+  assert.equal(library.added, 600);
   assert.equal(expansionVideos.length, 500);
   assert.equal(expansionVideos.filter(({ short }) => short).length, 250);
-  for (const video of expansionVideos) {
+  assert.equal(discoveryVideos.length, 100);
+  assert.equal(discoveryVideos.filter(({ short }) => short).length, 50);
+  for (const video of [...expansionVideos, ...discoveryVideos]) {
     assert.match(video.id, /^[A-Za-z0-9_-]{11}$/);
     assert.ok(video.title && video.creator && video.tags.length);
     const thumbnail = new URL(video.thumbnail);
@@ -47,12 +50,12 @@ test('the cinema catalog keeps 48 distinct films and uses official playback rout
   }
 });
 
-test('the catalog includes 548 main library games, three additional recovered games and five originals', () => {
-  assert.equal(games.length, 556);
+test('the catalog includes 548 main library games, three additional recovered games and seven originals', () => {
+  assert.equal(games.length, 558);
   assert.equal(games.filter(({ collection }) => collection === 'github' || collection === 'base44-library').length, 548);
   assert.equal(games.filter(({ collection }) => collection === 'base44-home').length, 2);
   assert.equal(games.filter(({ collection }) => collection === 'history').length, 1);
-  assert.equal(games.filter(({ collection }) => collection === 'original').length, 5);
+  assert.equal(games.filter(({ collection }) => collection === 'original').length, 7);
   assert.equal(new Set(games.map(({ id }) => id)).size, games.length);
   assert.equal(new Set(games.map(({ title }) => normalize(title))).size, games.length);
   assert.equal([...library.categoryCounts.values()].reduce((sum, count) => sum + count, 0), games.length);
@@ -82,7 +85,7 @@ test('catalog records have distinct sources, correct status, and safe relative a
     }
     if (typeof game.local === 'string') await readFile(new URL(game.local, new URL('../', import.meta.url)));
   }
-  assert.deepEqual(statusCounts, { local: 18, embed: 2, external: 534, unverified: 2 });
+  assert.deepEqual(statusCounts, { local: 20, embed: 2, external: 534, unverified: 2 });
 });
 
 test('search spans titles, punctuated names, legacy aliases, categories and availability', () => {

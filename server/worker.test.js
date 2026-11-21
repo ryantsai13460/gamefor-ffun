@@ -65,6 +65,7 @@ test('invalid shapes, oversized bodies, and unsupported methods stop before spen
     [post('/api/chat', { messages: [userMessage, { role: 'assistant', content: 'Guess' }] }), 400],
     [post('/api/chat', { messages: [userMessage], stream: 'true' }), 400],
     [post('/api/chat', { messages: [userMessage], research: 'true' }), 400],
+    [post('/api/chat', { messages: [userMessage], depth: 'max' }), 400],
     [post('/api/chat', { messages: [{ ...userMessage, content: 'a'.repeat(201) }], research: true }), 400],
     [post('/api/chat', { messages: [{ ...userMessage, content: 'a'.repeat(12_001) }] }), 413],
     [post('/api/chat', { messages: [{ ...userMessage, content: 'a'.repeat(32_769) }] }), 413],
@@ -112,6 +113,60 @@ test('chat forwards bounded context to OpenAI and returns reply text with no pro
   const response = await worker.fetch(post('/api/chat', { messages: [userMessage], mode: 'study' }), settings());
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { text: reply });
+});
+
+test('advanced depth selects server-owned model options without changing standard replies', async context => {
+  const sent = [];
+  context.mock.method(globalThis, 'fetch', async (_url, options) => {
+    sent.push(JSON.parse(options.body));
+    return Response.json({ choices: [{ message: { content: 'Review previous games.' } }] });
+  });
+  const env = settings({
+    OPENAI_MODEL: 'gpt-4.1-mini',
+    OPENAI_ADVANCED_MODEL: 'configured-reasoning-model',
+    OPENAI_ADVANCED_MAX_TOKENS: '2200',
+    OPENAI_ADVANCED_REASONING_EFFORT: 'medium',
+  });
+  const advanced = await worker.fetch(post('/api/chat', {
+    messages: [userMessage], mode: 'study', depth: 'advanced',
+    model: 'ignored-request-model', max_completion_tokens: 100000, reasoning_effort: 'high',
+  }), env);
+  assert.deepEqual(await advanced.json(), { text: 'Review previous games.' });
+  assert.equal(sent[0].model, 'configured-reasoning-model');
+  assert.equal(sent[0].max_completion_tokens, 2200);
+  assert.equal(sent[0].reasoning_effort, 'medium');
+  assert.equal(sent[0].messages[0].role, 'developer');
+  assert.match(sent[0].messages[0].content, /checkable rationale/);
+  assert.match(sent[0].messages[0].content, /practice question/);
+
+  const standard = await worker.fetch(post('/api/chat', { messages: [userMessage], depth: 'standard' }), env);
+  assert.equal(standard.status, 200);
+  assert.equal(sent[1].model, 'gpt-4.1-mini');
+  assert.equal(sent[1].max_completion_tokens, 700);
+  assert.equal(sent[1].messages[0].role, 'system');
+  assert.equal('reasoning_effort' in sent[1], false);
+
+  const bounded = await worker.fetch(post('/api/chat', { messages: [userMessage], depth: 'advanced' }),
+    settings({ OPENAI_ADVANCED_MAX_TOKENS: '100000', OPENAI_ADVANCED_REASONING_EFFORT: 'unsupported' }));
+  assert.equal(bounded.status, 200);
+  assert.equal(sent[2].model, 'gpt-4.1-mini');
+  assert.equal(sent[2].max_completion_tokens, 1800);
+  assert.equal('reasoning_effort' in sent[2], false);
+});
+
+test('authenticated capabilities describe configured routes without contacting a provider', async context => {
+  const provider = context.mock.method(globalThis, 'fetch', async () => {
+    throw new Error('Unexpected provider call');
+  });
+  const env = settings({ BRAVE_SEARCH_API_KEY: '', OPENAI_ADVANCED_MAX_TOKENS: '2400' });
+  const denied = await worker.fetch(post('/api/capabilities', {}, { Authorization: 'Bearer wrong' }), env);
+  assert.equal(denied.status, 401);
+  const direct = await worker.fetch(post('/api/capabilities', {}), env);
+  assert.deepEqual(await direct.json(), {
+    chat: true, advanced: true, research: false, search: false, youtube: true,
+    standardOutputTokens: 700, advancedOutputTokens: 2400,
+  });
+  assert.equal(provider.mock.callCount(), 0);
 });
 
 test('chat streaming reconstructs split provider events and emits text deltas and a completion marker', async context => {

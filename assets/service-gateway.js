@@ -20,7 +20,7 @@ function configuredUrl(value) {
   }
 }
 
-export function renderGatewaySettings(target, label = 'Connect an authorized backend', onChange) {
+export function renderGatewaySettings(target, label = 'Connect an authorized backend', onChange, onCapabilities) {
   const settings = document.createElement('details');
   settings.className = 'gateway-settings';
   const title = document.createElement('summary');
@@ -30,12 +30,13 @@ export function renderGatewaySettings(target, label = 'Connect an authorized bac
   form.innerHTML = `
     <label>Backend URL <input class="field" name="endpoint" type="url" autocomplete="off" placeholder="https://your-worker.example" required></label>
     <label>Backend access code <input class="field" name="access" type="password" autocomplete="off" maxlength="256" required></label>
-    <div class="interaction-row"><button class="button" type="submit">Connect backend</button><button class="button" type="button" data-disconnect>Disconnect</button></div>
+    <div class="interaction-row"><button class="button" type="submit">Connect backend</button><button class="button" type="button" data-check>Check backend</button><button class="button" type="button" data-disconnect>Disconnect</button></div>
     <p class="muted" role="status"></p>
   `;
   const field = form.elements.endpoint;
   const code = form.elements.access;
   const status = form.querySelector('[role="status"]');
+  const check = form.querySelector('[data-check]');
   field.value = connection?.url || endpoint();
   status.textContent = gatewayConnected() ? 'Backend configured for this tab.' : 'The access code stays in this tab. Provider requests may count toward your quota.';
   form.addEventListener('submit', event => {
@@ -64,6 +65,31 @@ export function renderGatewaySettings(target, label = 'Connect an authorized bac
     status.textContent = 'Backend disconnected in this tab.';
     onChange?.();
   });
+  check.addEventListener('click', async () => {
+    const current = connection;
+    if (!current) {
+      status.textContent = 'Connect the backend before checking its features.';
+      return;
+    }
+    check.disabled = true;
+    status.textContent = 'Checking the gateway configuration…';
+    try {
+      const available = await getGatewayCapabilities(AbortSignal.timeout(8_000));
+      if (connection !== current) return;
+      const features = available ? [
+        available.chat && 'chat', available.advanced && 'advanced chat', available.research && 'web research',
+        available.search && 'web search', available.youtube && 'YouTube search',
+      ].filter(Boolean) : null;
+      status.textContent = !features ? 'This backend does not report its features. Check its version for advanced chat.'
+        : features.length ? 'The gateway reports ' + features.join(', ') + ' configured.'
+        : 'The gateway is reachable. Add provider keys to enable its features.';
+      onCapabilities?.(available);
+    } catch (error) {
+      if (connection === current) status.textContent = error.message;
+    } finally {
+      check.disabled = false;
+    }
+  });
   settings.append(title, form);
   target.append(settings);
 }
@@ -88,9 +114,31 @@ async function gatewayRequest(path, body, signal) {
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw new Error(typeof body?.error === 'string' ? body.error.slice(0, 180) : 'The backend did not return a result.');
+    const error = new Error(typeof body?.error === 'string' ? body.error.slice(0, 180) : 'The backend did not return a result.');
+    error.status = response.status;
+    throw error;
   }
   return response;
+}
+
+export async function getGatewayCapabilities(signal) {
+  let response;
+  try {
+    response = await gatewayRequest('/api/capabilities', {}, signal);
+  } catch (error) {
+    if (error.status === 404) return null;
+    throw error;
+  }
+  const data = await response.json();
+  const flags = ['chat', 'advanced', 'research', 'search', 'youtube'];
+  if (!flags.every(flag => typeof data?.[flag] === 'boolean')) {
+    throw new Error('The backend returned invalid capability information.');
+  }
+  const available = Object.fromEntries(flags.map(flag => [flag, data[flag]]));
+  for (const key of ['standardOutputTokens', 'advancedOutputTokens']) {
+    if (Number.isInteger(data[key]) && data[key] > 0 && data[key] <= 2400) available[key] = data[key];
+  }
+  return available;
 }
 
 export async function searchGateway(q, signal) {
@@ -114,14 +162,18 @@ function safeReferences(items, limit) {
   });
 }
 
-export async function hostedBlipReply({ text, history = [], mode, signal, onUpdate, research = false, onSources }) {
+export async function hostedBlipReply({ text, history = [], mode, signal, onUpdate, research = false, onSources, depth = 'standard' }) {
   if (history.some(message => message.attachments?.length)) throw new Error('Use a local model for chats with attached files.');
   if (research && text.trim().length > 200) throw new Error('Web research is available for short questions of up to 200 characters.');
   const messages = history.filter(message => !message.attachments?.length && message.kind !== 'unavailable' &&
       ['user', 'assistant'].includes(message.role) && typeof message.text === 'string' && message.text.trim())
     .slice(-8).map(message => ({ role: message.role, content: message.text.slice(0, 950) }));
   messages.push({ role: 'user', content: text });
-  const response = await gatewayRequest('/api/chat', { messages, mode, stream: true, ...(research ? { research: true } : {}) }, signal);
+  const response = await gatewayRequest('/api/chat', {
+    messages, mode, stream: true,
+    ...(research ? { research: true } : {}),
+    ...(depth === 'advanced' ? { depth: 'advanced' } : {})
+  }, signal);
   let hasSources = false;
   const readSources = items => {
     if (!research || hasSources) return;

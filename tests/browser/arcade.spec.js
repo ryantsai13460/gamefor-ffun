@@ -31,10 +31,10 @@ test('navigation, catalog pagination, filtering, favorites, play history and set
   await expect(page.locator('.hero-art .art-image.is-ready')).toBeVisible();
 
   await go(page, 'All Games');
-  await expect(page.locator('.library-results')).toHaveText('1–24 of 556 games');
+  await expect(page.locator('.library-results')).toHaveText('1–24 of 558 games');
   await expect(page.locator('.game-card')).toHaveCount(24);
   await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(page.locator('.library-results')).toHaveText('25–48 of 556 games');
+  await expect(page.locator('.library-results')).toHaveText('25–48 of 558 games');
   await page.getByRole('button', { name: 'Previous', exact: true }).click();
   await expect(page.locator('.pagination-output')).toHaveText('Page 1 of 24');
 
@@ -77,7 +77,7 @@ test('navigation, catalog pagination, filtering, favorites, play history and set
   await go(page, 'New Games');
   await expect(page.locator('.game-card').first()).toBeVisible();
   await go(page, 'Built-in Games');
-  await expect(page.locator('.game-card')).toHaveCount(18);
+  await expect(page.locator('.game-card')).toHaveCount(20);
 
   const global = page.getByRole('searchbox', { name: 'Search the arcade' });
   await global.fill('slither.io');
@@ -161,6 +161,11 @@ test('standalone game and Proxy Gemini tabs, history and website previews', asyn
   await expect(page.getByRole('tab')).toHaveCount(2);
   await page.getByRole('button', { name: 'Close wikipedia.org tab' }).click();
   await expect(frame.locator('#star')).toBeVisible();
+  await page.getByRole('button', { name: 'Reopen closed tab', exact: true }).click();
+  await expect(frame.getByRole('heading', { name: 'Wikipedia preview' })).toBeVisible();
+  await page.getByRole('button', { name: 'Duplicate current tab', exact: true }).click();
+  await expect(page.getByRole('tab')).toHaveCount(3);
+  await expect(frame.getByRole('heading', { name: 'Wikipedia preview' })).toBeVisible();
 });
 
 test('Proxy Gemini respects frame blocking and keeps links and search explicit', async ({ page }) => {
@@ -170,7 +175,7 @@ test('Proxy Gemini respects frame blocking and keeps links and search explicit',
     body: '<h1>Restricted preview content</h1>'
   }));
   await page.goto('/#browse');
-  await expect(page.locator('.proxy-playable-group').nth(0).getByRole('button')).toHaveCount(18);
+  await expect(page.locator('.proxy-playable-group').nth(0).getByRole('button')).toHaveCount(20);
   await expect(page.locator('.proxy-playable-group').nth(1).getByRole('button')).toHaveCount(2);
   for (const app of browserApps) {
     await page.getByRole('button', { name: 'Open ' + app.title, exact: true }).click();
@@ -281,10 +286,10 @@ test('Explore connects the new videos, collections, cinema, arcade and tools', a
 
   await page.getByRole('link', { name: 'Browse new videos' }).click();
   await expect(page.getByRole('button', { name: 'New additions' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.media-result-count')).toHaveText('500 videos');
+  await expect(page.locator('.media-result-count')).toHaveText('600 videos');
   await page.getByRole('navigation', { name: 'Browse video topics' }).getByRole('link', { name: 'Science' }).click();
   await expect(page.getByRole('combobox', { name: 'Video topic' })).toHaveValue('Science');
-  await expect(page.locator('.media-result-count')).toHaveText('83 videos');
+  await expect(page.locator('.media-result-count')).toHaveText('93 videos');
 
   await go(page, 'Explore', 'Explore the arcade');
   await page.getByRole('link', { name: /^Cinema \d+ films and trailers$/ }).click();
@@ -449,7 +454,9 @@ test('Web Search can enable the on-device model and labels its answer', async ({
             available = true;
           }
           return {
-            prompt: async text => text.includes('Mario Kart') ? 'An answer produced by the test model.' : '',
+            prompt: async text => text.includes('Mario Kart')
+              ? (text.includes('How does multiplayer work?') ? 'A follow-up that used Mario Kart as context.' : 'An answer produced by the test model.')
+              : '',
             destroy() {}
           };
         }
@@ -464,6 +471,14 @@ test('Web Search can enable the on-device model and labels its answer', async ({
   await page.getByRole('button', { name: 'Ask AI', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'On-device AI answer' })).toBeVisible();
   await expect(page.getByText('An answer produced by the test model.')).toBeVisible();
+  await page.getByRole('button', { name: 'Ask a follow-up', exact: true }).click();
+  await page.getByRole('searchbox', { name: 'Ask AI', exact: true }).fill('How does multiplayer work?');
+  await page.getByRole('button', { name: 'Send follow-up', exact: true }).click();
+  await expect(page.getByText('A follow-up that used Mario Kart as context.')).toBeVisible();
+  await page.getByRole('link', { name: 'Search web and YouTube', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Search the web' })).toHaveValue('Mario Kart');
+  await page.getByRole('button', { name: 'AI Mode', exact: true }).click();
+  await expect(page.getByText('A follow-up that used Mario Kart as context.')).toBeVisible();
   expect(page.context().pages()).toHaveLength(1);
 });
 
@@ -620,6 +635,10 @@ test('Music opens a searchable chart with official lyrics sources', async ({ pag
   await page.goto('/#music');
   const songs = page.getByRole('list', { name: 'Chart songs' });
   await expect(page.getByText('Showing 25 of 550 chart songs')).toBeVisible();
+  await page.getByRole('button', { name: 'Watch lyrics', exact: true }).click();
+  await expect(page.getByText(/Showing 25 of 42/)).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Find lyric videos for / })).toHaveCount(0);
+  await page.getByRole('button', { name: 'All chart songs', exact: true }).click();
   await expect(songs.getByRole('listitem')).toHaveCount(25);
   await page.getByRole('button', { name: 'Load more songs' }).click();
   await expect(songs.getByRole('listitem')).toHaveCount(50);

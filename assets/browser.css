@@ -139,6 +139,7 @@
 
 .proxy-saved-tools {
   margin-inline-start: auto;
+  flex-wrap: wrap;
 }
 
 .proxy-saved-trigger {
@@ -333,6 +334,23 @@
 
 .proxy-playable .proxy-bookmark {
   color: var(--text, #f5f3f5);
+}
+
+.proxy-start-favorites li {
+  min-width: 0;
+  max-width: min(100%, 20rem);
+}
+
+.proxy-start-favorites .proxy-bookmark {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proxy-all-favorites {
+  margin-top: .5rem;
 }
 
 .proxy-frame {

@@ -1,5 +1,24 @@
 import { expect, test } from '@playwright/test';
 
+function textPdf(text) {
+  const stream = `BT /F1 18 Tf 72 720 Td (${text}) Tj ET`;
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`
+  ];
+  let file = '%PDF-1.4\n';
+  const offsets = objects.map((object, index) => {
+    const position = Buffer.byteLength(file);
+    file += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    return position;
+  });
+  return Buffer.from(file + `xref\n0 6\n0000000000 65535 f \n${offsets.map(position => `${String(position).padStart(10, '0')} 00000 n `).join('\n')}\n` +
+    `trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${Buffer.byteLength(file)}\n%%EOF\n`);
+}
+
 test.beforeEach(async ({ page }) => {
   await page.route('https://**/*', route => route.fulfill({ status: 503 }));
 });
@@ -209,25 +228,30 @@ test('blip.ai background music is opt-in and keeps playing while switching chats
 
 test('connected Blip streams authorized replies and regenerates the last answer', async ({ page }) => {
   let requests = 0;
+  const headers = {
+    'access-control-allow-origin': '*',
+    'access-control-allow-headers': 'authorization, content-type',
+    'access-control-allow-methods': 'POST, OPTIONS'
+  };
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: { writeText: async text => { window.copiedBlipText = text; } }
     });
   });
+  await page.route('https://gateway.example/api/capabilities', route => {
+    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
+    expect(route.request().headers().authorization).toBe('Bearer fixture-access');
+    return route.fulfill({ headers, json: { chat: true, advanced: true, research: true, search: true, youtube: false } });
+  });
   await page.route('https://gateway.example/api/chat', async route => {
-    const headers = {
-      'access-control-allow-origin': '*',
-      'access-control-allow-headers': 'authorization, content-type',
-      'access-control-allow-methods': 'POST, OPTIONS'
-    };
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
     requests++;
     expect(route.request().headers().authorization).toBe('Bearer fixture-access');
-    expect(route.request().postDataJSON()).toEqual({
-      messages: [{ role: 'user', content: 'Show a JavaScript example' }], mode: 'quick', stream: true
-    });
-    const text = requests === 1 ? '**First example**\n\n```js\nconst score = 1;\n```' : '**Updated example**';
+    const expected = { messages: [{ role: 'user', content: 'Show a JavaScript example' }], mode: 'quick', stream: true };
+    if (requests === 3) expected.depth = 'advanced';
+    expect(route.request().postDataJSON()).toEqual(expected);
+    const text = ['**First example**\n\n```js\nconst score = 1;\n```', '**Updated example**', '**Advanced example**'][requests - 1];
     const event = JSON.stringify({ choices: [{ delta: { content: text } }] });
     await route.fulfill({ status: 200, headers, contentType: 'text/event-stream',
       body: `data: ${event}\n\ndata: [DONE]\n\n` });
@@ -251,6 +275,12 @@ test('connected Blip streams authorized replies and regenerates the last answer'
   await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
   await expect(page.locator('.blip-message strong')).toHaveText('Updated example');
   expect(requests).toBe(2);
+  await page.locator('.blip-settings-popover > summary').click();
+  await page.getByRole('checkbox', { name: 'Use Advanced replies' }).check();
+  await page.locator('.blip-settings-popover > summary').click();
+  await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
+  await expect(page.locator('.blip-message strong')).toHaveText('Advanced example');
+  expect(requests).toBe(3);
 });
 
 test('Blip resends an edited message in a new chat with the earlier context', async ({ page }) => {
@@ -341,4 +371,42 @@ test('Blip research saves source links and keeps file chats local', async ({ pag
   await input.press('Enter');
   await expect(page.locator('.blip-message--assistant').last()).toContainText('Private study notes for the next review.');
   expect(requests).toBe(1);
+});
+
+test('Blip extracts private PDF text, exports a transcript, and keeps pinned chats first', async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(window, 'LanguageModel', { configurable: true, value: undefined }));
+  await page.goto('/#blip');
+  const sample = 'Orchard team planted forty trees on Tuesday.';
+  const input = page.getByRole('textbox', { name: 'Message blip.ai' });
+  await page.locator('input[type=file]').setInputFiles({
+    name: 'orchard.pdf', mimeType: 'application/pdf', buffer: textPdf(sample)
+  });
+  await page.getByRole('button', { name: 'Preview orchard.pdf' }).click({ timeout: 12_000 });
+  const preview = page.getByRole('dialog', { name: 'orchard.pdf' });
+  await expect(preview.getByText(sample, { exact: false })).toBeVisible();
+  await preview.getByRole('button', { name: 'Close', exact: true }).click();
+  await input.fill('Summarize this attachment');
+  await input.press('Enter');
+  await expect(page.locator('.blip-message--assistant').last()).toContainText(sample);
+  await page.getByText('Chat tools', { exact: true }).click();
+  await page.getByRole('button', { name: 'Pin chat', exact: true }).click();
+  const [download] = await Promise.all([
+    page.waitForEvent('download'), page.getByRole('button', { name: 'Download transcript' }).click()
+  ]);
+  expect(download.suggestedFilename()).toBe('Summarize-this-attachment.txt');
+  const stream = await download.createReadStream();
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  expect(Buffer.concat(chunks).toString('utf8')).toContain(sample);
+
+  const rail = page.getByRole('complementary', { name: 'Saved conversations' });
+  await rail.getByRole('button', { name: 'New chat', exact: true }).click();
+  await input.fill('Calculate 3 + 5');
+  await input.press('Enter');
+  await expect(page.getByText('8', { exact: true })).toBeVisible();
+  await page.reload();
+  const chats = rail.locator('.blip-chat-link');
+  await expect(chats.first()).toHaveAccessibleName('Summarize this attachment');
+  await chats.first().click();
+  await expect(page.locator('.blip-message--assistant').last()).toContainText(sample);
 });

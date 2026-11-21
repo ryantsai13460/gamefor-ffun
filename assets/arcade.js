@@ -699,7 +699,16 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
       googleReady = true;
     }
     if (name === 'AI Mode' && !aiReady) {
-      disposeAssistant = renderAssistantPanel(aiPanel, { onQuery: setTitle, findVideos: findCuratedVideos });
+      disposeAssistant = renderAssistantPanel(aiPanel, {
+        onQuery: setTitle,
+        findVideos: findCuratedVideos,
+        onSearchTopic(query) {
+          input.value = query.slice(0, input.maxLength);
+          selectPanel('Web & YouTube');
+          form.requestSubmit();
+          input.focus({ preventScroll: true });
+        }
+      });
       aiReady = true;
     }
   }
@@ -1053,7 +1062,7 @@ function renderGame(target, id) {
     status.textContent = 'Opening game…';
     if (game.local === true) {
       try {
-        const { mountLocalGame } = await import('./local-games.js');
+        const { mountLocalGame } = await import(`./local-games.js${assetVersion}`);
         if (token !== revision) return;
         dispose = mountLocalGame(game.id, stage);
         status.textContent = 'Built-in game ready.';
@@ -1211,8 +1220,8 @@ async function renderRoute(focus = true) {
       case 'web-search': {
         const [media, { searchWikipedia }, { renderGoogleSearch }, { renderSearchMaps }, { renderAssistantPanel }, { renderSearchTabs },
           { gameSearchSources }, { openSearchResource }] = await Promise.all([
-          import(`./media.js${assetVersion}`), import('./search-answer.js'), import('./search-google.js'),
-          import('./search-map.js'), import('./assistant-panel.js'), import('./search-tabs.js'),
+          import(`./media.js${assetVersion}`), import(`./search-answer.js${assetVersion}`), import('./search-google.js'),
+          import('./search-map.js'), import(`./assistant-panel.js${assetVersion}`), import('./search-tabs.js'),
           import('./search-game-sources.js'), import(`./search-resource.js${assetVersion}`)
         ]);
         if (token === version) {

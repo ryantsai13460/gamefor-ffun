@@ -224,6 +224,7 @@
 }
 
 .blip-chat-link.has-unread { color: var(--blip-key); font-weight: 710; }
+.blip-pin-mark { margin-inline-end: 7px; color: var(--blip-key); font-size: .65rem; }
 .blip-privacy { color: var(--blip-faint); font-size: .73rem; line-height: 1.35; }
 .blip-chat-search {
   width: 100%;
@@ -268,7 +269,11 @@
 
 .blip-thread-actions,
 .blip-dialog-actions { display: flex; align-items: center; gap: 6px; }
-.blip-thread-actions .blip-button { min-height: 32px; padding: 5px 8px; font-size: .75rem; }
+.blip-thread-actions { position: relative; }
+.blip-thread-actions .blip-button,
+.blip-thread-actions .blip-chat-actions > summary { min-height: 32px; padding: 5px 8px; font-size: .75rem; }
+.blip-thread-actions .blip-chat-actions { position: static; }
+.blip-chat-actions > .blip-popover-content { width: max-content; max-width: 90vw; }
 .blip-chat-toggle { display: none; min-height: 32px; }
 
 .blip-transcript {

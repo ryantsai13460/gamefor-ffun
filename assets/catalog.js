@@ -556,5 +556,7 @@ export const games = [
   {"id": "sum-trail", "title": "Sum Trail", "category": "Puzzle", "collection": "original", "status": "local", "local": true, "isNew": true},
   {"id": "comet-courier", "title": "Comet Courier", "category": "Arcade", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/comet-courier.webp", "artCredit": "Gamefor Ffun gameplay"},
   {"id": "pinpoint-putt", "title": "Pinpoint Putt", "category": "Sports", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/pinpoint-putt.webp", "artCredit": "Gamefor Ffun gameplay"},
-  {"id": "beat-beacon", "title": "Beat Beacon", "category": "Music", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/beat-beacon.webp", "artCredit": "Gamefor Ffun gameplay"}
+  {"id": "beat-beacon", "title": "Beat Beacon", "category": "Music", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/beat-beacon.webp", "artCredit": "Gamefor Ffun gameplay"},
+  {"id": "harbor-dispatch", "title": "Harbor Dispatch", "category": "Strategy", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/harbor-dispatch.webp", "artCredit": "Gamefor Ffun gameplay"},
+  {"id": "tidal-rescue", "title": "Tidal Rescue", "category": "Adventure", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/tidal-rescue.webp", "artCredit": "Gamefor Ffun gameplay"}
 ];

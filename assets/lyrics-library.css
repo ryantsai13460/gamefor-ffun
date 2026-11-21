@@ -8,6 +8,16 @@
 }
 .lyrics-heading h1 { font-size: clamp(2rem, 5vw, 3rem); letter-spacing: -.05em; }
 .lyrics-heading p { margin-top: 6px; }
+.lyrics-views {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.lyrics-views .button[aria-pressed="true"]:not(.primary) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .lyrics-feature {
   display: grid;
   gap: 12px;
@@ -58,6 +68,7 @@
 }
 .lyrics-video-filter input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
 .lyrics-count { font-size: .85rem; }
+.lyrics-watch-intro { margin: 0; }
 .lyrics-song-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .lyrics-song {
   display: grid;
@@ -76,6 +87,49 @@
 .lyrics-attribution ul { padding-inline-start: 20px; }
 .lyrics-dialog-copy { margin: 12px 0; color: var(--muted); }
 
+.lyrics-video-list {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 225px), 1fr));
+  gap: 10px;
+}
+.lyrics-video-card {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 0 10px;
+  overflow: hidden;
+}
+.lyrics-video-art {
+  display: grid;
+  position: relative;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--panel-deep);
+  overflow: hidden;
+}
+.lyrics-video-art-title {
+  padding: 10px;
+  color: var(--muted);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.lyrics-video-art img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+}
+.lyrics-video-art img.is-ready { opacity: 1; }
+.lyrics-video-card .lyrics-track,
+.lyrics-video-card .lyrics-source,
+.lyrics-video-card .lyrics-song-actions { padding-inline: 10px; }
+.lyrics-video-card .lyrics-song-actions { justify-content: flex-start; margin-block-start: auto; }
+
 @media (max-width: 790px) {
   .lyrics-filters { grid-template-columns: minmax(0, 1fr) minmax(0, 14rem); }
   .lyrics-video-filter { width: fit-content; }
@@ -91,4 +145,9 @@
     grid-row: 3;
     justify-content: flex-start;
   }
+  .lyrics-video-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 370px) {
+  .lyrics-video-list { grid-template-columns: minmax(0, 1fr); }
 }

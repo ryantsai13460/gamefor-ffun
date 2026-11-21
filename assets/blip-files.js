@@ -5,12 +5,17 @@ const fileTypes = new Map([
   ['.csv', 'text/csv'],
   ['.tsv', 'text/tab-separated-values'],
   ['.json', 'application/json'],
+  ['.pdf', 'application/pdf'],
 ]);
 
 export const BLIP_FILE_ACCEPT = [...fileTypes.keys()].join(',');
-export const BLIP_FILE_LIMITS = Object.freeze({ count: 3, bytes: 256 * 1024, text: 12000, name: 160 });
+export const BLIP_FILE_LIMITS = Object.freeze({ count: 3, bytes: 256 * 1024, pdfBytes: 4 * 1024 * 1024, pdfPages: 20, text: 12000, name: 160 });
 const supportedTypes = new Set(fileTypes.values());
 const binaryControls = /[\u0000-\u0008\u000b\u000e-\u001f\u007f]/;
+
+function sizeLimit(type) {
+  return type === 'application/pdf' ? BLIP_FILE_LIMITS.pdfBytes : BLIP_FILE_LIMITS.bytes;
+}
 
 function fileName(value) {
   if (typeof value !== 'string') return '';
@@ -42,7 +47,7 @@ export function normalizeBlipAttachments(value) {
     const name = fileName(raw?.name);
     const { type, size } = raw || {};
     if (!name || !supportedTypes.has(type) ||
-        !Number.isSafeInteger(size) || size < 1 || size > BLIP_FILE_LIMITS.bytes) continue;
+        !Number.isSafeInteger(size) || size < 1 || size > sizeLimit(type)) continue;
     const text = documentText(raw.text);
     if (!text) continue;
     records.push({ name, type, size, text, truncated: raw.truncated === true });
@@ -61,12 +66,13 @@ export function normalizeBlipAttachments(value) {
   }));
 }
 
-export async function readBlipFiles(files) {
+export async function readBlipFiles(files, { signal } = {}) {
   const accepted = [];
   const errors = [];
   const count = Number.isSafeInteger(files?.length) && files.length > 0 ? files.length : 0;
 
   for (let index = 0; index < Math.min(count, BLIP_FILE_LIMITS.count); index++) {
+    signal?.throwIfAborted();
     const file = files[index];
     const basename = typeof file?.name === 'string' ? file.name.split(/[\\/]/).at(-1) : '';
     const name = fileName(basename) || 'Unnamed file';
@@ -74,13 +80,11 @@ export async function readBlipFiles(files) {
     const extension = basename?.match(/\.[^.]+$/)?.[0].toLowerCase();
     const type = fileTypes.get(extension);
     if (!type) {
-      error(extension === '.pdf'
-        ? 'PDF text extraction is unavailable. Export the document as TXT and attach that file.'
-        : 'Use a TXT, Markdown, CSV, TSV, or JSON file.');
+      error('Use a PDF, TXT, Markdown, CSV, TSV, or JSON file.');
       continue;
     }
-    if (!Number.isSafeInteger(file.size) || file.size > BLIP_FILE_LIMITS.bytes) {
-      error('Files must be 256 KiB or smaller.');
+    if (!Number.isSafeInteger(file.size) || file.size > sizeLimit(type)) {
+      error(type === 'application/pdf' ? 'PDFs must be 4 MiB or smaller.' : 'Files must be 256 KiB or smaller.');
       continue;
     }
     if (file.size <= 0) {
@@ -94,6 +98,25 @@ export async function readBlipFiles(files) {
       if (buffer.byteLength !== file.size) throw new Error('File size changed');
     } catch {
       error('The browser could not read this file.');
+      continue;
+    }
+
+    if (type === 'application/pdf') {
+      try {
+        const { extractBlipPdf } = await import('./blip-pdf.js');
+        const timeout = AbortSignal.timeout(15_000);
+        const result = await extractBlipPdf(buffer, {
+          maxPages: BLIP_FILE_LIMITS.pdfPages,
+          maxChars: BLIP_FILE_LIMITS.text,
+          signal: signal ? AbortSignal.any([signal, timeout]) : timeout
+        });
+        signal?.throwIfAborted();
+        if (result.text) accepted.push({ name, type, size: file.size, ...result });
+        else error('No selectable text was found in the loaded pages. Scanned pages need a text version.');
+      } catch (cause) {
+        signal?.throwIfAborted();
+        error(cause?.name === 'PasswordException' ? 'Unlock this PDF before attaching it.' : 'The browser could not extract text from this PDF.');
+      }
       continue;
     }
 

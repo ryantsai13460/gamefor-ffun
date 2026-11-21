@@ -43,15 +43,34 @@ function sourceFor(song) {
 
 function officialVideo(song) {
   const source = sourceFor(song);
-  if (!source) return null;
+  if (source?.kind !== 'lyric-video') return null;
   if (/^[A-Za-z0-9_-]{11}$/.test(source.videoId || '')) {
-    return { id: source.videoId, url: `https://www.youtube.com/watch?v=${source.videoId}` };
+    const url = `https://www.youtube.com/watch?v=${source.videoId}`;
+    if (source.url === url) return { id: source.videoId, url };
   }
   if (source.label === 'Official lyric video on Apple Music'
       && /^https:\/\/music\.apple\.com\/[a-z]{2}\/music-video\//.test(source.url)) {
     return { url: source.url, provider: 'Apple Music' };
   }
   return null;
+}
+
+function videoArtwork(song) {
+  const art = element('div', 'lyrics-video-art');
+  art.setAttribute('aria-hidden', 'true');
+  art.append(element('span', 'lyrics-video-art-title', song.title));
+  const video = officialVideo(song);
+  if (video?.id) {
+    const image = element('img');
+    image.alt = '';
+    image.loading = 'lazy';
+    image.decoding = 'async';
+    image.addEventListener('load', () => image.classList.add('is-ready'), {once: true});
+    image.addEventListener('error', () => image.remove(), {once: true});
+    image.src = `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`;
+    art.append(image);
+  }
+  return art;
 }
 
 function lyricVideoSearch(song) {
@@ -71,14 +90,20 @@ export function findChartSongs(query = '', chart = '', videosOnly = false) {
 }
 
 export function renderLyrics(target, params) {
+  let watchView = params?.get('lyrics') === 'watch';
   const page = element('section', 'lyrics-library');
   const head = element('header', 'lyrics-heading');
   const copy = element('div');
   const edition = displayDate.format(new Date(lyricsChart[0].date));
-  copy.append(element('h1', '', 'Music'), element('p', 'muted', `Find lyrics and official lyric videos. Charts dated ${edition}.`));
+  copy.append(element('h1', '', 'Music'), element('p', 'muted', `Browse chart songs dated ${edition} or watch official videos that show the lyrics.`));
+  head.append(copy);
+  const views = element('nav', 'lyrics-views');
+  views.setAttribute('aria-label', 'Music views');
+  const watchLyrics = button('Watch lyrics', () => chooseView(true), 'button primary');
+  const allSongs = button('All chart songs', () => chooseView(false));
   const musicVideos = link('Music videos', '#music?view=videos');
-  head.append(copy, musicVideos);
-  page.append(head);
+  views.append(watchLyrics, allSongs, musicVideos);
+  page.append(head, views);
 
   const opening = element('section', 'lyrics-feature');
   opening.append(element('h2', '', 'Featured lyric videos'));
@@ -105,7 +130,9 @@ export function renderLyrics(target, params) {
   queryLabel.append(query);
   const chartLabel = element('label', '', 'Chart source');
   const chart = element('select', 'field');
-  chart.append(new Option('All chart sources', ''), ...charts.map(entry => new Option(entry.source, entry.sourceUrl)));
+  chart.append(new Option('All chart sources', ''), ...charts.map(entry => new Option(
+    entry.source === 'Billboard Hot 100' ? entry.source : `${entry.source} · ${entry.market}`, entry.sourceUrl
+  )));
   chartLabel.append(chart);
   filters.append(queryLabel, chartLabel);
   const videoFilter = element('label', 'lyrics-video-filter');
@@ -117,6 +144,7 @@ export function renderLyrics(target, params) {
 
   const status = element('p', 'muted lyrics-count');
   status.setAttribute('role', 'status');
+  const lyricIntro = element('p', 'lyrics-watch-intro', 'Official uploads that put the song’s lyrics on screen.');
   const list = element('ol', 'lyrics-song-list');
   list.setAttribute('aria-label', 'Chart songs');
   const more = button('Load more songs', () => {
@@ -135,7 +163,7 @@ export function renderLyrics(target, params) {
     sources.append(item);
   }
   attribution.append(summary, sources);
-  page.append(status, list, more, attribution);
+  page.append(lyricIntro, status, list, more, attribution);
   target.replaceChildren(page);
 
   let visible = batchSize;
@@ -215,7 +243,7 @@ export function renderLyrics(target, params) {
       closeLyrics();
       releasePlayer = watchDialog(page, {
         title: `Lyrics for ${song.title}`,
-        subtitle: song.artist,
+        subtitle: `${song.artist} · Official lyric video`,
         video: { id: video.id, title: `${song.title} official lyric video` },
         external: video.url,
         directLabel: 'Official lyric video on YouTube',
@@ -259,22 +287,33 @@ export function renderLyrics(target, params) {
   }
 
   function draw() {
-    const results = findChartSongs(query.value, chart.value, videosOnly.checked);
+    const results = findChartSongs(query.value, chart.value, watchView || videosOnly.checked);
     const text = query.value.trim();
     const videoParams = new URLSearchParams({ view: 'videos' });
     if (text) videoParams.set('q', text);
     musicVideos.href = `#music?${videoParams}`;
-    opening.hidden = Boolean(text || chart.value || videosOnly.checked);
-    status.textContent = results.length
-      ? `Showing ${Math.min(visible, results.length)} of ${results.length} chart songs${videosOnly.checked ? ' with official lyric videos' : ''}`
-      : videosOnly.checked ? 'No songs with official lyric videos match this search.' : 'No songs match this search.';
+    opening.hidden = Boolean(text || chart.value || videosOnly.checked || watchView);
+    watchLyrics.setAttribute('aria-pressed', String(watchView));
+    allSongs.setAttribute('aria-pressed', String(!watchView));
+    videoFilter.hidden = watchView;
+    lyricIntro.hidden = !watchView;
+    list.classList.toggle('lyrics-video-list', watchView);
+    if (watchView) {
+      status.textContent = results.length
+        ? `Showing ${Math.min(visible, results.length)} of ${results.length} official lyric videos`
+        : 'No verified lyric videos match this search.';
+    } else {
+      status.textContent = results.length
+        ? `Showing ${Math.min(visible, results.length)} of ${results.length} chart songs${videosOnly.checked ? ' with official lyric videos' : ''}`
+        : videosOnly.checked ? 'No songs with official lyric videos match this search.' : 'No songs match this search.';
+    }
     list.replaceChildren(...results.slice(0, visible).map(song => {
-      const row = element('li', 'lyrics-song');
-      const rank = element('span', 'lyrics-rank', `#${song.rank}`);
+      const row = element('li', watchView ? 'lyrics-song lyrics-video-card' : 'lyrics-song');
       const title = element('div', 'lyrics-track');
       title.append(element('h3', '', song.title), element('p', 'muted', song.artist));
       const source = link(song.source, song.sourceUrl, 'lyrics-source text-action', true);
-      row.append(rank, title, source, songActions(song));
+      row.append(watchView ? videoArtwork(song) : element('span', 'lyrics-rank', `#${song.rank}`),
+        title, source, songActions(song));
       return row;
     }));
     more.hidden = visible >= results.length;
@@ -283,6 +322,10 @@ export function renderLyrics(target, params) {
   function resetFilter() {
     visible = batchSize;
     draw();
+  }
+  function chooseView(watch) {
+    watchView = watch;
+    resetFilter();
   }
   query.addEventListener('input', resetFilter);
   chart.addEventListener('change', resetFilter);

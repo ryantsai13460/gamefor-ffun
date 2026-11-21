@@ -1,4 +1,5 @@
 import { createBeatBeacon, createCometCourier, createPinpointPutt } from "./bonus-arcade.js";
+import { createHarborDispatch, createTidalRescue } from "./harbor-games.js";
 
 const storageKey = "ffun-original-games-v1";
 const directions = {
@@ -1656,7 +1657,7 @@ function playCanvas(context, createGame) {
     return;
   }
 
-  status.setAttribute("aria-live", "off");
+  if (!game.announceHud) status.setAttribute("aria-live", "off");
   const help = element("p", "local-game__help", game.instructions + " Press P to pause.");
   root.append(help);
   const held = new Set();
@@ -1692,7 +1693,7 @@ function playCanvas(context, createGame) {
   const padButtons = [];
   game.controls.forEach(([label, key]) => {
     const control = button(label, event => {
-      if (!event.detail && !paused && !game.done()) game.input(key);
+      if (!event.detail && !paused && !game.done()) respond(key);
     });
     control.setAttribute("aria-label", label.length === 1 ? directionNames[key] : label);
     control.addEventListener("pointerdown", event => {
@@ -1701,7 +1702,7 @@ function playCanvas(context, createGame) {
       control.setPointerCapture(event.pointerId);
       canvas.focus({ preventScroll: true });
       held.add(key);
-      game.input(key);
+      respond(key);
     }, { signal });
     for (const eventType of ["pointerup", "pointercancel", "lostpointercapture"]) {
       control.addEventListener(eventType, () => held.delete(key), { signal });
@@ -1710,6 +1711,26 @@ function playCanvas(context, createGame) {
     padButtons.push(control);
   });
   controls.append(pad);
+  if (game.point) {
+    canvas.classList.add("local-game__canvas--interactive");
+    canvas.addEventListener("click", event => {
+      if (paused || game.done()) return;
+      const bounds = canvas.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) return;
+      game.point((event.clientX - bounds.left) * canvas.width / bounds.width,
+        (event.clientY - bounds.top) * canvas.height / bounds.height);
+      paint();
+      syncControls();
+    }, { signal });
+  }
+
+  function respond(key) {
+    game.input(key);
+    if (!game.update) {
+      paint();
+      syncControls();
+    }
+  }
 
   function paint() {
     game.draw(c);
@@ -1759,14 +1780,14 @@ function playCanvas(context, createGame) {
     syncControls();
     if (!paused && !game.done()) {
       canvas.focus({ preventScroll: true });
-      frame = requestAnimationFrame(tick);
+      if (game.update) frame = requestAnimationFrame(tick);
     }
   }
 
   function inputFor(event) {
-    if (game.spaceAction && event.key === " " && !event.altKey && !event.ctrlKey && !event.metaKey &&
-        !event.target.closest("button")) {
-      return game.spaceAction;
+    if (!event.altKey && !event.ctrlKey && !event.metaKey && !event.target.closest("button")) {
+      if (game.spaceAction && event.key === " ") return game.spaceAction;
+      if (game.enterAction && event.key === "Enter") return game.enterAction;
     }
     return preferDirection(event, game.title === "Skyline Sprint");
   }
@@ -1781,7 +1802,7 @@ function playCanvas(context, createGame) {
     const direction = inputFor(event);
     if (!direction || paused || game.done()) return;
     event.preventDefault();
-    if (!event.repeat) game.input(direction);
+    if (!event.repeat) respond(direction);
     held.add(direction);
   }, { signal });
   root.addEventListener("keyup", event => {
@@ -1828,6 +1849,8 @@ const localGames = {
   "comet-courier": { title: "Comet Courier", run: context => playCanvas(context, createCometCourier) },
   "pinpoint-putt": { title: "Pinpoint Putt", run: context => playCanvas(context, createPinpointPutt) },
   "beat-beacon": { title: "Beat Beacon", run: context => playCanvas(context, createBeatBeacon) },
+  "harbor-dispatch": { title: "Harbor Dispatch", run: context => playCanvas(context, createHarborDispatch) },
+  "tidal-rescue": { title: "Tidal Rescue", run: context => playCanvas(context, createTidalRescue) },
   ...Object.fromEntries(Object.entries(classicGames).map(([id, { title }]) => [
     id, { title, run: context => playCanvas(context, () => classicArcade(id)) }
   ])),

@@ -11,6 +11,7 @@ The YouTube section preserves the 24 original Unstable SMP and Minecraft creator
 | More creator videos | Gaming uploads discovered through creator indexes and checked against YouTube oEmbed, including Fortnite, Minecraft, Roblox, Valorant, and Rocket League |
 | Violin videos and Shorts | 64 full videos and 52 Shorts, including lessons and performances from nine creators. Entries were discovered through vidIQ’s creator indexes and checked against YouTube oEmbed. [vidIQ](https://vidiq.com/) · [YouTube oEmbed](https://www.youtube-nocookie.com/oembed) |
 | Explore video expansion | 250 standard videos and 250 Shorts from 166 creators, covering gaming, music, science, technology, nature, history, arts, food, travel, and sports. Public creator indexes establish the format, and YouTube oEmbed verifies each title, creator, and thumbnail. [vidIQ](https://vidiq.com/) · [YouTube oEmbed](https://www.youtube-nocookie.com/oembed) |
+| Latest video additions | 50 standard videos and 50 Shorts from 79 creators across the ten topics. Creator indexes establish format, and YouTube oEmbed verifies the title, creator, and thumbnail. [vidIQ](https://vidiq.com/) · [YouTube oEmbed](https://www.youtube-nocookie.com/oembed) |
 | Roblox Shorts | [Shedletsky's Roblox HQ Short](https://www.youtube.com/shorts/ftnaXStTPBY), [Bloxify's Roblox moments](https://www.youtube.com/shorts/WILeRgKUUvk), [WarmBlox's Roblox Obby Escape](https://www.youtube.com/shorts/JFl6u1rsFLw) |
 | Unstable SMP and creator picks | [Wemmbu](https://www.youtube.com/@wemmbumc), [Parrot](https://www.youtube.com/@ParrotX2), [Spoke](https://www.youtube.com/@SpokeIsHere), [FlameFrags](https://www.youtube.com/@FlameFragsMC) |
 | A Minecraft Movie | [Mojang's official artwork](https://www.minecraft.net/en-us/article/a-minecraft-movie-out-now), [Warner Bros. trailer](https://www.youtube.com/watch?v=wJO_vIDZn-I), [Apple TV listing](https://tv.apple.com/us/movie/a-minecraft-movie/umc.cmc.1od4a1ayyjqn43uz8fel7ei5e) |
@@ -22,7 +23,7 @@ The cinema library has 17 Blender Open Movies, 19 animated shorts, and 12 studio
 
 ## Music library
 
-The chart lyrics catalog contains 550 distinct songs from the Billboard Hot 100 and Apple Music national Top Songs charts dated November 21, 2026. Each row displays the rank on its source chart. Verified lyric videos play through YouTube’s embedded player. Other rows link to a title-and-artist lyric video search on YouTube. Apple Music may require sign-in or a subscription to show song lyrics. [Billboard Hot 100](https://ca.billboard.com/charts/hot-100/2026-11-21) · [Apple Music chart feeds](https://rss.marketingtools.apple.com/)
+The chart lyrics catalog contains 550 distinct songs from the Billboard Hot 100 and Apple Music national Top Songs charts dated November 21, 2026. Each row displays the rank on its source chart. The Watch lyrics view includes 42 verified official uploads that show lyrics on screen, played through YouTube’s embedded player. Other rows link to a title-and-artist lyric video search on YouTube. Apple Music may require sign-in or a subscription to show song lyrics. [Billboard Hot 100](https://ca.billboard.com/charts/hot-100/2026-11-21) · [Apple Music chart feeds](https://rss.marketingtools.apple.com/)
 
 The Music videos collection uses official artist and label uploads through YouTube’s embedded player.
 

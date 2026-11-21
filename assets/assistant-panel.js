@@ -1,10 +1,11 @@
-import {
+const assetVersion = new URL(import.meta.url).search;
+const {
   generateSearchAnswer,
   localAssistantAnswer,
   prepareSearchModel,
   searchModelAvailability,
   searchWikipedia,
-} from './search-answer.js';
+} = await import(`./search-answer.js${assetVersion}`);
 
 const examples = [
   ['Explain a topic', 'How does a rainbow form?'],
@@ -12,6 +13,7 @@ const examples = [
   ['Calculate', 'Calculate (24 × 3) + 18'],
   ['Convert units', 'Convert 5 miles to km'],
 ];
+let panelCount = 0;
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -34,7 +36,7 @@ function button(className, text) {
   return item;
 }
 
-export function renderAssistantPanel(target, { onQuery, findVideos = () => [] } = {}) {
+export function renderAssistantPanel(target, { onQuery, findVideos = () => [], onSearchTopic } = {}) {
   const root = element('section', 'assistant-panel');
   const title = element('h2', 'assistant-title', 'AI Help');
   const description = element('p', 'muted assistant-intro', 'Ask for an explanation, writing help, or a plan. Calculations and unit conversions work locally.');
@@ -52,7 +54,18 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [] } 
   promptLabel.append(input);
   const submit = button('button primary', 'Ask AI');
   submit.type = 'submit';
-  form.append(promptLabel, submit);
+  const stop = button('button', 'Stop answering');
+  stop.hidden = true;
+  const formActions = element('div', 'assistant-actions');
+  formActions.append(submit, stop);
+  form.append(promptLabel, formActions);
+
+  const contextNote = element('div', 'assistant-context');
+  contextNote.id = `assistant-context-${++panelCount}`;
+  contextNote.hidden = true;
+  const contextTopic = element('strong');
+  const newQuestion = button('button', 'Start a new question');
+  contextNote.append(contextTopic, newQuestion);
 
   const suggestions = element('div', 'assistant-examples');
   suggestions.setAttribute('role', 'group');
@@ -61,6 +74,7 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [] } 
     const item = button('chip', label);
     item.title = example;
     item.addEventListener('click', () => {
+      setFollowUp(false);
       input.value = example;
       input.focus();
     });
@@ -92,20 +106,29 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [] } 
   const reply = element('p', 'assistant-result-text');
   const credits = element('div', 'assistant-credits');
   const copy = button('button assistant-copy', 'Copy answer');
-  result.append(resultTitle, reply, credits, copy);
+  const followUp = button('button', 'Ask a follow-up');
+  const searchTopic = element('a', 'button', 'Search web and YouTube');
+  const resultActions = element('div', 'assistant-actions');
+  resultActions.append(copy, followUp, searchTopic);
+  result.append(resultTitle, reply, credits, resultActions);
 
   const lifetime = new window.AbortController();
   let pending;
+  let lastAnswer;
+  let followingUp = false;
+  let modelReady = false;
 
   function showModelStatus(availability) {
+    modelReady = availability === 'available';
     const canEnable = availability === 'downloadable' || availability === 'downloading';
     enable.hidden = !canEnable;
     if (canEnable) details.open = true;
-    modelStatus.textContent = availability === 'available'
+    modelStatus.textContent = modelReady
       ? 'On-device AI is ready. Ask a question to use it.'
       : canEnable
         ? 'Enable on-device AI to prepare the model in this browser.'
         : 'On-device AI is unavailable in this browser. Wikipedia, calculations, and conversions are still available.';
+    followUp.hidden = !modelReady || !lastAnswer?.canContinue;
   }
 
   enable.addEventListener('click', async () => {
@@ -123,12 +146,17 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [] } 
     }
   });
 
-  function showAnswer(label, text, source) {
+  function showAnswer({ label, text, source, question, topic, canContinue = false }) {
+    lastAnswer = { question, topic, text, source, canContinue };
     status.textContent = '';
     result.hidden = false;
     resultTitle.textContent = label;
     reply.textContent = text;
     copy.hidden = label === 'AI unavailable';
+    followUp.hidden = !modelReady || !canContinue;
+    searchTopic.hidden = !topic;
+    if (topic) searchTopic.href = `#web-search?${new URLSearchParams({ q: topic })}`;
+    resultActions.hidden = copy.hidden && followUp.hidden && searchTopic.hidden;
     credits.replaceChildren();
     if (source) {
       credits.append(link(source.url, `Wikipedia · ${source.title}`),
@@ -136,43 +164,108 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [] } 
     }
   }
 
+  function setFollowUp(enabled) {
+    followingUp = enabled;
+    contextNote.hidden = !enabled;
+    contextTopic.textContent = enabled ? `Following up on “${lastAnswer.topic}”` : '';
+    if (enabled) input.setAttribute('aria-describedby', contextNote.id);
+    else input.removeAttribute('aria-describedby');
+    input.placeholder = enabled ? 'Ask about this answer' : 'Ask a question, calculate, or convert units';
+    submit.textContent = enabled ? 'Send follow-up' : 'Ask AI';
+  }
+
+  function startQuestion(enabled) {
+    pending?.abort();
+    pending = undefined;
+    stop.hidden = true;
+    result.hidden = !lastAnswer;
+    status.textContent = '';
+    setFollowUp(enabled);
+    input.value = '';
+    input.focus();
+  }
+
+  followUp.addEventListener('click', () => startQuestion(true));
+  newQuestion.addEventListener('click', () => startQuestion(false));
+  searchTopic.addEventListener('click', event => {
+    if (!lastAnswer?.topic || !onSearchTopic || event.button !== 0 ||
+        event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    onSearchTopic(lastAnswer.topic);
+  });
+
+  stop.addEventListener('click', () => {
+    pending?.abort();
+    pending = undefined;
+    stop.hidden = true;
+    result.hidden = !lastAnswer;
+    status.textContent = 'Answer stopped.';
+    input.focus();
+  });
+
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    pending?.abort();
     const question = input.value.trim();
     if (!question) {
       status.textContent = 'Enter a question or calculation.';
       return;
     }
-    onQuery?.(question);
-    const computed = localAssistantAnswer(question);
+    pending?.abort();
+    pending = undefined;
+    stop.hidden = true;
+    const context = followingUp ? lastAnswer : undefined;
+    const topic = context?.topic ?? question.slice(0, 200);
+    if (!context) onQuery?.(question);
+    const computed = !context && localAssistantAnswer(question);
     if (computed) {
-      showAnswer(computed.title, computed.text);
+      showAnswer({ label: computed.title, text: computed.text, question });
       return;
     }
 
-    pending = new window.AbortController();
-    const { signal } = pending;
+    const request = new window.AbortController();
+    pending = request;
+    const { signal } = request;
     const withTimeout = duration => window.AbortSignal.any([signal, window.AbortSignal.timeout(duration)]);
-    const shouldLookUp = useWikipedia.checked && question.length <= 200;
-    result.hidden = true;
-    status.textContent = shouldLookUp ? 'Looking up context and checking the browser model…' : 'Checking the browser model…';
+    const shouldLookUp = !context && useWikipedia.checked && question.length <= 200;
+    stop.hidden = false;
+    result.hidden = !context;
+    status.textContent = context ? 'Working on your follow-up…'
+      : shouldLookUp ? 'Looking up context and checking the browser model…' : 'Checking the browser model…';
 
-    const articles = shouldLookUp ? await searchWikipedia(question, withTimeout(5000), 1).catch(() => []) : [];
-    if (signal.aborted) return;
-    const [source] = articles;
-    const videos = findVideos(question);
-    const answer = await generateSearchAnswer(question, source, videos, withTimeout(12000)).catch(() => '');
-    if (signal.aborted) return;
-    if (answer) {
-      showAnswer('On-device AI answer', answer, source);
-    } else if (source) {
-      showAnswer('Wikipedia excerpt', source.text, source);
-    } else {
-      const message = shouldLookUp
-        ? 'A ready browser model and a Wikipedia excerpt are unavailable for this question.'
-        : 'A ready browser model is unavailable. For a short topic question, you can enable Wikipedia lookup under Sources and on-device AI.';
-      showAnswer('AI unavailable', message);
+    try {
+      const articles = shouldLookUp ? await searchWikipedia(question, withTimeout(5000), 1).catch(() => []) : [];
+      if (signal.aborted) return;
+      const source = context?.source ?? articles[0];
+      const videos = findVideos(topic);
+      const answer = await generateSearchAnswer(question, source, videos, withTimeout(12000), context).catch(() => '');
+      if (signal.aborted) return;
+      if (answer) {
+        showModelStatus('available');
+        showAnswer({ label: 'On-device AI answer', text: answer, source, question, topic: source?.title || topic, canContinue: true });
+        if (context) {
+          input.value = '';
+          setFollowUp(true);
+        }
+      } else if (context) {
+        status.textContent = 'The on-device model could not answer the follow-up. You can try again or start a new question.';
+      } else if (source) {
+        showAnswer({ label: 'Wikipedia excerpt', text: source.text, source, question, topic: source.title, canContinue: true });
+      } else {
+        const message = shouldLookUp
+          ? 'A ready browser model and a Wikipedia excerpt are unavailable for this question.'
+          : 'A ready browser model is unavailable. For a short topic question, you can enable Wikipedia lookup under Sources and on-device AI.';
+        showAnswer({ label: 'AI unavailable', text: message, question, topic });
+      }
+    } catch {
+      if (!signal.aborted) {
+        result.hidden = !lastAnswer;
+        status.textContent = 'The answer could not be completed. Try again.';
+      }
+    } finally {
+      if (pending === request) {
+        pending = undefined;
+        stop.hidden = true;
+      }
     }
   });
 
@@ -185,7 +278,7 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [] } 
     }
   });
 
-  root.append(title, description, form, suggestions, details, status, result);
+  root.append(title, description, contextNote, form, suggestions, details, status, result);
   target.append(root);
   searchModelAvailability().catch(() => 'unavailable').then(availability => {
     if (!lifetime.signal.aborted) showModelStatus(availability);

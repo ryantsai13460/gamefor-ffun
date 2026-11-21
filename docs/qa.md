@@ -4,19 +4,19 @@ The previous GitHub entry page contained duplicate document markup and ended ins
 
 ## Passed
 
-The suite includes 14 Node tests, 11 gateway tests, and 32 Chromium browser tests. Separate DOM smoke tests exercised game rules, media imports, and assistant behavior.
+The suite includes 16 Node tests, 13 gateway tests, and 33 Chromium browser tests. Separate DOM smoke tests exercised game rules, media imports, and assistant behavior.
 
 | Area | Checks |
 | --- | --- |
-| Catalog integrity | 556 unique IDs and normalized titles, including 548 reconciled from the two main libraries. Checked category and availability counts, stable aliases, local asset paths, and HTTPS source links. |
-| Game availability | 18 built-in entries, 2 publisher-provided embed routes, 534 external source links, and 2 entries with unverified play links. Browser tests verify the arcade opens documented app and game embeds and keeps Miniplay out of Proxy Gemini. |
+| Catalog integrity | 558 unique IDs and normalized titles, including 548 reconciled from the two main libraries. Checked category and availability counts, stable aliases, local asset paths, and HTTPS source links. |
+| Game availability | 20 built-in entries, 2 publisher-provided embed routes, 534 external source links, and 2 entries with unverified play links. Browser tests verify the arcade opens documented app and game embeds and keeps Miniplay out of Proxy Gemini. |
 | Library | All navigation routes, title and punctuation search, categories, sort, pagination, favorites persistence, recently played, trending from device launch totals, and random game. |
-| Player | All 18 built-in games launch in Chromium. Checked fullscreen, restart, keyboard interaction, standalone click-to-score, and puzzle progression. Targeted game tests covered scoring, touch and keyboard input, and completion of Comet Courier, Pinpoint Putt, and Beat Beacon. |
-| Viewer and Play Hub | Checked tabs, history, refresh, local game, native fullscreen, navigation inside a website preview, a browser-enforced frame restriction, optional external links, saved device checks, and JSON report export. Preview responses were controlled in the browser tests. |
-| Media | Verified the additional 500 videos through official YouTube oEmbed metadata and public creator indexes. Tests check 1,153 unique total entries, ten populated topics, and 48 cinema listings. Browser tests cover collection navigation, playback dialog controls, and official YouTube and NFB player routes. |
-| Music | Browser tests cover pagination and source filters for 550 chart songs, official Housewife and Dracula embeds, provider links, the video-only filter, and a title-and-artist lyric video search. |
-| Shorts and Web Search | Browser tests cover Shorts navigation, tab state, 116 violin results, sandboxed Google results, native fullscreen in Web Search and All Games, and in-page access to the Territorial.io fullscreen game preview, official wiki, and official YouTube trailer. |
-| blip.ai | Chromium tests cover saved context, cancellation, local replies, Wikipedia references, draft file previews, branches from edited messages, copied code, and persisted hosted research sources. Node tests cover on-device file summaries, passage lookup, and CSV/TSV profiles. |
+| Player | All 20 built-in games launch in Chromium. Checked fullscreen, restart, keyboard interaction, standalone click-to-score, and puzzle progression. Targeted tests covered the Harbor Dispatch delivery sequence and Tidal Rescue fuel and crew rules. |
+| Viewer and Play Hub | Checked tabs, duplicate and reopen actions, history, refresh, native fullscreen, in-page navigation, a browser-enforced frame restriction, saved device checks, and JSON report export. Preview responses were controlled in the browser tests. |
+| Media | Verified 600 additions across two batches through official YouTube oEmbed metadata and public creator indexes. Tests check 1,253 unique entries, ten populated topics, and 48 cinema listings. |
+| Music | Browser tests cover pagination and filters for 550 chart songs, the 42-video Watch lyrics view, official Housewife and Dracula embeds, and a title-and-artist lyric video search. |
+| Shorts and Web Search | Browser tests cover Shorts navigation, tab state, 116 violin results, contextual AI follow-ups with a simulated model, sandboxed Google results, native fullscreen, and in-page access to the Territorial.io game preview, wiki, and trailer. |
+| blip.ai | Chromium tests cover saved context, cancellation, local replies, attached PDF text, exported transcripts, pinned chats, copied code, and persisted hosted research sources. Gateway and browser fixtures check the optional Advanced replies request. Node tests cover on-device summaries, passage lookup, and CSV/TSV profiles. |
 | Layout and accessibility | Chromium at 1440px, 768px, and 390px. Checked horizontal overflow, mobile drawer dismissal and keyboard focus, and image placeholders with third-party images blocked. |
 
 ## Limits
