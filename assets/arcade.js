@@ -444,19 +444,32 @@ function renderHome(target) {
     target.append(provider);
   }
   if (prefs.hiddenHome.includes('media')) return;
-  function loadMedia() {
-    void import(`./discovery.js${assetVersion}`).then(({ populateHomeMedia }) => populateHomeMedia(media)).catch(() => {
-      if (media.isConnected) media.append(element('p', 'muted', 'Media picks could not load.'), link('Open Movies', '#movies', 'text-action'));
-    });
+  async function loadMedia() {
+    try {
+      const { populateHomeMedia } = await import(`./discovery.js${assetVersion}`);
+      await populateHomeMedia(media);
+    } catch {
+      // The direct media routes are available when the Home catalogs fail to load.
+    }
+    if (media.isConnected && !media.childElementCount) {
+      const fallback = element('div', 'info-panel');
+      fallback.append(element('p', 'muted', 'Media picks could not load.'));
+      const routes = element('div', 'interaction-row');
+      for (const [name, path] of [['Movies', '#movies'], ['YouTube', '#youtube'], ['Music', '#music?view=videos']]) {
+        routes.append(link(name, path, 'text-action'));
+      }
+      fallback.append(routes);
+      media.append(fallback);
+    }
   }
   if (typeof IntersectionObserver !== 'function') {
-    loadMedia();
+    void loadMedia();
     return;
   }
   const observer = new IntersectionObserver(entries => {
     if (!entries.some(entry => entry.isIntersecting)) return;
     observer.disconnect();
-    loadMedia();
+    void loadMedia();
   }, { rootMargin: '150px' });
   observer.observe(media);
   return () => observer.disconnect();
@@ -628,13 +641,19 @@ function renderCategories(target) {
 const webSearchHistoryKey = 'ffun.web-search.history';
 const searchHistoryListeners = new Set();
 let recentWebSearches;
-const pastedAddress = /^[a-z][a-z\d+.-]*:\/\//i;
+const addressPrefix = /^(?:[a-z][a-z\d+.-]*:)?\/\//i;
+const domainWithPath = /^[\p{L}\d-]+(?:\.[\p{L}\d-]+)+(?::\d+)?[/?#]\S*$/iu;
+
+function isReusableWebQuery(input) {
+  if (typeof input !== 'string') return false;
+  const query = input.trim();
+  return Boolean(query && query.length <= 200 && !addressPrefix.test(query) && !domainWithPath.test(query));
+}
 
 function readWebSearchHistory() {
   try {
     const saved = JSON.parse(localStorage.getItem(webSearchHistoryKey));
-    if (Array.isArray(saved)) return saved.filter(item => typeof item === 'string' && item.trim() &&
-      item.length <= 200 && !pastedAddress.test(item.trim())).slice(0, 20);
+    if (Array.isArray(saved)) return saved.filter(isReusableWebQuery).slice(0, 20);
   } catch {}
   return [];
 }
@@ -1060,7 +1079,7 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
       return;
     }
     setTitle(query);
-    if (pastedAddress.test(query)) updateSuggestions();
+    if (!isReusableWebQuery(query)) updateSuggestions();
     else {
       const key = query.toLowerCase();
       saveWebSearchHistory([query, ...recentWebSearches.filter(item => item.toLowerCase() !== key)].slice(0, 20));
@@ -1590,7 +1609,7 @@ async function renderRoute(focus = true) {
         break;
       }
       case 'web-search': {
-        const [media, { searchWikipedia }, { renderGoogleSearch }, { renderSearchMaps }, { renderAssistantPanel }, { renderSearchTabs },
+        const [media, { searchWikipedia }, { renderGoogleSearch }, { renderSearchMaps }, { renderAssistantPanel, releaseCpuBlipModel }, { renderSearchTabs },
           { gameSearchSources }, { openSearchResource }] = await Promise.all([
           import(`./media.js${assetVersion}`), import(`./search-answer.js${assetVersion}`), import(`./search-google.js${assetVersion}`),
           import('./search-map.js'), import(`./assistant-panel.js${assetVersion}`), import('./search-tabs.js'),
@@ -1601,12 +1620,19 @@ async function renderRoute(focus = true) {
           const modules = { media, searchWikipedia, renderGoogleSearch, renderSearchMaps, renderAssistantPanel, gameSearchSources, openSearchResource };
           let firstMode = route.params.get('mode');
           let firstQuery = route.params.get('q')?.trim();
-          cleanup = renderSearchTabs(target, (panel, tools) => {
+          const disposeSearchTabs = renderSearchTabs(target, (panel, tools) => {
             const teardown = mountSearchPanel(panel, modules, tools, firstMode, firstQuery);
             firstMode = null;
             firstQuery = null;
             return teardown;
           });
+          cleanup = () => {
+            try {
+              disposeSearchTabs();
+            } finally {
+              releaseCpuBlipModel();
+            }
+          };
         }
         break;
       }

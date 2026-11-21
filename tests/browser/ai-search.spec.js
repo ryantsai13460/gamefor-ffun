@@ -75,7 +75,18 @@ async function startGateway() {
     event({ sources: [source] });
     delta(calls.length === 1 ? 'Water droplets redirect sunlight' : 'Unfinished follow-up');
     call.finish = () => {
-      delta(' into colors [1].\n\n- Light refracts through water.\n- [Unverified link](https://unverified.example/claim)');
+      delta([
+        ' into colors [1].',
+        '- Light refracts through water.',
+        '- [Unverified link](https://unverified.example/claim)',
+        '- [Nested [link](https://shown.example)](https://unverified.example/nested)',
+        '| Text | Citation |',
+        '| --- | --- |',
+        '| [Table link](https://unverified.example/table) | [1] |',
+        '```markdown',
+        '[Literal example](https://unverified.example/code)',
+        '```'
+      ].join('\n'));
       response.end('data: [DONE]\n\n');
     };
   });
@@ -120,9 +131,13 @@ test('connected AI is explicit, streams cited answers, stops follow-ups, and fal
       { role: 'user', content: 'How do rainbows form?' }
     ] });
     gateway.calls[0].finish();
-    await expect(reply.getByRole('link', { name: 'Source 1' })).toHaveAttribute('href', gateway.source.url);
+    const citations = reply.getByRole('link', { name: 'Source 1' });
+    await expect(citations).toHaveCount(2);
+    await expect(citations.first()).toHaveAttribute('href', gateway.source.url);
+    await expect(citations.last()).toHaveAttribute('href', gateway.source.url);
     await expect(panel(page).getByRole('link', { name: gateway.source.title })).toHaveAttribute('href', gateway.source.url);
-    await expect(reply.getByRole('link', { name: 'Unverified link' })).toHaveCount(0);
+    await expect(reply.getByRole('link')).toHaveCount(2);
+    await expect(reply.locator('pre code')).toHaveText('[Literal example](https://unverified.example/code)');
 
     await panel(page).getByRole('button', { name: 'Ask a follow-up' }).click();
     await prompt(page).fill('What bends the light?');
@@ -151,6 +166,10 @@ test('AI Mode can explicitly prepare and use the CPU model', async ({ page }) =>
     let ready = false;
     export const cpuBlipReady = () => ready;
     export const cpuBlipAvailability = async () => ready ? 'available' : 'downloadable';
+    export function releaseCpuBlipModel() {
+      if (ready) globalThis.releasedTestCpuModel = true;
+      ready = false;
+    }
     export async function prepareCpuBlipModel(signal, progress) {
       signal.throwIfAborted();
       progress(0.5, 'Preparing test model');
@@ -170,4 +189,11 @@ test('AI Mode can explicitly prepare and use the CPU model', async ({ page }) =>
   await prompt(page).press('Enter');
   await expect(panel(page).getByRole('heading', { name: 'CPU on-device AI answer' })).toBeVisible();
   await expect(panel(page).getByText('Start by writing one outcome and three milestones.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'New search tab' }).click();
+  await page.getByRole('tab', { selected: true }).press('Delete');
+  expect(await page.evaluate(() => globalThis.releasedTestCpuModel)).toBeUndefined();
+  await page.getByRole('link', { name: 'Home', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Pocket Circuit', level: 1 })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => globalThis.releasedTestCpuModel)).toBe(true);
 });

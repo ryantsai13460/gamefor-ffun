@@ -64,6 +64,18 @@ test('the mobile home shows lazy media shelves with the arcade links', async ({ 
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
 });
 
+test('Home keeps media routes available when all three catalogs fail', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.route(/\/assets\/(film-catalog|music-catalog|media)\.js(?:\?|$)/, route => route.abort());
+  await page.goto('/');
+  const media = page.locator('.home-media-shelves');
+  await media.scrollIntoViewIfNeeded();
+  await expect(media.getByText('Media picks could not load.')).toBeVisible();
+  await expect(media.getByRole('link', { name: 'Movies' })).toHaveAttribute('href', '#movies');
+  await expect(media.getByRole('link', { name: 'YouTube' })).toHaveAttribute('href', '#youtube');
+  await expect(media.getByRole('link', { name: 'Music' })).toHaveAttribute('href', '#music?view=videos');
+});
+
 test('the Home shortcuts open the main sections and lead to an in-page game', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 800 });
   const shortcuts = page.getByRole('navigation', { name: 'Browse the arcade' });

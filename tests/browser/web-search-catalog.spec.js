@@ -30,10 +30,14 @@ test('Web Search offers examples and keeps clearable recent queries across tabs'
   await expect(tabs.getByRole('tab')).toHaveCount(2);
   await expect(tabs.getByRole('button', { name: /^Close/ })).toHaveCount(0);
   await expect(history.getByRole('button', { name: 'MrBeast', exact: true })).toBeVisible();
-  await search(page, 'https://youtu.be/dQw4w9WgXcQ?share=example');
-  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
-  await page.getByRole('button', { name: 'Clear web search', exact: true }).click();
-  await expect(history.getByRole('button', { name: /youtu\.be/ })).toHaveCount(0);
+  for (const address of ['https://youtu.be/dQw4w9WgXcQ?share=example', 'youtu.be/dQw4w9WgXcQ?share=example']) {
+    await search(page, address);
+    await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+    await page.getByRole('button', { name: 'Clear web search', exact: true }).click();
+    await expect(history.getByRole('button', { name: /youtu\.be/ })).toHaveCount(0);
+  }
+  const storedQueries = await page.evaluate(() => JSON.parse(localStorage.getItem('ffun.web-search.history')));
+  expect(storedQueries).toEqual(['MrBeast']);
   await tabs.getByRole('tab', { selected: true }).press('Delete');
   await expect(tabs.getByRole('tab')).toHaveCount(1);
   await expect(tabs.getByRole('tab', { selected: true })).toBeFocused();

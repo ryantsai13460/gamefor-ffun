@@ -17,7 +17,7 @@
 .discovery-kind { color: var(--accent); }
 .discovery-actions { margin-top: 16px; }
 .discovery-shelves { margin-bottom: 16px; }
-.home-media-shelves:empty { min-height: 1px; }
+.home-media-shelves:empty { min-height: 48px; }
 
 .home-media-region {
   display: grid;

@@ -8,11 +8,13 @@ const [{
   searchAnswerInstructions,
   searchAnswerPrompt,
   searchModelAvailability,
-}, { cpuBlipAvailability, cpuBlipReady, prepareCpuBlipModel, runCpuBlipPrompt }, { formatBlipReply },
+}, { cpuBlipAvailability, cpuBlipReady, prepareCpuBlipModel, releaseCpuBlipModel, runCpuBlipPrompt }, { formatBlipReply },
 { gatewayConnected, hostedBlipReply, renderGatewaySettings }] = await Promise.all([
   import(`./search-answer.js${assetVersion}`), import(`./blip-cpu.js${assetVersion}`),
   import(`./blip-format.js${assetVersion}`), import(`./service-gateway.js${assetVersion}`)
 ]);
+
+export { releaseCpuBlipModel };
 
 const examples = [
   ['Explain a topic', 'How does a rainbow form?'],
@@ -244,7 +246,7 @@ export function renderAssistantPanel(target, { onQuery, findVideos = () => [], o
     reply.replaceChildren();
     if (formatted) {
       // Only reference numbers may turn into links. Model-written URLs are unverified.
-      formatBlipReply(reply, text.replace(/\[([^\]\n]+)\]\([^\s)]+\)/gu, '$1'), sources);
+      formatBlipReply(reply, text, sources, { allowLinks: false });
     } else {
       reply.textContent = text;
     }
