@@ -213,6 +213,10 @@ function gamePath(game) {
   return `#play/${encodeURIComponent(game.id)}`;
 }
 
+function gameStartPath(game) {
+  return `${gamePath(game)}?start=1`;
+}
+
 function isFavorite(id) {
   return prefs.favorites.includes(id);
 }
@@ -1048,14 +1052,16 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
     gameList.replaceChildren(...found.map(game => {
       const item = element('li', 'web-search-game');
       const site = gameSearchSources[game.id]?.site;
+      const playable = isPlayable(game);
       item.append(element('strong', '', game.title), element('p', 'muted', site?.description || game.category));
-      if (game.local || arcadeEmbed(game)) {
-        item.append(link(`Play ${game.title}`, gamePath(game), 'button', 'play'));
-      } else if (site?.preview) {
+      if (playable) {
+        item.append(link(`Play ${game.title}`, gameStartPath(game), 'button', 'play'));
+      }
+      if (site?.preview) {
         item.append(action(`Preview ${game.title}`, () => openResource({
-          ...site, provider: 'Official game', preview: site.url
-        }), 'button', 'play'));
-      } else {
+          ...site, provider: 'Official game', preview: site.url, playRoute: playable ? gamePath(game) : ''
+        })));
+      } else if (!playable) {
         item.append(link(`View ${game.title}`, gamePath(game), 'button'));
       }
       return item;
@@ -1479,7 +1485,7 @@ function renderCredits(target) {
   target.append(sources);
 }
 
-function renderGame(target, id) {
+function renderGame(target, id, startFromLink) {
   const game = resolveGame(id);
   const back = link('Back to browsing', previousLibrary, 'button player-back');
   target.append(back);
@@ -1505,7 +1511,17 @@ function renderGame(target, id) {
   const status = element('p', 'player-status');
   status.setAttribute('role', 'status');
   const stage = element('div', 'player-stage');
+  stage.tabIndex = -1;
+  stage.setAttribute('role', 'region');
+  stage.setAttribute('aria-label', `${game.title} player`);
   target.append(controls, status, stage);
+  const embedHelp = element('div', 'player-note interaction-row');
+  embedHelp.hidden = true;
+  if (embedUrl) {
+    embedHelp.append(element('span', '', 'Player blank or blocked? Try Restart or choose another game.'),
+      link('Browse in-page games', '#games?option=in-page', 'button'));
+    target.append(embedHelp);
+  }
   if (game.artCredit && prefs.artwork) target.append(element('p', 'player-note', `Artwork: ${game.artCredit}`));
   const related = games.filter(candidate => candidate !== game && candidate.category === game.category && isPlayable(candidate))
     .sort((first, second) => Number(Boolean(second.local)) - Number(Boolean(first.local)));
@@ -1521,6 +1537,31 @@ function renderGame(target, id) {
     stage.append(unavailable);
     return () => scope.abort();
   }
+
+  const playAddress = new URL(location.href);
+  playAddress.search = '';
+  playAddress.hash = gameStartPath(game);
+  const shareField = element('input', 'field player-link-field');
+  shareField.type = 'url';
+  shareField.readOnly = true;
+  shareField.value = playAddress.href;
+  shareField.hidden = true;
+  shareField.setAttribute('aria-label', 'Shareable play link');
+  const copyPlayLink = action('Copy play link', async () => {
+    try {
+      await navigator.clipboard.writeText(playAddress.href);
+      if (!copyPlayLink.isConnected) return;
+      shareField.hidden = true;
+      copyPlayLink.textContent = 'Play link copied';
+      announce('Play link copied');
+    } catch {
+      if (!shareField.isConnected) return;
+      shareField.hidden = false;
+      shareField.focus({ preventScroll: true });
+      shareField.select();
+    }
+  });
+  controls.append(copyPlayLink, shareField);
 
   const restart = action('Restart', () => start(false), 'button', 'restart');
   async function toggleFullscreen() {
@@ -1597,11 +1638,14 @@ function renderGame(target, id) {
       showFrameError('The player did not respond.');
     }, 10000);
     function showFrameError(message) {
+      const restoreFocus = stage.contains(document.activeElement);
       dispose();
+      embedHelp.hidden = true;
       stage.removeAttribute('aria-busy');
       status.textContent = message;
       showStart('Game could not load', 'Try opening the game again or browse another game you can play here.');
       stage.firstElementChild.append(link('Browse in-page games', '#games?option=in-page', 'button'));
+      if (restoreFocus) stage.querySelector('.start-game')?.focus({ preventScroll: true });
     }
     dispose = () => {
       clearTimeout(timer);
@@ -1615,7 +1659,7 @@ function renderGame(target, id) {
         return;
       }
       stage.removeAttribute('aria-busy');
-      status.textContent = game.local ? 'Built-in game ready.' : 'Publisher player loaded. If the game stays blank, browse another in-page game.';
+      status.textContent = game.local ? 'Built-in game ready.' : 'If the official player appears, use its controls to start.';
       restart.disabled = false;
       fullscreen.disabled = !canFullscreen;
       if (record && game.local) launch(game);
@@ -1626,7 +1670,14 @@ function renderGame(target, id) {
     if (record && !game.local) launch(game);
     frame.src = localFile ? `./${localFile}` : embedUrl;
     stage.append(frame);
+    if (embedUrl) {
+      embedHelp.hidden = false;
+      restart.disabled = false;
+    }
+    if (record) stage.focus({ preventScroll: true });
   }
+
+  if (startFromLink) void start(true);
 
   return () => {
     revision++;
@@ -1723,7 +1774,7 @@ async function renderRoute(focus = true) {
         renderCategories(target);
         break;
       case 'play':
-        cleanup = renderGame(target, route.id);
+        cleanup = renderGame(target, route.id, route.params.get('start') === '1');
         break;
       case 'youtube': {
         target.append(element('p', 'boot-note', 'Loading videos…'));

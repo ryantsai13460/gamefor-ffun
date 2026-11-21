@@ -35,6 +35,8 @@ The earlier upgrade ZIP in the workspace contains 551 entries. Each retains its 
 
 Catalog-only entries retain their HTTPS publisher or distributor records. Their detail pages and Play Hub point to in-page alternatives. Fancade and Stacktris use the documented embed where the publisher allows it. [Fancade player documentation](https://www.fancade.com/wiki/Fancade_Web#Embedding)
 
+Territorial.io and HexGL open from their original HTTPS game addresses in a sandboxed frame. Territorial.io’s terms describe permitted fan sites, and HexGL’s author publishes the game under MIT terms with listed asset exceptions. These links use the original services. [Territorial.io terms](https://territorial.io/terms) · [HexGL source and license](https://github.com/BKcore/HexGL)
+
 Artwork comes from game-specific publisher or distributor metadata or from captured gameplay of this site's local games. The catalog has 560 artwork entries, including captured gameplay for Fraction Kitchen and Clock Courier and artwork for all 25 built-in games. Resent Client, Blash.io, and Roams.io use title cards. The catalog keeps source attribution and the interface uses a title card if an image fails to load.
 
 The source pass checked 536 distinct game-source URLs for an HTTP response and compared page contents for 78 titles. Artwork checks also compared 425 existing Miniplay image identifiers against their game pages. The reachability check establishes that a source responded. Test coverage for actual gameplay is recorded separately. [Verification report](qa.md)

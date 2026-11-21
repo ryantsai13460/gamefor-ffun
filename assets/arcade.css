@@ -364,6 +364,7 @@ select.field { cursor: pointer; }
 .player-heading h1 { font-size: clamp(1.75rem, 4vw, 3.1rem); letter-spacing: -.05em; }
 .player-heading p { margin-bottom: 4px; color: var(--muted); font-size: .86rem; }
 .player-actions { margin: 10px 0; }
+.player-link-field { flex-basis: min(100%, 360px); min-width: 0; }
 .player-status { min-height: 23px; margin: 12px 0; color: var(--muted); line-height: 1.5; }
 .player-stage { overflow: hidden; min-height: 250px; background: var(--panel-deep); border: 1px solid var(--line); border-radius: 12px; }
 .player-stage:fullscreen { position: relative; display: grid; align-items: center; padding-block-start: 52px; border: 0; border-radius: 0; }

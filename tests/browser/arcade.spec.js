@@ -198,7 +198,7 @@ test('Proxy Gemini respects frame blocking and keeps links and search explicit',
   }));
   await page.goto('/#browse');
   await expect(page.locator('.proxy-playable-group').nth(0).getByRole('button')).toHaveCount(games.filter(game => game.local).length);
-  await expect(page.locator('.proxy-playable-group').nth(1).getByRole('button')).toHaveCount(2);
+  await expect(page.locator('.proxy-playable-group').nth(1).getByRole('button')).toHaveCount(games.filter(arcadeEmbed).length);
   for (const app of browserApps) {
     await page.getByRole('button', { name: `${app.title} ${app.description}`, exact: true }).click();
     await expect(page.locator('.proxy-frame')).toHaveAttribute('src', app.embed);
@@ -692,6 +692,8 @@ test('searching Territorial.io from Google shows its preview, wiki and videos wi
   const game = page.getByRole('dialog', { name: 'Territorial.io', exact: true });
   await expect(game.locator('iframe')).toHaveAttribute('src', 'https://territorial.io/');
   await expect(game.locator('iframe')).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin allow-pointer-lock allow-presentation');
+  await expect(game.getByRole('button', { name: 'Retry player', exact: true })).toBeVisible();
+  await expect(game.getByRole('link', { name: 'Browse in-page games' })).toHaveAttribute('href', '#games?option=in-page');
   await game.getByRole('button', { name: 'Fullscreen', exact: true }).click();
   await expect(game.locator('.search-resource-body:fullscreen')).toBeVisible();
   await game.getByRole('button', { name: 'Exit fullscreen', exact: true }).click();
