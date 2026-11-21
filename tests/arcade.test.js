@@ -105,12 +105,12 @@ test('expiring family film offers preserve their records and only advertise acti
   assert.equal(filmPlayback({ ...bear, availableUntil: '2000-01-01T00:00:00Z', trailer: 'wJO_vIDZn-I' }, true).id, 'wJO_vIDZn-I');
 });
 
-test('the catalog includes 548 main library games, three additional recovered games and nine originals', () => {
-  assert.equal(games.length, 560);
+test('the catalog includes 548 main library games, three additional recovered games and ten originals', () => {
+  assert.equal(games.length, 561);
   assert.equal(games.filter(({ collection }) => collection === 'github' || collection === 'base44-library').length, 548);
   assert.equal(games.filter(({ collection }) => collection === 'base44-home').length, 2);
   assert.equal(games.filter(({ collection }) => collection === 'history').length, 1);
-  assert.equal(games.filter(({ collection }) => collection === 'original').length, 9);
+  assert.equal(games.filter(({ collection }) => collection === 'original').length, 10);
   assert.equal(new Set(games.map(({ id }) => id)).size, games.length);
   assert.equal(new Set(games.map(({ title }) => normalize(title))).size, games.length);
   assert.equal([...library.categoryCounts.values()].reduce((sum, count) => sum + count, 0), games.length);
@@ -140,7 +140,7 @@ test('catalog records have distinct sources, correct status, and safe relative a
     }
     if (typeof game.local === 'string') await readFile(new URL(game.local, new URL('../', import.meta.url)));
   }
-  assert.deepEqual(statusCounts, { local: 22, embed: 2, external: 534, unverified: 2 });
+  assert.deepEqual(statusCounts, { local: 23, embed: 2, external: 534, unverified: 2 });
 });
 
 test('search spans titles, punctuated names, legacy aliases, categories and availability', () => {

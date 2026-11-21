@@ -86,7 +86,7 @@
 }
 
 .proxy-tab-name {
-  padding: .55rem 0 .55rem .65rem;
+  padding: .55rem .65rem;
   min-width: 0;
   overflow: hidden;
   border: 0;
@@ -364,12 +364,42 @@
   border-top: 1px solid var(--line-soft, #26262e);
 }
 
+.proxy-start > h2 {
+  margin-bottom: .85rem;
+}
+
 .proxy-playable-heading {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: .35rem 1rem;
+}
+
+.proxy-game-shelf {
+  margin-top: 0;
+  padding: clamp(.85rem, 2.8vw, 1.25rem);
+  border: 1px solid color-mix(in srgb, var(--accent, #f4c542) 25%, var(--line, #303441));
+  border-radius: .75rem;
+  background: linear-gradient(145deg, var(--accent-wash, #302619), var(--panel, #19191f) 65%);
+}
+
+.proxy-game-shelf h2 {
+  margin-bottom: 0;
+}
+
+.proxy-game-filter {
+  width: min(100%, 19rem);
+  margin-top: .75rem;
+}
+
+.proxy-start .proxy-game-count {
+  margin: 0;
+  font-size: .875rem;
+}
+
+.proxy-game-count:not(:empty) {
+  padding-block: .55rem .15rem;
 }
 
 .proxy-playable-group {
@@ -416,6 +446,10 @@
 
 .proxy-playable .proxy-bookmark {
   color: var(--text, #f5f3f5);
+}
+
+.proxy-game-shelf .proxy-bookmark {
+  min-height: 2.625rem;
 }
 
 .proxy-start-favorites li {
@@ -726,6 +760,18 @@
 
   .proxy-saved-trigger {
     height: 2.35rem;
+  }
+
+  .proxy-game-shelf .proxy-playable-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .proxy-game-shelf .proxy-bookmark {
+    width: 100%;
+    height: 100%;
+    min-height: 2.75rem;
+    padding-inline: .4rem;
   }
 }
 

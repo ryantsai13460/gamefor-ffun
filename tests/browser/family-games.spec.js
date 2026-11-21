@@ -38,6 +38,24 @@ test('Picnic Pack plays and progresses with keyboard controls', async ({ page })
   await expect(status).toContainText('Lunch for Friends · 0/5 packed');
 });
 
+test('Clover Roll supports keyboard tilts, garden descriptions, undo and progression', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const game = await startGame(page, 'clover-roll', 'Clover Roll');
+  const canvas = game.getByLabel('Clover Roll game');
+  const status = game.getByRole('status');
+  await expect(canvas).toBeFocused();
+  await canvas.press('h');
+  await expect(status).toContainText('Bowl at row 1, column 5');
+  await canvas.press('ArrowDown');
+  await expect(status).toContainText('1/1 clovers · 1 roll');
+  await canvas.press('u');
+  await expect(status).toContainText('0/1 clovers · 0 rolls');
+  for (const key of ['ArrowDown', 'ArrowUp', 'ArrowRight']) await canvas.press(key);
+  await expect(status).toContainText('Garden cleared!');
+  await game.getByRole('button', { name: 'Next garden' }).click();
+  await expect(status).toContainText('Hedge Corner · 0/2 clovers · 0 rolls');
+});
+
 test.describe('family games on a touch screen', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
 
@@ -69,5 +87,20 @@ test.describe('family games on a touch screen', () => {
     await expect(game.getByRole('button', { name: 'Resume', exact: true })).toBeVisible();
     await game.getByRole('button', { name: 'Restart breeze' }).tap();
     await expect(game.getByRole('status')).toContainText('Dandelion Field · Ribbons 0/8');
+  });
+
+  test('Clover Roll animates a garden tap and runs through touch controls', async ({ page }) => {
+    const game = await startGame(page, 'clover-roll', 'Clover Roll', true);
+    const canvas = game.getByLabel('Clover Roll game');
+    const bounds = await canvas.boundingBox();
+    await canvas.tap({ position: { x: bounds.width * 274 / 800, y: bounds.height * 347 / 450 } });
+    const status = game.getByRole('status');
+    await expect(status).toContainText('1/1 clovers · 1 roll');
+    await game.getByRole('button', { name: 'Up', exact: true }).tap();
+    await expect(status).toContainText('Marble at row 1, column 3');
+    await game.getByRole('button', { name: 'Right', exact: true }).tap();
+    await expect(status).toContainText('Garden cleared!');
+    await game.getByRole('button', { name: 'Reset garden' }).tap();
+    await expect(status).toContainText('Dewdrop Walk · 0/1 clovers · 0 rolls');
   });
 });

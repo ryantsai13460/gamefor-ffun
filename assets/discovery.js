@@ -327,24 +327,106 @@ export function renderSavedLibrary(target, { favorites, recent, showArtwork }) {
   return () => { active = false; };
 }
 
+function homeMediaCard(record, featured) {
+  const anchor = link('', record.href, featured ? 'home-media-lead' : 'home-media-item');
+  if (record.image) {
+    const art = element('div', 'home-media-art');
+    art.setAttribute('aria-hidden', 'true');
+    const image = element('img');
+    image.alt = '';
+    image.loading = 'lazy';
+    image.decoding = 'async';
+    image.addEventListener('load', () => art.classList.add('is-ready'), { once: true });
+    image.addEventListener('error', () => art.remove(), { once: true });
+    image.src = record.image;
+    art.append(image);
+    anchor.append(art);
+  }
+  const copy = element('div', 'home-media-copy');
+  copy.append(element('h4', '', record.title));
+  if (record.subtitle) copy.append(element('p', '', record.subtitle));
+  anchor.append(copy);
+  return anchor;
+}
+
+function homeMediaLane({ title, records, href, browse, shortcut }) {
+  const [featured, ...more] = records;
+  if (!featured) return null;
+  const lane = element('section', 'home-media-lane');
+  lane.dataset.media = featured.type;
+  const heading = element('header', 'home-media-heading');
+  heading.append(element('h3', '', title), link(browse, href));
+  lane.append(heading, homeMediaCard(featured, true));
+  if (more.length) {
+    const listing = element('ul', 'home-media-list');
+    for (const record of more) {
+      const row = element('li');
+      row.append(homeMediaCard(record, false));
+      listing.append(row);
+    }
+    lane.append(listing);
+  }
+  if (shortcut) {
+    const actions = element('div', 'home-media-actions');
+    actions.append(link(...shortcut));
+    lane.append(actions);
+  }
+  return lane;
+}
+
+function homeMediaPicks(catalog, preferred, format) {
+  const selection = [...new Map([
+    ...preferred.map(id => catalog.find(record => record.id === id)).filter(Boolean),
+    ...catalog
+  ].map(record => [record.id, record])).values()];
+  return selection.slice(0, 3).map(format);
+}
+
 export async function populateHomeMedia(target) {
-  const [films, music, videos] = await Promise.allSettled([filmData(), musicData(), videoData()]);
+  const [films, music, videos] = await Promise.allSettled([
+    Promise.all([filmData(), import(`./film-playback.js${version}`)]),
+    musicData(),
+    videoData()
+  ]);
   if (!target.isConnected) return;
+  const shelves = element('div', 'home-media-lanes');
   if (films.status === 'fulfilled') {
-    const { featuredFilm, filmCatalog } = films.value;
-    const selection = [...new Set([featuredFilm, ...filmCatalog.filter(film => film.fullVideo || film.embed || film.fullWatch)])].slice(0, 4);
-    target.append(shelf('Featured films', selection.map(filmItem), '#movies', 'Browse movies',
-      link('Family films', '#movies?collection=family')));
+    const [{ featuredFilm, filmCatalog }, { filmPlayback }] = films.value;
+    const fullFilms = filmCatalog.filter(film => filmPlayback(film));
+    const lane = homeMediaLane({
+      title: 'Featured films',
+      records: homeMediaPicks(fullFilms, [featuredFilm.id, 'little-bear-movie', 'waterwalker'], filmItem),
+      href: '#movies', browse: 'Browse movies',
+      shortcut: ['Family films', '#movies?collection=family']
+    });
+    if (lane) shelves.append(lane);
   }
   if (music.status === 'fulfilled') {
     const { featuredTrack, musicCatalog } = music.value;
-    const chartPicks = musicCatalog.filter(song => song.chart).slice(0, 4);
-    const selection = [...new Set([...chartPicks, featuredTrack, ...musicCatalog])].slice(0, 4);
-    target.append(shelf(chartPicks.length ? 'Music chart picks' : 'Music picks', selection.map(songItem), '#music?view=videos', 'Browse music'));
+    const chartPicks = musicCatalog.filter(song => song.chart).map(song => song.id);
+    const lane = homeMediaLane({
+      title: 'Music picks',
+      records: homeMediaPicks(musicCatalog, [featuredTrack.id, ...chartPicks.slice(0, 2)], songItem),
+      href: '#music?view=videos', browse: 'Browse music',
+      shortcut: ['Watch lyrics', '#music?lyrics=watch']
+    });
+    if (lane) shelves.append(lane);
   }
   if (videos.status === 'fulfilled') {
-    const featured = videos.value.getCuratedVideos().filter(video => video.tags.includes('Gaming')).slice(0, 4);
-    if (featured.length) target.append(shelf('Gaming videos', featured.map(videoItem), '#youtube?format=all&topic=Gaming', 'Browse videos',
-      link('MrBeast videos', '#youtube?format=all&q=MrBeast')));
+    const gaming = videos.value.getCuratedVideos().filter(video => video.tags.includes('Gaming'));
+    const lane = homeMediaLane({
+      title: 'Gaming videos',
+      records: homeMediaPicks(gaming, ['NWjkbAQOGY8', '7fRbU-uUNQA', 'ftnaXStTPBY'], videoItem),
+      href: '#youtube?format=all&topic=Gaming', browse: 'Browse videos',
+      shortcut: ['MrBeast videos', '#youtube?format=all&q=MrBeast']
+    });
+    if (lane) shelves.append(lane);
   }
+  if (!shelves.childElementCount) return;
+  const region = element('section', 'home-media-region');
+  const title = element('h2', '', 'Watch and listen');
+  title.id = 'home-media-title';
+  region.setAttribute('aria-labelledby', title.id);
+  region.append(title, shelves);
+  target.replaceChildren(region);
 }

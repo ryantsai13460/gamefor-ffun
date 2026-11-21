@@ -1,4 +1,5 @@
 import { arcadeEmbed, browserApps, isMiniplayAddress } from "./embedded-content.js";
+import { createLibrary, queryLibrary } from "./library.js";
 
 const assetVersion = new URL(import.meta.url).search;
 const [{ games }, { mountLocalGame }] = await Promise.all([
@@ -35,6 +36,7 @@ let viewerCount = 0;
 let youtubeApi;
 const builtInGames = games.filter(game => game.local);
 const embeddedGames = games.filter(arcadeEmbed);
+const inPageLibrary = createLibrary([...builtInGames, ...embeddedGames]);
 const gameEmbeds = new Map(
   embeddedGames.flatMap(game => [[game.url, game], [arcadeEmbed(game), game]])
 );
@@ -239,7 +241,7 @@ function createBrowser() {
   const shell = element("section", "proxy-viewer");
   const heading = element("div", "proxy-heading");
   const title = element("h1", "", "Proxy Gemini");
-  const description = element("p", "", "Search the web or preview permitted websites, games, and videos. Back and Forward follow the addresses you open here.");
+  const description = element("p", "", "Play games, search the web, and preview sites that allow embedding.");
   heading.append(title, description);
 
   const windowPanel = element("div", "proxy-window");
@@ -279,7 +281,7 @@ function createBrowser() {
     panel.tabIndex = 0;
     panel.hidden = true;
     panels.append(panel);
-    return { id, entries, index, panel, preview: null, draft: undefined, invalid: false };
+    return { id, entries, index, panel, preview: null, draft: undefined, invalid: false, gameQuery: "" };
   }
   let active = createTab();
   const items = [active];
@@ -469,13 +471,12 @@ function createBrowser() {
         event.preventDefault();
         activate(items[ends[event.key] ?? (index + move + items.length) % items.length]);
       });
-      const close = control(`Close ${label} tab`, "×", () => closeTab(tab));
-      close.classList.add("proxy-tab-close");
-      close.tabIndex = tab === active ? 0 : -1;
-      item.append(select, close);
+      item.append(select);
       return item;
     });
     tabs.replaceChildren(...entries);
+    closeActive.title = `Close ${current().title} tab`;
+    closeActive.setAttribute("aria-label", closeActive.title);
     const tabButton = tabs.querySelector(`[id="proxy-tab-${viewerId}-${active.id}"]`);
     if (focus) {
       tabButton.focus({ preventScroll: true });
@@ -595,58 +596,95 @@ function createBrowser() {
     if (focus) address.focus();
   }
 
-  function landing() {
-    const content = element("div", "proxy-start");
-    const headline = element("h2", "", "Start browsing");
-    const message = element("p", "", "Enter an HTTPS address, paste a YouTube link, or try a shortcut.");
-    const links = element("div", "proxy-shortcuts");
-    for (const [label, url, type] of shortcuts) {
-      const shortcut = control(`Open ${label}`, "", () => submit(url));
-      shortcut.className = "proxy-shortcut";
-      shortcut.append(element("strong", "", label), element("span", "", type));
-      links.append(shortcut);
-    }
-    const bookmarks = element("div", "proxy-bookmarks");
-    bookmarks.setAttribute("aria-label", "Game bookmarks");
-    for (const [label, url] of gameShortcuts) {
-      const shortcut = control(`Open ${label}`, label, () => submit(url));
-      shortcut.className = "proxy-bookmark";
-      bookmarks.append(shortcut);
-    }
-    const apps = element("section", "proxy-playable");
-    const appLinks = element("div", "proxy-shortcuts proxy-apps");
-    for (const app of browserApps) {
-      const shortcut = control(`Open ${app.title}`, "", () => submit(app.embed));
-      shortcut.className = "proxy-shortcut";
-      shortcut.append(element("strong", "", app.title), element("span", "", app.description));
-      appLinks.append(shortcut);
-    }
-    apps.append(element("h2", "", "Apps"), appLinks);
-    const playable = element("section", "proxy-playable");
-    const playableHeading = element("div", "proxy-playable-heading");
-    const playableGames = element("a", "text-action", "Games you can play here");
-    playableGames.href = "#games?option=in-page";
-    playableHeading.append(element("h2", "", "Play inside the arcade"), playableGames);
-    playable.append(playableHeading);
-    for (const [label, entries, destination] of [
+  function playableGames(tab) {
+    const section = element("section", "proxy-playable proxy-game-shelf");
+    const heading = element("div", "proxy-playable-heading");
+    const title = element("h2", "", "Play inside the arcade");
+    title.tabIndex = -1;
+    const browse = element("a", "text-action", "Games you can play here");
+    browse.href = "#games?option=in-page";
+    heading.append(title, browse);
+    const filter = element("input", "field proxy-game-filter");
+    filter.type = "search";
+    filter.placeholder = "Find an in-page game";
+    filter.setAttribute("aria-label", filter.placeholder);
+    filter.maxLength = 80;
+    filter.value = tab.gameQuery;
+    const matchCount = element("p", "proxy-game-count");
+    matchCount.setAttribute("role", "status");
+    section.append(heading, filter, matchCount);
+
+    const groups = [
       ["Built-in games", builtInGames, game => `arcade:${game.id}`],
       ["Official game players", embeddedGames, arcadeEmbed]
-    ]) {
+    ].map(([label, entries, destination]) => {
       const group = element("section", "proxy-playable-group");
       const list = element("ul", "proxy-playable-list");
-      for (const game of entries) {
+      const items = entries.map(game => {
         const item = element("li");
         const play = control(`Play ${game.title}`, game.title, () => submit(destination(game)));
         play.className = "proxy-bookmark";
         item.append(play);
         list.append(item);
-      }
+        return { id: game.id, item };
+      });
       group.append(element("h3", "", label));
-      if (entries === embeddedGames) group.append(element("p", "", "Playback depends on the provider and your connection."));
+      if (entries === embeddedGames) group.append(element("p", "", "Playback depends on the publisher and your connection."));
       group.append(list);
-      playable.append(group);
+      section.append(group);
+      return { group, items };
+    });
+
+    function syncGames() {
+      tab.gameQuery = filter.value;
+      const query = filter.value.trim();
+      const matches = new Set(queryLibrary(inPageLibrary, { search: query }).map(game => game.id));
+      for (const { group, items } of groups) {
+        group.hidden = !items.some(({ id }) => matches.has(id));
+        for (const { id, item } of items) item.hidden = !matches.has(id);
+      }
+      if (!query) matchCount.textContent = "";
+      else if (matches.size) matchCount.textContent = `${matches.size} ${matches.size === 1 ? "game" : "games"} found.`;
+      else matchCount.textContent = "No in-page games match this search.";
     }
-    content.append(headline, message, links, bookmarks);
+
+    filter.addEventListener("input", syncGames);
+    syncGames();
+    return section;
+  }
+
+  function startShortcut(label, description, url) {
+    const shortcut = control(`Open ${label}`, "", () => submit(url));
+    shortcut.className = "proxy-shortcut";
+    shortcut.removeAttribute("aria-label");
+    shortcut.append(element("strong", "", label), " ", element("span", "", description));
+    return shortcut;
+  }
+
+  function landing(tab) {
+    const content = element("div", "proxy-start");
+    const headline = element("h2", "", "Start browsing");
+    const quick = element("section", "proxy-playable");
+    const links = element("div", "proxy-shortcuts");
+    for (const [label, url, type] of shortcuts) {
+      links.append(startShortcut(label, type, url));
+    }
+    const bookmarks = element("div", "proxy-bookmarks");
+    bookmarks.setAttribute("role", "group");
+    bookmarks.setAttribute("aria-label", "Game website bookmarks");
+    for (const [label, url] of gameShortcuts) {
+      const shortcut = control(`Open ${label}`, label, () => submit(url));
+      shortcut.className = "proxy-bookmark";
+      bookmarks.append(shortcut);
+    }
+    quick.append(element("h2", "", "Quick links"), links, bookmarks);
+    const apps = element("section", "proxy-playable");
+    const appLinks = element("div", "proxy-shortcuts proxy-apps");
+    for (const app of browserApps) {
+      appLinks.append(startShortcut(app.title, app.description, app.embed));
+    }
+    apps.append(element("h2", "", "Apps"), appLinks);
+    content.append(headline, playableGames(tab), quick, apps);
     if (browsing.favorites.length) {
       const favoritesSection = element("section", "proxy-playable");
       const list = element("ul", "proxy-playable-list proxy-start-favorites");
@@ -685,18 +723,27 @@ function createBrowser() {
       recent.append(recentHeading, list);
       content.append(recent);
     }
-    content.append(apps, playable);
     return content;
+  }
+
+  function playHereAction() {
+    const choose = control("Choose an in-page game", "Choose an in-page game", () => {
+      active.gameQuery = "";
+      visit(home);
+      active.panel.querySelector(".proxy-game-shelf h2")?.focus();
+    });
+    choose.className = "button proxy-action";
+    return choose;
   }
 
   function directPage(page) {
     const search = page.kind === "search";
     const content = element("div", "proxy-direct");
     if (page.kind === "miniplay") {
-      const homeLink = element("a", "button proxy-action", "Go to Home");
+      const homeLink = element("a", "button", "Go to Home");
       homeLink.href = "#home";
       const actions = element("div", "proxy-direct-actions");
-      actions.append(homeLink, external(page.url, "Open Miniplay in new tab", "proxy-source"));
+      actions.append(playHereAction(), homeLink, external(page.url, "Open Miniplay in new tab", "proxy-source"));
       content.append(element("h2", "", "Miniplay links are on Home"),
         element("p", "", "This destination opens on the publisher’s website."), actions);
       return content;
@@ -710,6 +757,8 @@ function createBrowser() {
       const arcadeSearch = element("a", "button", "Search arcade games");
       arcadeSearch.href = `#games?${params}`;
       actions.append(webSearch, arcadeSearch);
+    } else {
+      actions.append(playHereAction());
     }
     actions.append(external(page.url, search ? "Search Google in new tab" : "Open Base44 in new tab", "proxy-source"));
     content.append(title);
@@ -804,6 +853,25 @@ function createBrowser() {
     return () => controller.abort();
   }
 
+  function refreshPage() {
+    active.draft = undefined;
+    active.invalid = false;
+    showPage(true, true);
+  }
+
+  function previewRecovery(heading, message, retryLabel = "Retry preview") {
+    const panel = element("div", "proxy-direct proxy-recovery");
+    const actions = element("div", "proxy-direct-actions");
+    const retry = control(retryLabel, retryLabel, () => {
+      refreshPage();
+      active.panel.focus();
+    });
+    retry.className = "button";
+    actions.append(playHereAction(), retry);
+    panel.append(element("h2", "", heading), element("p", "", message), actions);
+    return panel;
+  }
+
   function mountFrame(tab, page) {
     const stage = tab.panel;
     const preview = tab.preview;
@@ -855,12 +923,12 @@ function createBrowser() {
       stopPlayer();
       preview.source = page.url;
       preview.frame = null;
-      const panel = element("div", "proxy-direct");
-      panel.append(element("h2", "", heading), element("p", "", message));
-      stage.replaceChildren(panel);
+      stage.replaceChildren(previewRecovery(heading, message));
       finish(heading);
     };
-    const unverified = "Preview unverified. If it stays blank, the site may block embedding. Open the original in a new tab.";
+    const unverified = page.kind === "game"
+      ? "Official game player preview. Playback depends on the publisher and your connection."
+      : "Preview unverified. If it stays blank, the site may block embedding. Hide it for other options.";
     const timer = setTimeout(() => {
       if (frameResponded && youtube) finish("YouTube playback could not be verified. Open the video on YouTube if it does not play here.", true);
       else fail("Preview timed out", "Try Refresh to start again, or open the original in a new tab.");
@@ -942,11 +1010,10 @@ function createBrowser() {
     const page = current();
     unloadTab(tab);
     tab.preview = { source: page.url };
-    const panel = element("div", "proxy-direct");
-    panel.append(element("h2", "", "Preview hidden"), element("p", "", "Open the original in a new tab or use Refresh to try the preview again."));
+    const panel = previewRecovery("Preview hidden", "You can still open the original in a new tab.");
     tab.panel.append(panel);
     syncPreview();
-    source.focus();
+    panel.querySelector(".proxy-action").focus();
   }
 
   function showPage(reset = false, refreshSearch = false) {
@@ -972,14 +1039,12 @@ function createBrowser() {
       unloadTab(active);
       const preview = active.preview = {};
       if (page.kind === "home") {
-        stage.append(landing());
+        stage.append(landing(active));
       } else if (page.kind === "built-in") {
         try {
           preview.release = mountLocalGame(page.id, stage);
         } catch {
-          const panel = element("div", "proxy-direct");
-          panel.append(element("h2", "", "The game did not start"), element("p", "", "Try Refresh to start the game again."));
-          stage.replaceChildren(panel);
+          stage.replaceChildren(previewRecovery("The game did not start", "Restart this game or choose another from the arcade.", "Restart game"));
         }
       } else if (page.kind === "local" || page.embed) {
         preview.release = mountFrame(active, page);
@@ -993,13 +1058,11 @@ function createBrowser() {
   }
 
   const add = control("New tab", "+", addTab);
+  const closeActive = control("Close current tab", "×", () => closeTab(active));
+  closeActive.classList.add("proxy-tab-close");
   const back = control("Back", "‹", () => navigate(-1));
   const forward = control("Forward", "›", () => navigate(1));
-  const refresh = control("Refresh", "↻", () => {
-    active.draft = undefined;
-    active.invalid = false;
-    showPage(true, true);
-  });
+  const refresh = control("Refresh", "↻", refreshPage);
   const homeButton = control("Home", "⌂", () => visit(home));
   const share = control("Share current page", "Share", showShare);
   share.classList.add("proxy-saved-trigger", "proxy-share-trigger");
@@ -1019,7 +1082,7 @@ function createBrowser() {
   const address = element("input", "field");
   address.type = "text";
   address.maxLength = addressLimit;
-  address.placeholder = "Enter an HTTPS address or search games";
+  address.placeholder = "HTTPS address or search";
   address.autocapitalize = "off";
   address.autocomplete = "off";
   address.spellcheck = false;
@@ -1040,7 +1103,7 @@ function createBrowser() {
   const savedTools = element("div", "proxy-saved-tools");
   savedTools.setAttribute("role", "group");
   savedTools.setAttribute("aria-label", "Tab tools and saved browsing");
-  const favorites = control("Favorite pages", "Favorites", () => showSaved("favorites"));
+  const favorites = control("Favorites", "Favorites", () => showSaved("favorites"));
   const history = control("Browsing history", "History", () => showSaved("history"));
   const duplicate = control("Duplicate current tab", "Duplicate", duplicateTab);
   const reopen = control("Reopen closed tab", "Reopen", reopenTab);
@@ -1052,7 +1115,7 @@ function createBrowser() {
   const dismissPreview = control("Hide preview", "Hide preview", hidePreview);
   dismissPreview.className = "button proxy-preview-dismiss";
   dismissPreview.hidden = true;
-  tabsRow.append(tabs, add, savedTools);
+  tabsRow.append(tabs, closeActive, add, savedTools);
   toolbar.append(navigation, form, panelActions);
   statusRow.append(status, source, dismissPreview);
   windowPanel.append(tabsRow, toolbar, addressError, statusRow, progress, panels);

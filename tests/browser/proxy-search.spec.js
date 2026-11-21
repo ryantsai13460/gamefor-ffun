@@ -158,6 +158,49 @@ test('Proxy Gemini keeps address errors by tab and updates the recent pages on H
   await expect(page.getByRole('heading', { name: 'Recent pages' })).toHaveCount(0);
 });
 
+test('Proxy Gemini recovers from a blocked preview and finds in-page games on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  const original = 'https://example.com/publisher-blocked-game';
+  let requests = 0;
+  await page.route(original, route => {
+    requests++;
+    return route.fulfill({ contentType: 'text/html', headers: { 'content-security-policy': "frame-ancestors 'none'" },
+      body: '<h1>Publisher blocked this game</h1>' });
+  });
+  await page.goto('/#browse');
+  const filter = page.getByRole('searchbox', { name: 'Find an in-page game' });
+  await expect(page.getByRole('button', { name: 'Play Snake' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  await filter.fill('publisher blocked game');
+  await expect(page.getByText('No in-page games match this search.')).toBeVisible();
+  const address = viewerAddress(page);
+  await address.fill(original);
+  await address.press('Enter');
+  const frame = page.locator('.proxy-frame');
+  await expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
+  await expect(frame).toHaveAttribute('src', original);
+  const hide = page.getByRole('button', { name: 'Hide preview' });
+  await hide.click();
+  await expect(frame).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Open in new tab', exact: true })).toHaveAttribute('href', original);
+  await page.getByRole('button', { name: 'Retry preview' }).click();
+  await hide.click();
+  expect(requests).toBe(2);
+  await page.getByRole('button', { name: 'Choose an in-page game' }).click();
+  await expect(page.getByRole('heading', { name: 'Play inside the arcade' })).toBeFocused();
+  await expect(filter).toHaveValue('');
+  await filter.fill('2048');
+  await expect(page.getByText('1 game found.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Play Snake' })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  await page.getByRole('button', { name: 'Play 2048', exact: true }).click();
+  await expect(page.getByRole('group', { name: '2048 controls' })).toBeVisible();
+  await expect(address).toHaveValue('arcade:2048');
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(filter).toHaveValue('2048');
+  expect(requests).toBe(2);
+});
+
 test('Google search offers a direct destination and clears the current search', async ({ page }) => {
   await page.goto('/#web-search?mode=google');
   const query = page.getByRole('searchbox', { name: 'Google query' });

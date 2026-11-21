@@ -15,6 +15,39 @@ test.beforeEach(async ({ page }) => {
   await page.route('https://**/*', route => route.fulfill({ status: 503 }));
 });
 
+test('Web Search offers examples and keeps clearable recent queries across tabs', async ({ page }) => {
+  await page.goto('/#web-search');
+  const ideas = page.getByRole('region', { name: 'Try a search' });
+  await ideas.getByRole('button', { name: 'MrBeast', exact: true }).click();
+  const input = page.getByRole('combobox', { name: 'Search the web' });
+  await expect(input).toHaveValue('MrBeast');
+  await page.getByRole('button', { name: 'Clear web search', exact: true }).click();
+  const history = page.getByRole('region', { name: 'Recent searches' });
+  await expect(history.getByRole('button', { name: 'MrBeast', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'New search tab' }).click();
+  const tabs = page.getByRole('tablist', { name: 'Web Search tabs' });
+  await expect(tabs.getByRole('tab')).toHaveCount(2);
+  await expect(tabs.getByRole('button', { name: /^Close/ })).toHaveCount(0);
+  await expect(history.getByRole('button', { name: 'MrBeast', exact: true })).toBeVisible();
+  await search(page, 'https://youtu.be/dQw4w9WgXcQ?share=example');
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Clear web search', exact: true }).click();
+  await expect(history.getByRole('button', { name: /youtu\.be/ })).toHaveCount(0);
+  await tabs.getByRole('tab', { selected: true }).press('Delete');
+  await expect(tabs.getByRole('tab')).toHaveCount(1);
+  await expect(tabs.getByRole('tab', { selected: true })).toBeFocused();
+
+  await page.reload();
+  await expect(history.getByRole('button', { name: 'MrBeast', exact: true })).toBeVisible();
+  await history.getByRole('button', { name: 'Clear search history' }).click();
+  await expect(ideas).toBeVisible();
+  await expect(input).toBeFocused();
+  await page.reload();
+  await expect(ideas).toBeVisible();
+  await expect(history).toHaveCount(0);
+});
+
 test('Web Search opens matching tracks and complete films from the real catalogs', async ({ page }) => {
   await page.goto('/#web-search');
   await search(page, 'Radioactive Imagine Dragons');

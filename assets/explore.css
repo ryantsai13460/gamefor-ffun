@@ -42,15 +42,13 @@
   gap: 14px;
 }
 
-.explore-section > h2,
-.home-destinations > h2 {
+.explore-section > h2 {
   font-size: clamp(1.35rem, 2vw, 1.8rem);
   letter-spacing: -.03em;
 }
 
 .explore-feature-grid,
-.explore-topic-grid,
-.home-destination-grid {
+.explore-topic-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
@@ -133,23 +131,13 @@
 }
 .explore-hero-cover .explore-tile-text strong { font-size: clamp(1.15rem, 2.2vw, 1.65rem); }
 
-.home-destinations { display: grid; gap: 13px; margin-bottom: 24px; }
-.home-destination-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.home-destination-grid .explore-tile {
-  min-height: 66px;
-  align-items: center;
-  justify-content: start;
-  gap: 10px;
-  font-weight: 650;
-}
-
 @media (max-width: 1140px) {
   .explore-topic-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 @media (max-width: 740px) {
   .explore-hero { grid-template-columns: 1fr; }
-  .explore-feature-grid, .explore-topic-grid, .home-destination-grid {
+  .explore-feature-grid, .explore-topic-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

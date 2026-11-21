@@ -560,5 +560,6 @@ export const games = [
   {"id": "harbor-dispatch", "title": "Harbor Dispatch", "category": "Strategy", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/harbor-dispatch.webp", "artCredit": "Gamefor Ffun gameplay"},
   {"id": "tidal-rescue", "title": "Tidal Rescue", "category": "Adventure", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/tidal-rescue.webp", "artCredit": "Gamefor Ffun gameplay"},
   {"id": "picnic-pack", "title": "Picnic Pack", "category": "Puzzle", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/picnic-pack.webp", "artCredit": "Gamefor Ffun gameplay"},
-  {"id": "kite-breeze", "title": "Kite Breeze", "category": "Arcade", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/kite-breeze.webp", "artCredit": "Gamefor Ffun gameplay"}
+  {"id": "kite-breeze", "title": "Kite Breeze", "category": "Arcade", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/kite-breeze.webp", "artCredit": "Gamefor Ffun gameplay"},
+  {"id": "clover-roll", "title": "Clover Roll", "description": "Tilt the garden to collect clovers and roll your marble into the bowl across four untimed puzzles.", "category": "Puzzle", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/clover-roll.webp", "artCredit": "Gamefor Ffun gameplay"}
 ];

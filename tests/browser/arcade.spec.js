@@ -131,14 +131,25 @@ test('standalone game and Proxy Gemini tabs, history and website previews', asyn
   await game.locator('#star').click();
   await expect(game.locator('#score')).toContainText('1');
   await go(page, 'Proxy Gemini');
-  await page.getByRole('button', { name: 'Open Catch the Star', exact: true }).click();
+  await page.getByRole('button', { name: 'Catch the Star Local arcade', exact: true }).click();
   const frame = page.frameLocator('.proxy-stage iframe');
   await frame.locator('#star').click();
   await expect(frame.locator('#score')).toContainText('1');
   await page.getByRole('button', { name: 'New tab', exact: true }).click();
-  await page.getByRole('tab', { name: 'Catch the Star', exact: true }).click();
+  const tabs = page.getByRole('tablist', { name: 'Browser tabs' });
+  const gameTab = tabs.getByRole('tab', { name: 'Catch the Star', exact: true });
+  const startTab = tabs.getByRole('tab', { name: 'Start page', exact: true });
+  await expect(tabs.getByRole('button')).toHaveCount(0);
+  await gameTab.click();
   await expect(frame.locator('#score')).toContainText('1');
-  await page.getByRole('button', { name: 'Close Start page tab', exact: true }).click();
+  await page.getByRole('button', { name: 'Favorites', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Favorite pages' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await gameTab.press('ArrowRight');
+  await expect(startTab).toBeFocused();
+  await startTab.press('Delete');
+  await expect(startTab).toHaveCount(0);
+  await expect(gameTab).toBeFocused();
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(frame.locator('#score')).toContainText('0');
   await page.getByRole('button', { name: 'Back', exact: true }).click();
@@ -175,7 +186,8 @@ test('standalone game and Proxy Gemini tabs, history and website previews', asyn
 });
 
 test('Proxy Gemini respects frame blocking and keeps links and search explicit', async ({ page }) => {
-  await page.route('https://example.com/blocked', route => route.fulfill({
+  const blocked = 'https://example.com/blocked';
+  await page.route(blocked, route => route.fulfill({
     contentType: 'text/html',
     headers: { 'Content-Security-Policy': "frame-ancestors 'none'" },
     body: '<h1>Restricted preview content</h1>'
@@ -184,7 +196,7 @@ test('Proxy Gemini respects frame blocking and keeps links and search explicit',
   await expect(page.locator('.proxy-playable-group').nth(0).getByRole('button')).toHaveCount(games.filter(game => game.local).length);
   await expect(page.locator('.proxy-playable-group').nth(1).getByRole('button')).toHaveCount(2);
   for (const app of browserApps) {
-    await page.getByRole('button', { name: 'Open ' + app.title, exact: true }).click();
+    await page.getByRole('button', { name: `${app.title} ${app.description}`, exact: true }).click();
     await expect(page.locator('.proxy-frame')).toHaveAttribute('src', app.embed);
     await expect(page).toHaveURL(/#browse$/);
     await page.getByRole('button', { name: 'Back', exact: true }).click();
@@ -194,16 +206,23 @@ test('Proxy Gemini respects frame blocking and keeps links and search explicit',
   await expect(page).toHaveURL(/#browse$/);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByRole('group', { name: '2048 controls' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Open Stacktris', exact: true }).click();
+  await page.getByRole('button', { name: 'Stacktris Game player', exact: true }).click();
   await expect(page.locator('.proxy-frame')).toHaveAttribute('src', 'https://play.fancade.com/5BEC8352E4E078B1');
   const address = page.getByRole('textbox', { name: 'Address or search query' });
   await address.fill('https://www.miniplay.com/game/snow-rider-3d');
   await address.press('Enter');
   await expect(page.getByRole('heading', { name: 'Miniplay links are on Home' })).toBeVisible();
   await expect(page.locator('.proxy-frame')).toHaveCount(0);
-  await address.fill('https://example.com/blocked');
+  await address.fill(blocked);
+  const requestedBlockedPage = page.waitForRequest(blocked);
   await address.press('Enter');
-  await expect(page.getByText(/the site may block embedding/)).toBeVisible();
+  await requestedBlockedPage;
+  const original = page.getByRole('link', { name: 'Open in new tab', exact: true });
+  await expect(original).toHaveAttribute('href', blocked);
+  await expect(original).toHaveAttribute('target', '_blank');
+  const hide = page.getByRole('button', { name: 'Hide preview' });
+  const chooseGame = page.getByRole('button', { name: 'Choose an in-page game' });
+  await expect(hide.or(chooseGame)).toBeVisible({ timeout: 15_000 });
   await expect(page.frameLocator('.proxy-frame').getByRole('heading', { name: 'Restricted preview content' })).not.toBeVisible();
   await expect(page).toHaveURL(/#browse$/);
 
@@ -638,14 +657,20 @@ test('Google essay searches show an answer, videos and writing tools together', 
 });
 
 test('Google and Proxy Gemini link to built-in and publisher-authorized in-page games', async ({ page }) => {
-  const inPage = games.filter(game => game.local || arcadeEmbed(game)).length;
+  const inPage = games.filter(game => game.local || arcadeEmbed(game));
+  const cards = page.locator('.game-card');
+  const next = page.getByRole('navigation', { name: 'Game pages' }).getByRole('button', { name: 'Next', exact: true });
   for (const route of ['web-search?mode=google', 'browse']) {
     await page.goto('/#' + route);
     await page.getByRole('link', { name: 'Games you can play here', exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'Play option' })).toHaveValue('in-page');
-    await expect(page.locator('.library-results')).toHaveText(`1–${inPage} of ${inPage} games`);
-    await expect(page.locator('.game-card')).toHaveCount(inPage);
-    await expect(page.locator('.game-card').getByText('External', { exact: true })).toHaveCount(0);
+    for (let start = 0; start < inPage.length; start += 24) {
+      if (start) await next.click();
+      const end = Math.min(start + 24, inPage.length);
+      await expect(page.locator('.library-results')).toHaveText(`${start + 1}–${end} of ${inPage.length} games`);
+      await expect(cards.getByRole('heading')).toHaveText(inPage.slice(start, end).map(game => game.title));
+      await expect(cards.getByText('External', { exact: true })).toHaveCount(0);
+    }
   }
 });
 
