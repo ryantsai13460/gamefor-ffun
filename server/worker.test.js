@@ -167,6 +167,7 @@ test('authenticated capabilities describe configured routes without contacting a
   const direct = await worker.fetch(post('/api/capabilities', {}), env);
   assert.deepEqual(await direct.json(), {
     chat: true, advanced: true, research: false, search: false, youtube: true,
+    chatProvider: 'openai',
     standardOutputTokens: 700, advancedOutputTokens: 2400,
     modes: ['quick', 'think', 'brainstorm', 'study', 'code', 'creative', 'games'],
   });
@@ -174,6 +175,112 @@ test('authenticated capabilities describe configured routes without contacting a
   assert.equal(unconfigured.status, 503);
   assert.equal(rateLimitCalls, 0);
   assert.equal(provider.mock.callCount(), 0);
+});
+
+test('Workers AI reports configured chat and uses the binding with bounded generation inputs', async context => {
+  const fetch = context.mock.method(globalThis, 'fetch', async () => {
+    throw new Error('Unexpected external request');
+  });
+  const calls = [];
+  const env = settings({
+    OPENAI_API_KEY: '',
+    AI: {
+      async run(model, input) {
+        calls.push({ model, input });
+        return { response: 'Play two practice games and review the turning points.', modelMetadata: 'upstream only' };
+      },
+    },
+  });
+  const caps = await worker.fetch(post('/api/capabilities', {}), env);
+  const features = await caps.json();
+  assert.equal(features.chat, true);
+  assert.equal(features.chatProvider, 'workers-ai');
+  assert.equal(features.advanced, false);
+  assert.equal(features.research, true);
+  assert.equal(features.standardOutputTokens, 512);
+  assert.equal(features.advancedOutputTokens, undefined);
+  assert.equal(calls.length, 0);
+
+  const unauthorized = await worker.fetch(post('/api/chat', { messages: [userMessage] }, { Authorization: 'Bearer nope' }), env);
+  assert.equal(unauthorized.status, 401);
+  const limited = await worker.fetch(post('/api/chat', { messages: [userMessage] }),
+    { ...env, CLIENT_RATE_LIMITER: { async limit() { return { success: false }; } } });
+  assert.equal(limited.status, 429);
+  const advanced = await worker.fetch(post('/api/chat', { messages: [userMessage], depth: 'advanced' }), env);
+  assert.equal(advanced.status, 400);
+  assert.equal(calls.length, 0);
+
+  const standard = await worker.fetch(post('/api/chat', {
+    messages: [userMessage], mode: 'study', model: 'untrusted-model', max_tokens: 100_000,
+  }), env);
+  assert.deepEqual(await standard.json(), { text: 'Play two practice games and review the turning points.' });
+  assert.equal(calls.length, 1);
+  const [{ model, input }] = calls;
+  assert.equal(model, '@cf/ibm-granite/granite-4.0-h-micro');
+  assert.equal(input.stream, false);
+  assert.equal(input.max_tokens, 512);
+  assert.match(input.messages[0].content, /practice question/);
+  assert.deepEqual(input.messages.slice(1), [userMessage]);
+  assert.equal(fetch.mock.callCount(), 0);
+});
+
+test('Workers AI streams native response deltas in the shared gateway protocol', async context => {
+  const fetch = context.mock.method(globalThis, 'fetch', async () => {
+    throw new Error('Workers AI selected explicitly. OpenAI must not be called.');
+  });
+  const response = await worker.fetch(post('/api/chat', { messages: [userMessage], stream: true }), settings({
+    CHAT_PROVIDER: 'workers-ai',
+    AI: {
+      async run(_model, input) {
+        assert.equal(input.stream, true);
+        return new Response('data: {"response":"Review","private":"hidden"}\n\ndata: {"response":" each game."}\n\ndata: [DONE]\n\n').body;
+      },
+    },
+  }));
+  assert.equal(response.headers.get('content-type'), 'text/event-stream; charset=utf-8');
+  assert.deepEqual((await response.text()).trim().split('\n\n'), [
+    'data: {"choices":[{"delta":{"content":"Review"}}]}',
+    'data: {"choices":[{"delta":{"content":" each game."}}]}',
+    'data: [DONE]',
+  ]);
+  assert.equal(fetch.mock.callCount(), 0);
+});
+
+test('Workers AI quota and timeout errors disclose no upstream detail and cannot switch to a billable provider', async context => {
+  const fetch = context.mock.method(globalThis, 'fetch', async () => {
+    throw new Error('Unwanted OpenAI fallback');
+  });
+  const deadline = new AbortController();
+  const originalTimeout = AbortSignal.timeout;
+  context.mock.method(AbortSignal, 'timeout', ms => ms === 45_000 ? deadline.signal : originalTimeout(ms));
+  let invocation;
+  let abortLateStream = false;
+  let completeInference;
+  const inferenceStarted = new Promise(resolve => { invocation = resolve; });
+  const env = settings({
+    CHAT_PROVIDER: 'workers-ai',
+    AI: { async run() { throw Object.assign(new Error('Private provider response'), { code: 3036 }); } },
+  });
+  const response = await worker.fetch(post('/api/chat', { messages: [userMessage], stream: true }), env);
+  assert.equal(response.status, 503);
+  assert.match((await response.json()).error, /daily Workers AI allocation/);
+  assert.equal(fetch.mock.callCount(), 0);
+  const slow = worker.fetch(post('/api/chat', { messages: [userMessage], stream: true }), {
+    ...env,
+    AI: {
+      run() {
+        invocation();
+        return new Promise(resolve => { completeInference = resolve; });
+      },
+    },
+  });
+  await inferenceStarted;
+  deadline.abort(new DOMException('Timed out', 'TimeoutError'));
+  assert.equal((await slow).status, 504);
+  completeInference(new ReadableStream({ cancel() { abortLateStream = true; } }));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(abortLateStream, true);
+  assert.equal(fetch.mock.callCount(), 0);
 });
 
 test('specialized Blip modes reach the authorized model with corresponding instructions', async context => {

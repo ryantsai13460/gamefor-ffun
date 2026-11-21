@@ -387,6 +387,79 @@ test('connected Blip streams authorized replies and regenerates the last answer'
   expect(requests).toBe(3);
 });
 
+test('Blip offers no-download Workers AI after opt-in and keeps attached chats local', async ({ page }) => {
+  let hostedRequests = 0;
+  let localModelDownloads = 0;
+  const headers = {
+    'access-control-allow-origin': '*',
+    'access-control-allow-headers': 'authorization, content-type',
+    'access-control-allow-methods': 'POST, OPTIONS'
+  };
+  page.on('request', request => {
+    if (/\.gguf(?:[?#]|$)|mlc-ai.*SmolLM2/.test(request.url())) localModelDownloads++;
+  });
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'LanguageModel', { configurable: true, value: undefined });
+  });
+  await page.route('https://gateway.example/api/capabilities', route => {
+    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
+    return route.fulfill({ headers, json: {
+      chat: true, chatProvider: 'workers-ai', advanced: false, research: false, search: false, youtube: false, standardOutputTokens: 512
+    } });
+  });
+  await page.route('https://gateway.example/api/chat', async route => {
+    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
+    hostedRequests++;
+    expect(route.request().headers().authorization).toBe('Bearer fixture-access');
+    expect(route.request().postDataJSON().messages.at(-1).content).toBe('How do I improve my chess opening?');
+    await route.fulfill({ headers, contentType: 'text/event-stream',
+      body: 'data: {"choices":[{"delta":{"content":"Develop your minor pieces early."}}]}\n\ndata: [DONE]\n\n' });
+  });
+
+  await page.goto('/#blip');
+  let settings = page.locator('.blip-settings-popover > summary');
+  const optIn = page.getByRole('checkbox', { name: 'Use the connected model for chats without files' });
+  await page.getByRole('button', { name: 'Set up online chat' }).click();
+  await expect(page.getByLabel('Backend URL')).toBeFocused();
+  await expect(optIn).toBeDisabled();
+  await page.getByLabel('Backend URL').fill('https://gateway.example');
+  await page.getByLabel('Backend access code').fill('fixture-access');
+  await page.getByRole('button', { name: 'Connect backend' }).click();
+  await expect(page.getByText(/Workers AI is configured/)).toBeVisible();
+  await expect(optIn).not.toBeChecked();
+  expect(hostedRequests).toBe(0);
+  await optIn.check();
+  await expect(page.getByRole('checkbox', { name: 'Use Advanced replies' })).toBeDisabled();
+  await settings.click();
+  let input = page.getByRole('textbox', { name: 'Message blip.ai' });
+  await input.fill('How do I improve my chess opening?');
+  await input.press('Enter');
+  await expect(page.getByText('Develop your minor pieces early.')).toBeVisible();
+
+  await page.getByRole('link', { name: 'Home', exact: true }).click();
+  await page.getByRole('link', { name: 'blip.ai', exact: true }).click();
+  settings = page.locator('.blip-settings-popover > summary');
+  await settings.click();
+  await expect(optIn).toBeChecked();
+  await settings.click();
+  await page.locator('input[type=file]').setInputFiles({
+    name: 'private-notes.txt', mimeType: 'text/plain', buffer: Buffer.from('This attachment stays on the device.')
+  });
+  await expect(page.getByRole('button', { name: 'Preview private-notes.txt' })).toBeVisible();
+  input = page.getByRole('textbox', { name: 'Message blip.ai' });
+  await input.fill('Summarize the attachment');
+  await input.press('Enter');
+  await expect(page.locator('.blip-message--assistant').last()).toContainText('This attachment stays on the device.');
+  expect(hostedRequests).toBe(1);
+  expect(localModelDownloads).toBe(0);
+
+  await page.reload();
+  await settings.click();
+  await expect(optIn).toBeDisabled();
+  await expect(optIn).not.toBeChecked();
+  expect(await page.evaluate(() => localStorage.getItem('ffun.gateway.url'))).toBe('https://gateway.example');
+});
+
 test('Blip resends an edited message in a new chat with the earlier context', async ({ page }) => {
   await page.goto('/#blip');
   const input = page.getByRole('textbox', { name: 'Message blip.ai' });

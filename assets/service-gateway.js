@@ -14,6 +14,14 @@ export function gatewayConnected() {
   return Boolean(connection);
 }
 
+export function gatewayChatOptIn() {
+  return connection?.chatOptIn === true;
+}
+
+export function setGatewayChatOptIn(enabled) {
+  if (connection) connection.chatOptIn = enabled === true;
+}
+
 function configuredUrl(value) {
   try {
     const url = new URL(value);
@@ -84,7 +92,7 @@ export function renderGatewaySettings(target, label = 'Connect an authorized bac
       ].filter(Boolean) : null;
       status.textContent = !features ? 'This backend does not report its features. Check its version for advanced chat.'
         : features.length ? 'The gateway reports ' + features.join(', ') + ' configured.'
-        : 'The gateway is reachable. Add provider keys to enable its features.';
+        : 'The gateway is reachable. Configure a provider on the backend to enable its features.';
       onCapabilities?.(available);
     } catch (error) {
       if (connection === current) status.textContent = error.message;
@@ -180,6 +188,7 @@ export async function getGatewayCapabilities(signal) {
     throw new Error('The backend returned invalid capability information.');
   }
   const available = Object.fromEntries(flags.map(flag => [flag, data[flag]]));
+  if (available.chat && ['workers-ai', 'openai'].includes(data.chatProvider)) available.chatProvider = data.chatProvider;
   for (const key of ['standardOutputTokens', 'advancedOutputTokens']) {
     if (Number.isInteger(data[key]) && data[key] > 0 && data[key] <= 2400) available[key] = data[key];
   }
