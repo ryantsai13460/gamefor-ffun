@@ -1,4 +1,4 @@
-// Dedicated lyric-channel uploads verified against YouTube oEmbed.
+// Lyric video uploads verified against YouTube oEmbed.
 export const otherChannelLyrics = [
   {"id": "FkoEFXA9cdU", "title": "Housewife", "artist": "Tate McRae", "channel": "Unique Vibes", "channelUrl": "https://www.youtube.com/@itsUniqueVibes"},
   {"id": "F0N7aNy-9tg", "title": "Dracula", "artist": "Tame Impala & JENNIE", "channel": "Arcade Music", "channelUrl": "https://www.youtube.com/@arcademusic6688"},
@@ -24,8 +24,8 @@ export const otherChannelLyrics = [
   {"id": "Z3zoL0PXiTI", "title": "Eternity", "artist": "Alex Warren", "channel": "Cloudy Hits", "channelUrl": "https://www.youtube.com/@CloudyHits"},
   {"id": "Cx9Nj9raJ0o", "title": "Survive", "artist": "Lewis Capaldi", "channel": "Cloudy Hits", "channelUrl": "https://www.youtube.com/@CloudyHits"},
   {"id": "JJ3z9d6BN24", "title": "Cover Me in Sunshine", "artist": "P!nk & Willow Sage Hart", "channel": "AweLyrics", "channelUrl": "https://www.youtube.com/@AweLyrics"},
-  {"id": "rPlwqDjzJ14", "title": "Hall of Fame", "artist": "The Script feat. will.i.am", "channel": "7clouds Rock", "channelUrl": "https://www.youtube.com/@7cloudsRock"},
-  {"id": "bsd0d_N8QKI", "title": "Unstoppable", "artist": "Sia", "channel": "7clouds R&B", "channelUrl": "https://www.youtube.com/@7cloudsRNB"},
+  {"id": "dtgoDXEOxTM", "title": "Hall of Fame", "artist": "The Script feat. will.i.am", "channel": "TheScriptVEVO", "channelUrl": "https://www.youtube.com/@TheScriptVEVO"},
+  {"id": "lIaGs-bWxEk", "title": "Unstoppable", "artist": "Sia", "channel": "Sia", "channelUrl": "https://www.youtube.com/@sia"},
   {"id": "wvl48FYDo5Y", "title": "A Sky Full of Stars", "artist": "Coldplay", "channel": "Taj Tracks", "channelUrl": "https://www.youtube.com/@TajTracks"},
   {"id": "eMY-qbs75ug", "title": "Try Everything", "artist": "Shakira", "channel": "Pillow", "channelUrl": "https://www.youtube.com/@PillowMusic"},
   {"id": "cNgRWYIQCds", "title": "Count on Me", "artist": "Bruno Mars", "channel": "Pillow", "channelUrl": "https://www.youtube.com/@PillowMusic"}

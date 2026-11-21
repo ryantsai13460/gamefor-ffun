@@ -92,7 +92,7 @@ export function restorePreferences(saved, byId) {
     theme: themeOptions.some(([id]) => id === saved?.theme) ? saved.theme : 'midnight',
     mode: arcadeModes.some(({ id }) => id === saved?.mode) ? saved.mode : 'arcade',
     hiddenHome: Array.isArray(saved?.hiddenHome) ? [...new Set(saved.hiddenHome
-      .filter(id => ['destinations', 'featured', 'recent', 'popular', 'new', 'built-in', 'media'].includes(id)))] : [],
+      .filter(id => ['destinations', 'featured', 'racing', 'recent', 'popular', 'new', 'built-in', 'media'].includes(id)))] : [],
     launches
   };
 }

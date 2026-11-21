@@ -36,7 +36,7 @@ test('navigation, catalog pagination, filtering, favorites, play history and set
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(page.locator('.library-results')).toHaveText(`25–48 of ${games.length} games`);
   await page.getByRole('button', { name: 'Previous', exact: true }).click();
-  await expect(page.locator('.pagination-output')).toHaveText('Page 1 of 24');
+  await expect(page.locator('.pagination-output')).toHaveText(`Page 1 of ${Math.ceil(games.length / 24)}`);
 
   await go(page, 'Categories');
   await page.getByRole('link', { name: /^Puzzle \d+ games$/ }).click();
@@ -198,7 +198,16 @@ test('Proxy Gemini respects frame blocking and keeps links and search explicit',
   }));
   await page.goto('/#browse');
   await expect(page.locator('.proxy-playable-group').nth(0).getByRole('button')).toHaveCount(games.filter(game => game.local).length);
-  await expect(page.locator('.proxy-playable-group').nth(1).getByRole('button')).toHaveCount(games.filter(arcadeEmbed).length);
+  const hostedGames = page.locator('.proxy-playable-group').nth(1).locator('li');
+  await expect(hostedGames).toHaveCount(24);
+  await page.getByRole('button', { name: 'Show more in-page games' }).click();
+  await expect(hostedGames).toHaveCount(48);
+  await expect(hostedGames.nth(24).getByRole('button')).toBeFocused();
+  const gameFilter = page.getByRole('searchbox', { name: 'Find an in-page game' });
+  await gameFilter.fill('starter kit racing');
+  await expect(hostedGames.getByRole('button', { name: 'Play Starter Kit Racing', exact: true })).toBeVisible();
+  await gameFilter.clear();
+  await expect(hostedGames).toHaveCount(24);
   for (const app of browserApps) {
     await page.getByRole('button', { name: `${app.title} ${app.description}`, exact: true }).click();
     await expect(page.locator('.proxy-frame')).toHaveAttribute('src', app.embed);
@@ -340,7 +349,7 @@ test('Explore connects the new videos, collections, cinema, arcade and tools', a
   await expect(film.getByRole('link', { name: 'Watch on NFB' })).toHaveAttribute('href', 'https://www.nfb.ca/film/the-cat-came-back/');
 });
 
-test('every built-in player mounts and publisher embeds retain a direct source', async ({ page }) => {
+test('every built-in player mounts and each publisher collection uses a direct player', async ({ page }) => {
   await page.goto('/');
   for (const game of games.filter(({ local }) => local === true)) {
     await page.goto(`/#play/${game.id}`);
@@ -352,11 +361,17 @@ test('every built-in player mounts and publisher embeds retain a direct source',
       await expect(page.locator('.player-stage canvas')).toBeVisible();
     }
   }
+  const visitedCollections = new Set();
   for (const game of games.filter(arcadeEmbed)) {
+    if (game.isNew && visitedCollections.has(game.collection)) continue;
+    if (game.isNew) visitedCollections.add(game.collection);
     await page.goto(`/#play/${game.id}`);
     await page.getByRole('button', { name: 'Play game', exact: true }).click();
-    await expect(page.locator('.player-stage iframe')).toHaveAttribute('src', game.embed);
-    await expect(page.getByRole('link', { name: 'Open game source' })).toHaveCount(0);
+    await expect(page.locator('.player-stage iframe')).toHaveAttribute('src', arcadeEmbed(game));
+    if (game.attribution) {
+      await expect(page.getByRole('link', { name: `Game from ${game.creator}`, exact: true })).toHaveAttribute('href', game.url);
+    }
+    await expect(page).toHaveURL(new RegExp(`#play/${game.id}$`));
   }
 });
 
@@ -752,6 +767,7 @@ test('Music replaces lyric videos with creator uploads and keeps the searchable 
   await expect(page.getByText('Showing 25 of 84 lyric videos')).toBeVisible();
   const lyricVideos = page.getByRole('list', { name: 'Lyric videos' });
   await expect(lyricVideos.locator('img')).toHaveCount(0);
+  await expect(page.getByLabel('Lyric channel').getByRole('option', { name: /^7clouds/ })).toHaveCount(1);
   await page.getByLabel('Lyric channel').selectOption('7clouds');
   await expect(page.getByText('Showing 25 of 55 lyric videos')).toBeVisible();
   await expect(lyricVideos.getByRole('link', { name: '7clouds', exact: true })).toHaveCount(25);
@@ -763,11 +779,11 @@ test('Music replaces lyric videos with creator uploads and keeps the searchable 
   await page.getByLabel('Lyric channel').selectOption('Unique Vibes');
   await expect(lyricVideos.getByRole('link', { name: '7clouds', exact: true })).toHaveCount(0);
   await expect(lyricVideos.getByRole('link', { name: 'Unique Vibes', exact: true }).first()).toBeVisible();
-  await page.getByLabel('Lyric channel').selectOption('7clouds Rock');
+  await page.getByLabel('Lyric channel').selectOption('TheScriptVEVO');
   await lyricVideos.getByRole('button', { name: /Play lyrics video for Hall of Fame/ }).click();
   const hallOfFame = page.getByRole('dialog', { name: 'Lyrics for Hall of Fame' });
-  await expect(hallOfFame.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/rPlwqDjzJ14/);
-  await expect(hallOfFame.getByRole('link', { name: 'Watch on YouTube · 7clouds Rock' })).toBeVisible();
+  await expect(hallOfFame.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/dtgoDXEOxTM/);
+  await expect(hallOfFame.getByRole('link', { name: 'Watch on YouTube · TheScriptVEVO' })).toBeVisible();
   await hallOfFame.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.getByRole('link', { name: /^Find lyric videos for / })).toHaveCount(0);
   await page.getByRole('button', { name: 'All chart songs', exact: true }).click();
