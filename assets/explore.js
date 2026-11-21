@@ -67,11 +67,12 @@ export function renderExplore(target, { gamesSection, localCount, arcadeFeature 
   hero.append(copy, cover);
 
   const watch = section('Watch');
-  const watchList = create('div', 'explore-feature-grid');
+  const watchList = create('div', 'explore-feature-grid explore-watch-grid');
   for (const entry of [
     { name: 'YouTube library', description: `${number.format(count)} videos and Shorts`, href: videoLibraryLink(''), color: 'video' },
     { name: 'Shorts feed', description: 'Scroll through short videos', href: videoLibraryLink('', 'shorts'), color: 'short' },
-    { name: 'Cinema', description: `${number.format(filmCatalog.length)} films and trailers`, href: '#movies', art: featuredFilm.art, color: 'film' }
+    { name: 'Cinema', description: `${number.format(filmCatalog.length)} films and trailers`, href: '#movies', art: featuredFilm.art, color: 'film' },
+    { name: 'Music', description: 'Search and play family-friendly tracks', href: '#music', color: 'ai' }
   ]) watchList.append(tile(entry));
   watch.append(watchList);
 
@@ -93,7 +94,7 @@ export function renderExplore(target, { gamesSection, localCount, arcadeFeature 
   const toolsList = create('div', 'explore-feature-grid');
   for (const entry of [
     { name: 'Web Search', description: 'Search articles and YouTube in tabs', href: '#web-search', color: 'search' },
-    { name: 'Google Search', description: 'Google results, Images, News, and Shopping', href: '#web-search?mode=google', color: 'google' },
+    { name: 'Google Search', description: 'Arcade search and optional in-page Google results', href: '#web-search?mode=google', color: 'google' },
     { name: 'blip.ai chat', description: 'Save chats, choose a thinking method, and listen to music', href: '#blip', color: 'ai' }
   ]) toolsList.append(tile(entry));
   tools.append(toolsList);

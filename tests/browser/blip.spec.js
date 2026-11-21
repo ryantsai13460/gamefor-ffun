@@ -78,6 +78,12 @@ test('blip.ai works on a phone and looks up sources only when enabled', async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/#blip');
   const input = page.getByRole('textbox', { name: 'Message blip.ai' });
+  await input.fill('hi');
+  await input.press('Enter');
+  await expect(page.getByText('Hey! Want to plan something, practice a topic, or try a quick calculation?')).toBeVisible();
+  await input.fill('wsp');
+  await input.press('Enter');
+  await expect(page.getByText('Local reply', { exact: true })).toHaveCount(2);
   await input.fill('Convert 5 miles to km.');
   await input.press('Enter');
   await expect(page.getByText('5 mi = 8.04672 km')).toBeVisible();
@@ -85,9 +91,9 @@ test('blip.ai works on a phone and looks up sources only when enabled', async ({
   await input.press('Enter');
   await expect(page.getByText('Blip unavailable', { exact: true })).toBeVisible();
   expect(lookups).toBe(0);
-  await page.getByText('AI settings', { exact: true }).click();
+  await page.getByText(/^(AI settings|Set up AI)$/).click();
   await page.getByRole('checkbox', { name: 'Use Wikipedia as a fallback' }).check();
-  await page.getByText('AI settings', { exact: true }).click();
+  await page.getByText(/^(AI settings|Set up AI)$/).click();
   await input.fill('What is violin');
   await input.press('Enter');
   await expect(page.getByRole('link', { name: 'Wikipedia · Violin' })).toHaveAttribute('href', 'https://en.wikipedia.org/?curid=32747');
@@ -97,6 +103,38 @@ test('blip.ai works on a phone and looks up sources only when enabled', async ({
   await chats.click();
   await expect(page.getByRole('complementary', { name: 'Saved conversations' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+});
+
+test('blip.ai keeps attached text in its saved chat and skips external lookup', async ({ page }) => {
+  let lookups = 0;
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'LanguageModel', { configurable: true, value: undefined });
+  });
+  await page.route(url => url.hostname === 'en.wikipedia.org', route => {
+    lookups++;
+    return route.abort();
+  });
+  await page.goto('/#blip');
+  await page.getByText(/^(AI settings|Set up AI)$/).click();
+  await page.getByRole('checkbox', { name: 'Use Wikipedia as a fallback' }).check();
+  await page.getByText(/^(AI settings|Set up AI)$/).click();
+  const picker = page.locator('input[type=file]');
+  await picker.setInputFiles({
+    name: 'study-notes.txt', mimeType: 'text/plain',
+    buffer: Buffer.from('A cello has four strings.\nPractice slowly for ten minutes.')
+  });
+  await expect(page.getByRole('button', { name: 'Remove study-notes.txt' })).toBeVisible();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByText(/2 lines · \d+ words in the loaded text/)).toBeVisible();
+  const input = page.getByRole('textbox', { name: 'Message blip.ai' });
+  await input.fill('What is a cello?');
+  await input.press('Enter');
+  await expect(page.getByText(/2 lines · \d+ words in the loaded text/)).toHaveCount(2);
+  expect(lookups).toBe(0);
+  await page.reload();
+  const attachment = page.locator('.blip-file-preview').filter({ hasText: 'study-notes.txt' });
+  await attachment.locator('summary').click();
+  await expect(attachment.getByText(/A cello has four strings/)).toBeVisible();
 });
 
 test('replies stay with their original chat, and Stop cancels an in-progress reply', async ({ page }) => {
@@ -147,19 +185,20 @@ test('replies stay with their original chat, and Stop cancels an in-progress rep
 
 test('blip.ai background music is opt-in and keeps playing while switching chats', async ({ page }) => {
   await page.goto('/#blip');
-  await page.getByText('Music', { exact: true }).click();
+  const music = page.locator('.blip-music-popover > summary');
+  await music.click();
   await expect(page.getByRole('button', { name: 'Play music' })).toBeVisible();
   await page.getByRole('button', { name: 'Play music' }).click();
   await expect(page.getByText('Playing Blue Hour.')).toBeVisible({ timeout: 12000 });
-  await page.getByText('Music', { exact: true }).click();
+  await music.click();
   await page.getByRole('complementary', { name: 'Saved conversations' }).getByRole('button', { name: 'New chat', exact: true }).first().click();
-  await page.getByText('Music', { exact: true }).click();
+  await music.click();
   await expect(page.getByRole('button', { name: 'Pause music' })).toBeVisible();
   await page.getByRole('button', { name: 'Pause music' }).click();
   await expect(page.getByRole('button', { name: 'Play music' })).toBeVisible();
   await page.goto('/#home');
   await expect(page.getByRole('heading', { name: 'Pocket Circuit', level: 1 })).toBeVisible();
   await page.goto('/#blip');
-  await page.getByText('Music', { exact: true }).click();
+  await music.click();
   await expect(page.getByRole('button', { name: 'Play music' })).toBeVisible();
 });

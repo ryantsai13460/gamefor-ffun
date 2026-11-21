@@ -4,7 +4,7 @@ The previous GitHub entry page contained duplicate document markup and ended ins
 
 ## Passed
 
-The suite includes ten Node tests and 22 Chromium browser tests. Separate DOM smoke tests exercised game rules, media imports, and assistant behavior.
+The suite includes ten Node tests and 25 Chromium browser tests. Separate DOM smoke tests exercised game rules, media imports, and assistant behavior.
 
 | Area | Checks |
 | --- | --- |
@@ -14,8 +14,9 @@ The suite includes ten Node tests and 22 Chromium browser tests. Separate DOM sm
 | Player | All 18 built-in games launch in Chromium. Checked fullscreen, restart, keyboard interaction, standalone click-to-score, and puzzle progression. Targeted game tests covered scoring, touch and keyboard input, and completion of Comet Courier, Pinpoint Putt, and Beat Beacon. |
 | Viewer and Play Hub | Checked tabs, history, refresh, local game, native fullscreen, navigation inside a website preview, a browser-enforced frame restriction, optional external links, saved device checks, and JSON report export. Preview responses were controlled in the browser tests. |
 | Media | Verified the additional 500 videos through official YouTube oEmbed metadata and public creator indexes. Tests check 1,153 unique total entries, ten populated topics, and 48 cinema listings. Browser tests cover collection navigation, playback dialog controls, and official YouTube and NFB player routes. |
-| Shorts and Web Search | Browser tests cover wheel and keyboard navigation, a single active Shorts frame, tab state, 116 violin results with filters and pagination, on-device setup with a simulated model, a local unit conversion, and Google category links. |
-| blip.ai | Chromium tests cover named conversations, thinking-method persistence, follow-up context with a simulated model, switching chats during a reply, cancellation, opt-in Wikipedia citations, a local conversion, mobile navigation, and original music across chat switches and route changes. |
+| Music | The local track library supports title, artist, and style search. Browser tests cover accent-insensitive lookup and in-page playback from the arcade origin. |
+| Shorts and Web Search | Browser tests cover Shorts navigation, tab state, 116 violin results, sandboxed Google results, and in-page access to the Territorial.io game preview, official wiki, and official YouTube trailer. |
+| blip.ai | Chromium tests cover chat context with a simulated native model, saved chats, cancellation, local greetings and conversions, opt-in Wikipedia references, locally saved text attachments, and background music across chat switches. |
 | Layout and accessibility | Chromium at 1440px, 768px, and 390px. Checked horizontal overflow, mobile drawer dismissal and keyboard focus, and image placeholders with third-party images blocked. |
 
 ## Limits
@@ -25,3 +26,5 @@ The project brief referenced a 548-entry ZIP. The available attachment was the t
 External gameplay and streaming depend on the publisher, device, region, and network. The test browser received certificate or connection errors when opening Miniplay, the YouTube Shorts player, and the Sintel trailer. Their playable streams and complete external game sessions remain unverified. The application keeps the official links available. Third-party image requests also failed in that test browser, so the layout and failure treatment were verified with local artwork and placeholders.
 
 YouTube creator imports and connected search were exercised with test responses. A live user API key or configured search service is required to test those integrations against the production providers.
+
+The portable blip.ai model loaded its pinned weights and compiled in isolated Chromium using software WebGPU. Generation exceeded the test timeout on that software adapter. Local replies and file processing ran in Chromium, and simulated model tests covered cancellation, context, and attachment privacy.

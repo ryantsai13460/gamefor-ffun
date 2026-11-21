@@ -422,12 +422,19 @@ select.field { cursor: pointer; }
 }
 
 .web-search-tab[aria-pressed="true"],
+.search-result-groups .button[aria-pressed="true"],
 .web-search-videos .button[aria-pressed="true"],
 .search-map-choice[aria-pressed="true"] {
   color: var(--accent);
   background: var(--accent-wash);
   border-color: var(--accent-border);
 }
+
+.search-result-tools:has(> [hidden] + [hidden]) { display: none; }
+.search-result-tools { justify-content: space-between; }
+.search-resource-source { color: var(--muted); font-size: .85rem; overflow-wrap: anywhere; }
+.search-resource-dialog .media-player { min-height: min(480px, 57vh); }
+.web-search-game > strong { font-size: 1.05rem; }
 
 .web-search-google,
 .search-map-panel {

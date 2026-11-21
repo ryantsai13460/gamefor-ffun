@@ -1,3 +1,5 @@
+import { normalizeBlipAttachments } from './blip-files.js';
+
 export const BLIP_STORE_KEY = 'gamefor-ffun:blip:v1';
 export const BLIP_MODES = Object.freeze(['quick', 'think', 'brainstorm', 'study']);
 export const DEFAULT_BLIP_MODE = 'quick';
@@ -7,7 +9,7 @@ const defaultTitle = 'New chat';
 const version = 1;
 const maxSerializedLength = 2_000_000;
 const roles = new Set(['user', 'assistant']);
-const answerKinds = new Set(['model', 'calculator', 'conversion', 'wikipedia', 'unavailable']);
+const answerKinds = new Set(['model', 'local', 'calculator', 'conversion', 'wikipedia', 'unavailable']);
 const idPattern = /^[a-z0-9_-]{1,96}$/i;
 
 function isObject(value) {
@@ -52,13 +54,21 @@ function wikipediaSource(value) {
   return null;
 }
 
-function messageRecord(id, role, text, createdAt, details) {
+function messageRecord(id, role, value, createdAt, details) {
+  if (typeof value !== 'string') return null;
+  const text = value.trim();
+  if (text.length > BLIP_LIMITS.message) return null;
+
   const message = { id, role, text, createdAt };
-  if (role === 'assistant' && isObject(details)) {
+  if (role === 'user') {
+    const attachments = normalizeBlipAttachments(details?.attachments);
+    if (attachments.length) message.attachments = attachments;
+  } else if (isObject(details)) {
     if (answerKinds.has(details.kind)) message.kind = details.kind;
     const source = wikipediaSource(details.source);
     if (source) message.source = source;
   }
+  if (!text && !message.attachments) return null;
   return Object.freeze(message);
 }
 
@@ -70,11 +80,11 @@ function restoreMessages(value, now) {
   for (let index = value.length - 1; index >= 0 && messages.length < BLIP_LIMITS.messages; index--) {
     const record = value[index];
     if (!isObject(record) || !validId(record.id) || !roles.has(record.role) || seen.has(record.id)) continue;
-    const text = boundedText(record.text, BLIP_LIMITS.message);
-    if (!text) continue;
+    const message = messageRecord(record.id, record.role, record.text, timestamp(record.createdAt, now, now), record);
+    if (!message) continue;
 
     seen.add(record.id);
-    messages.push(messageRecord(record.id, record.role, text, timestamp(record.createdAt, now, now), record));
+    messages.push(message);
   }
   return messages.reverse();
 }
@@ -242,12 +252,12 @@ export function createBlipStore({ storage = browserStorage() } = {}) {
 
     addMessage(id, role, value, details) {
       const chat = getChat(id);
-      const text = boundedText(value, BLIP_LIMITS.message);
-      if (!chat || !text || !roles.has(role)) return null;
+      if (!chat || !roles.has(role)) return null;
 
       const now = Math.max(chat.updatedAt, Date.now());
       const messageId = newId('message', candidate => chat.messages.some(message => message.id === candidate));
-      const message = messageRecord(messageId, role, text, now, details);
+      const message = messageRecord(messageId, role, value, now, details);
+      if (!message) return null;
       const messages = Object.freeze([...chat.messages, message].slice(-BLIP_LIMITS.messages));
       const unread = chat.unread || (role === 'assistant' && state.activeId !== id);
       saveChat(Object.freeze({ ...chat, updatedAt: now, messages, unread }), { first: true });

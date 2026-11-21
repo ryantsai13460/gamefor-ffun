@@ -61,6 +61,8 @@
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
+.explore-watch-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
 .explore-tile {
   --tile-tint: #2a375a;
   position: relative;

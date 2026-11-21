@@ -20,6 +20,10 @@ Movie files and artwork are served by the respective rights holders. Embedded tr
 
 The cinema library has 17 Blender Open Movies, 19 animated shorts, and 12 studio trailers. The National Film Board of Canada shorts use the NFB’s own player. Studio trailers use official uploads. Film art, viewing links, and credits lead to the rights holders or authorized viewing providers. [Blender Studio Projects](https://studio.blender.org/projects/) · [National Film Board of Canada](https://www.nfb.ca/) · [Pixar Films](https://www.pixar.com/feature-films) · [DreamWorks Movies](https://www.dreamworks.com/movies)
 
+## Music library
+
+The Music section hosts 35 instrumental recordings made for the arcade. It includes 29 new arrangements of historical melodies and six original pieces. The catalog keeps the composition source and credit for each arrangement. Playback uses local MP3 files, and title, artist, style, and collection search run in the browser. [Music catalog](../assets/music-catalog.js)
+
 ## Creator library and search service
 
 Creator imports use the official YouTube Data API and a site-restricted key entered by the user. The importer keeps public video metadata and finished creator catalogs in browser storage. It uses the key in memory during the request and clears the key field before the import begins. Import and export are also available as a local JSON file.

@@ -1,11 +1,11 @@
-import { validEngineId } from './search-google.js';
-
 const status = document.getElementById('google-status');
 const params = new URLSearchParams(location.search);
 const cx = params.get('cx');
 const query = params.get('q')?.trim().slice(0, 200);
 
-if (!validEngineId(cx) || !query) {
+if (window.parent === window || window.origin !== 'null') {
+  status.textContent = 'Open Google results from the arcade search panel.';
+} else if (!cx || !/^[A-Za-z0-9_-]{5,80}(?::[A-Za-z0-9_-]{1,40})?$/.test(cx) || !query) {
   status.textContent = 'A public Google Search Engine ID and query are required.';
 } else {
   const timeout = setTimeout(() => {

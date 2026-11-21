@@ -323,7 +323,7 @@ export function watchDialog(target, {title, subtitle, description, video, extern
   };
 }
 
-export function openShortsFeed(target, videos, startIndex = 0, onVisit) {
+export function openShortsFeed(target, videos, { startIndex = 0, onVisit, inPageOnly = false } = {}) {
   if (!videos.length) return () => {};
   const dialog = node('dialog', '', 'media-dialog shorts-feed-dialog');
   dialog.setAttribute('aria-label', 'Shorts feed');
@@ -355,7 +355,8 @@ export function openShortsFeed(target, videos, startIndex = 0, onVisit) {
   const source = link('Watch on YouTube', lookup(videos[0].id, true));
   const status = node('p', '', 'media-player-status');
   status.setAttribute('role', 'status');
-  controls.append(previous, next, source);
+  controls.append(previous, next);
+  if (!inPageOnly) controls.append(source);
   footer.append(caption, status, controls);
   dialog.append(header, viewport, footer);
 
@@ -387,7 +388,7 @@ export function openShortsFeed(target, videos, startIndex = 0, onVisit) {
     previous.disabled = index === 0;
     next.disabled = index === videos.length - 1;
     onVisit?.(video);
-    stopPlayback = playEmbedded(stage, status, video, () => dialog.open && index === nextIndex, true, true);
+    stopPlayback = playEmbedded(stage, status, video, () => dialog.open && index === nextIndex, !inPageOnly, true);
   }
 
   function align() {
@@ -514,7 +515,7 @@ export function openYouTubeSearchVideo(target, input) {
   return openSearchVideoDialog(target, video);
 }
 
-function openSearchVideoDialog(target, video) {
+export function openSearchVideoDialog(target, video) {
   return watchDialog(target, {
     title: video.title,
     subtitle: video.creator,
@@ -804,7 +805,7 @@ function youtubePage(target, params) {
   let currentShorts = [];
   const scrollShorts = button('Scroll Shorts', () => {
     closeDialog?.();
-    closeDialog = openShortsFeed(root, currentShorts, page * PAGE_SIZE, rememberVideo);
+    closeDialog = openShortsFeed(root, currentShorts, { startIndex: page * PAGE_SIZE, onVisit: rememberVideo });
   }, 'button primary shorts-feed-launch');
   scrollShorts.setAttribute('aria-haspopup', 'dialog');
 

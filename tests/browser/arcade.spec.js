@@ -378,7 +378,7 @@ test('layout and mobile menu fit desktop, tablet and phone widths', async ({ pag
       await expect(page.getByRole('button', { name: 'Open navigation' })).toBeFocused();
 
       for (const [route, title] of [
-        ['explore', 'Explore the arcade'], ['youtube', 'YouTube'], ['movies', 'Movies'],
+        ['explore', 'Explore the arcade'], ['youtube', 'YouTube'], ['movies', 'Movies'], ['music', 'Music'],
         ['browse', 'Proxy Gemini'], ['web-search', 'Web Search'], ['play-hub', 'Play Hub']
       ]) {
         await page.goto('/#' + route, { waitUntil: 'domcontentloaded' });
@@ -406,9 +406,13 @@ test('Web Search shows a sourced answer and opens matching YouTube videos in the
   await page.goto('/#web-search');
   await page.getByRole('searchbox', { name: 'Search the web' }).fill('What is Minecraft');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Wikipedia excerpt' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Wiki and references' })).toBeVisible();
   await expect(page.getByText('Minecraft is a sandbox video game.')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Wikipedia · Minecraft' })).toHaveAttribute('href', 'https://en.wikipedia.org/?curid=27815578');
+  await page.getByRole('button', { name: 'Minecraft', exact: true }).click();
+  const article = page.getByRole('dialog', { name: 'Minecraft' });
+  await expect(article.getByText('Minecraft is a sandbox video game.')).toBeVisible();
+  await expect(article.getByText(/en\.wikipedia\.org\/\?curid=27815578/)).toBeVisible();
+  await article.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'YouTube', exact: true })).toBeVisible();
   await page.locator('.web-search-video').first().click();
   const player = page.getByRole('dialog');
@@ -519,7 +523,7 @@ test('Web Search opens a pasted YouTube URL in the official player', async ({ pa
   expect(page.context().pages()).toHaveLength(1);
 });
 
-test('Web Search uses configured Google results and opens Shopping only when chosen', async ({ page }) => {
+test('Web Search isolates configured Google results in the page', async ({ page }) => {
   await page.route(url => url.hostname === 'cse.google.com' && url.pathname === '/cse.js', route => {
     expect(new URL(route.request().url()).searchParams.get('cx')).toBe('public_sample_123');
     return route.fulfill({ contentType: 'application/javascript', body: `
@@ -531,20 +535,57 @@ test('Web Search uses configured Google results and opens Shopping only when cho
     ` });
   });
   await page.goto('/#web-search');
-  await page.getByRole('button', { name: 'Google & Shopping', exact: true }).click();
+  await page.getByRole('button', { name: 'Google', exact: true }).click();
   await page.getByRole('searchbox', { name: 'Google query' }).fill('arcade controller');
-  await expect(page.getByRole('link', { name: 'Open Google Images' })).toHaveAttribute('href', 'https://www.google.com/search?q=arcade+controller&udm=2');
-  await expect(page.getByRole('link', { name: 'Open Google News' })).toHaveAttribute('href', 'https://news.google.com/search?q=arcade+controller');
-  await page.getByRole('button', { name: 'Search Google', exact: true }).click();
+  await page.getByRole('button', { name: 'Use Google engine', exact: true }).click();
   await expect(page.getByText(/Enter a valid public Google Search Engine ID/)).toBeVisible();
   await page.getByRole('textbox', { name: 'Public Search Engine ID' }).fill('public_sample_123');
-  await page.getByRole('button', { name: 'Search Google', exact: true }).click();
+  await page.getByRole('button', { name: 'Use Google engine', exact: true }).click();
+  await expect(page.locator('iframe[title="Google results"]')).toHaveAttribute('sandbox', 'allow-scripts');
   await expect(page.frameLocator('iframe[title="Google results"]').getByText('arcade controller')).toBeVisible();
   await expect(page).toHaveURL(/#web-search$/);
   expect(page.context().pages()).toHaveLength(1);
-  await page.getByRole('button', { name: 'Open Google Shopping', exact: true }).click();
-  await page.waitForURL(url => url.hostname === 'www.google.com' && url.searchParams.get('tbm') === 'shop'
-    && url.searchParams.get('q') === 'arcade controller');
+});
+
+test('searching Territorial.io from Google shows its preview, wiki and videos without leaving', async ({ page }) => {
+  await page.goto('/#web-search?mode=google');
+  await page.getByRole('searchbox', { name: 'Google query' }).fill('territorial.io');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Territorial.io', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Search Music' })).toHaveAttribute('href', '#music?q=territorial.io');
+  await page.getByRole('button', { name: 'Preview Territorial.io', exact: true }).click();
+  const game = page.getByRole('dialog', { name: 'Territorial.io', exact: true });
+  await expect(game.locator('iframe')).toHaveAttribute('src', 'https://territorial.io/');
+  await expect(game.locator('iframe')).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin allow-pointer-lock allow-presentation');
+  await game.getByRole('button', { name: 'Close', exact: true }).click();
+  const categories = page.getByRole('group', { name: 'Result category' });
+  await categories.getByRole('button', { name: 'Wiki', exact: true }).click();
+  await page.getByRole('button', { name: 'Game Play – Territorial.io Wiki', exact: true }).click();
+  const wiki = page.getByRole('dialog', { name: 'Game Play – Territorial.io Wiki' });
+  await expect(wiki.getByText(/balance that grows/)).toBeVisible();
+  await expect(wiki.getByRole('link')).toHaveCount(0);
+  await wiki.getByRole('button', { name: 'Close', exact: true }).click();
+
+  await categories.getByRole('button', { name: 'YouTube', exact: true }).click();
+  await page.getByRole('button', { name: 'Trailer - Territorial.io', exact: true }).click();
+  const player = page.getByRole('dialog', { name: 'Trailer - Territorial.io' });
+  await expect(player.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/SN7yOZARWB0/);
+  await expect(player.getByRole('link')).toHaveCount(0);
+  await expect(page).toHaveURL(/#web-search\?mode=google$/);
+  expect(page.context().pages()).toHaveLength(1);
+});
+
+test('Music searches familiar titles and plays an on-site audio file', async ({ page }) => {
+  await page.goto('/#music?q=twinkle');
+  const search = page.getByRole('searchbox', { name: 'Search music by title, artist, or style' });
+  await expect(search).toHaveValue('twinkle');
+  await page.getByRole('button', { name: 'Play Twinkle, Twinkle, Little Star', exact: true }).click();
+  const audio = page.locator('audio[aria-label="Track playback"]');
+  await expect.poll(() => audio.evaluate(element => element.currentTime)).toBeGreaterThan(0);
+  expect(new URL(await audio.evaluate(element => element.currentSrc)).origin).toBe(origin);
+  await search.fill('Fur Elise');
+  await expect(page.getByRole('button', { name: 'Play Für Elise', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/#music\?q=twinkle$/);
   expect(page.context().pages()).toHaveLength(1);
 });
 

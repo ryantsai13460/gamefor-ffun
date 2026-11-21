@@ -1,4 +1,8 @@
-import { answerBlip, blipModelAvailability, blipModes, prepareBlipModel } from './blip-answer.js';
+import {
+  answerBlip, blipModelAvailability, blipModes, portableBlipAvailability,
+  prepareBlipModel, preparePortableBlipModel, releasePortableBlipModel
+} from './blip-answer.js';
+import { BLIP_FILE_ACCEPT, BLIP_FILE_LIMITS, normalizeBlipAttachments, readBlipFiles } from './blip-files.js';
 import { mountBlipMusic } from './blip-music.js';
 import { BLIP_LIMITS, createBlipStore } from './blip-store.js';
 
@@ -11,6 +15,7 @@ const examples = [
 
 const messageSources = {
   model: 'On-device AI',
+  local: 'Local reply',
   calculator: 'Calculator',
   conversion: 'Unit converter',
   wikipedia: 'Wikipedia excerpt',
@@ -41,7 +46,15 @@ function messageView(message) {
   const item = element('article', `blip-message blip-message--${message.role}`);
   item.append(element('h3', 'blip-message-author', message.role === 'user' ? 'You' : 'blip.ai'));
   if (message.kind) item.append(element('p', 'blip-answer-source', messageSources[message.kind]));
-  item.append(element('p', 'blip-message-text', message.text));
+  if (message.text) item.append(element('p', 'blip-message-text', message.text));
+  for (const file of message.attachments || []) {
+    const preview = element('details', 'blip-file-preview');
+    preview.append(
+      element('summary', '', file.name + (file.truncated ? ' · excerpt' : '')),
+      element('pre', '', file.text)
+    );
+    item.append(preview);
+  }
   if (message.source) {
     const reference = element('a', 'blip-reference', `Wikipedia · ${message.source.title}`);
     reference.href = message.source.url;
@@ -77,8 +90,10 @@ export function renderBlip(target) {
             <h2>On-device AI</h2>
             <p data-blip="model-status" role="status">Checking this browser for a model…</p>
             <button class="blip-button blip-button--primary" type="button" data-blip="enable" hidden>Enable on-device AI</button>
+            <p data-blip="portable-status" role="status"></p>
+            <button class="blip-button" type="button" data-blip="portable" hidden>Start local AI</button>
             <label class="blip-check"><input type="checkbox" data-blip="references"> Use Wikipedia as a fallback</label>
-            <p>When enabled, a short question may be sent to Wikipedia for an excerpt.</p>
+            <p>Short questions in chats without files can use this lookup.</p>
           </div>
         </details>
       </div>
@@ -114,9 +129,13 @@ export function renderBlip(target) {
             <div class="blip-mode-choices" data-blip="modes"></div>
             <p class="blip-mode-description" id="blip-mode-description" data-blip="mode-description"></p>
           </fieldset>
+          <ul class="blip-attachments" data-blip="attachments" aria-label="Files attached to this draft" hidden></ul>
+          <p class="blip-compose-status" data-blip="file-status" role="status"></p>
           <div class="blip-prompt-box">
+            <button class="blip-button blip-attach" type="button" data-blip="attach" title="TXT, Markdown, CSV, TSV, or JSON">Attach files</button>
+            <input type="file" data-blip="file-input" aria-label="Choose files to attach" multiple hidden>
             <label class="sr-only" for="blip-prompt">Message blip.ai</label>
-            <textarea id="blip-prompt" data-blip="input" rows="2" maxlength="2000" placeholder="Message blip.ai…" required></textarea>
+            <textarea id="blip-prompt" data-blip="input" rows="2" maxlength="2000" enterkeyhint="send" placeholder="Message blip.ai…"></textarea>
             <button class="blip-button blip-button--primary" data-blip="send" type="submit">Send</button>
             <button class="blip-button" data-blip="stop" type="button" hidden>Stop</button>
           </div>
@@ -143,6 +162,9 @@ export function renderBlip(target) {
   const lifetime = new AbortController();
   const pending = new Map();
   const drafts = new Map();
+  const draftFiles = new Map();
+  const fileNotices = new Map();
+  const readingFiles = new Set();
   const modeInputs = new Map();
   const layout = root.querySelector('.blip-layout');
   const modelSettings = root.querySelector('.blip-settings-popover');
@@ -151,11 +173,18 @@ export function renderBlip(target) {
   const transcript = part('transcript');
   const status = part('status');
   const input = part('input');
+  const fileInput = part('file-input');
+  fileInput.accept = BLIP_FILE_ACCEPT;
   const dialog = root.querySelector('.blip-dialog');
   const nameInput = part('chat-name');
   const nameLabel = nameInput.closest('label');
   const stopMusic = mountBlipMusic(part('music'));
+  const musicLink = element('a', 'blip-button', 'Open Music library');
+  musicLink.href = '#music';
+  part('music').append(musicLink);
   let edit;
+  let nativeStatus = 'unavailable';
+  let portableStatus = 'unavailable';
 
   const currentChat = () => {
     const { chats, activeId } = store.getState();
@@ -200,7 +229,29 @@ export function renderBlip(target) {
     part('mode-description').textContent = currentMode.description;
     part('stop').hidden = !request;
     part('send').hidden = Boolean(request);
+    part('send').disabled = readingFiles.has(chat?.id);
     status.textContent = request?.label || '';
+    drawDraftFiles(chat?.id);
+  }
+
+  function drawDraftFiles(id) {
+    const files = draftFiles.get(id) || [];
+    const list = part('attachments');
+    list.hidden = !files.length;
+    list.replaceChildren(...files.map((file, index) => {
+      const item = element('li', 'blip-file-chip');
+      item.append(element('span', '', file.name + (file.truncated ? ' · excerpt' : '')));
+      const remove = button('Remove', () => {
+        draftFiles.set(id, files.filter((_, fileIndex) => fileIndex !== index));
+        drawDraftFiles(id);
+        part('attach').focus();
+      }, 'blip-button');
+      remove.setAttribute('aria-label', 'Remove ' + file.name);
+      item.append(remove);
+      return item;
+    }));
+    part('attach').disabled = !id || readingFiles.has(id) || files.length >= BLIP_FILE_LIMITS.count;
+    part('file-status').textContent = fileNotices.get(id) || '';
   }
 
   function draw() {
@@ -249,10 +300,37 @@ export function renderBlip(target) {
     input.focus({ preventScroll: true });
   });
   part('toggle').addEventListener('click', () => showChats(layout.dataset.chatsOpen !== 'true'));
+  part('attach').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', async () => {
+    const id = store.getState().activeId;
+    const selected = [...fileInput.files];
+    fileInput.value = '';
+    if (!id || !selected.length || readingFiles.has(id)) return;
+    readingFiles.add(id);
+    fileNotices.set(id, 'Reading selected files…');
+    drawComposer(currentChat());
+    try {
+      const slots = BLIP_FILE_LIMITS.count - (draftFiles.get(id)?.length || 0);
+      const { attachments, errors } = await readBlipFiles(selected.slice(0, slots));
+      if (lifetime.signal.aborted || !store.getState().chats.some(chat => chat.id === id)) return;
+      const existing = draftFiles.get(id) || [];
+      const combined = [...existing, ...attachments.filter(file =>
+        !existing.some(other => other.name === file.name && other.size === file.size && other.text === file.text))];
+      draftFiles.set(id, normalizeBlipAttachments(combined));
+      const note = errors.map(error => `${error.name} · ${error.message}`);
+      if (selected.length > slots) note.push('Attach up to three files per message.');
+      fileNotices.set(id, note.join(' '));
+    } catch {
+      fileNotices.set(id, 'The browser could not read these files.');
+    } finally {
+      readingFiles.delete(id);
+      if (!lifetime.signal.aborted && store.getState().activeId === id) drawComposer(currentChat());
+    }
+  });
   input.addEventListener('input', () => drafts.set(store.getState().activeId, input.value));
   input.addEventListener('keydown', event => {
     if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
-    if (pending.has(store.getState().activeId)) return;
+    if (pending.has(store.getState().activeId) || readingFiles.has(store.getState().activeId)) return;
     event.preventDefault();
     composer.requestSubmit(part('send'));
   });
@@ -261,31 +339,37 @@ export function renderBlip(target) {
     event.preventDefault();
     const chat = currentChat();
     const text = input.value.trim();
-    if (!chat || pending.has(chat.id)) return;
-    if (!text) {
-      status.textContent = 'Enter a message.';
+    if (!chat || pending.has(chat.id) || readingFiles.has(chat.id)) return;
+    const attachments = draftFiles.get(chat.id) || [];
+    if (!text && !attachments.length) {
+      status.textContent = 'Enter a message or attach a file.';
       return;
     }
-    if (!store.addMessage(chat.id, 'user', text)) {
+    if (!store.addMessage(chat.id, 'user', text, { attachments })) {
       status.textContent = 'This message could not be saved.';
       return;
     }
     if (!chat.messages.length && chat.title === 'New chat') {
-      const compact = text.replace(/\s+/g, ' ');
+      const compact = (text || attachments[0].name).replace(/\s+/g, ' ');
       store.renameChat(chat.id, compact.length > 60 ? compact.slice(0, 59).trimEnd() + '…' : compact);
     }
     const request = { controller: new AbortController(), label: stages.checking };
     pending.set(chat.id, request);
     drafts.delete(chat.id);
+    draftFiles.delete(chat.id);
+    fileNotices.delete(chat.id);
     draw();
     input.focus({ preventScroll: true });
     let reply;
     try {
+      const contextFiles = attachments.length ? attachments :
+        chat.messages.findLast(message => message.attachments?.length)?.attachments || [];
       reply = await answerBlip({
         text,
+        attachments: contextFiles,
         history: chat.messages,
         mode: chat.mode,
-        wikipedia: part('references').checked,
+        wikipedia: part('references').checked && !contextFiles.length,
         signal: request.controller.signal,
         onStage(stage) {
           if (request.controller.signal.aborted) return;
@@ -359,6 +443,8 @@ export function renderBlip(target) {
     } else {
       stopReply(edit.id);
       drafts.delete(edit.id);
+      draftFiles.delete(edit.id);
+      fileNotices.delete(edit.id);
       store.deleteChat(edit.id);
       if (!currentChat()) store.createChat();
     }
@@ -367,21 +453,28 @@ export function renderBlip(target) {
   });
   dialog.addEventListener('close', () => { edit = undefined; });
 
-  function setModelStatus(availability) {
-    const ready = availability === 'available';
-    const availableToEnable = availability === 'downloadable' || availability === 'downloading';
-    part('enable').hidden = !availableToEnable;
-    part('settings-label').textContent = availableToEnable ? 'Set up AI' : 'AI settings';
-    modelSettings.dataset.ready = String(ready);
-    part('model-status').textContent = ready ? 'On-device AI is ready.'
-      : availableToEnable ? 'Enable the browser model to use conversational AI and thinking methods.'
-      : 'This browser does not have an on-device model. Calculations, conversions, and optional Wikipedia excerpts are available.';
+  function drawModels() {
+    const nativeReady = nativeStatus === 'available';
+    const portableReady = portableStatus === 'available';
+    const canEnable = ['downloadable', 'downloading'].includes(nativeStatus);
+    const canDownload = !nativeReady && ['downloadable', 'downloading'].includes(portableStatus);
+    part('enable').hidden = !canEnable;
+    part('portable').hidden = !canDownload;
+    part('settings-label').textContent = (canEnable || canDownload) && !portableReady ? 'Set up AI' : 'AI settings';
+    modelSettings.dataset.ready = String(nativeReady || portableReady);
+    part('model-status').textContent = nativeReady ? 'The browser model is ready.'
+      : canEnable ? 'Enable the browser model to use conversational AI.'
+      : 'This browser’s built-in model is unavailable.';
+    part('portable-status').textContent = portableReady ? 'The portable local model is ready.'
+      : canDownload ? 'First-time setup downloads about 220 MB. The model, prompts, and files stay on this device.'
+      : nativeReady ? '' : 'Local replies, file previews, calculations, and optional Wikipedia lookups are available.';
   }
 
-  blipModelAvailability().then(availability => {
-    if (!lifetime.signal.aborted) setModelStatus(availability);
-  }).catch(() => {
-    if (!lifetime.signal.aborted) setModelStatus('unavailable');
+  Promise.allSettled([blipModelAvailability(), portableBlipAvailability()]).then(([native, portable]) => {
+    if (lifetime.signal.aborted) return;
+    nativeStatus = native.value || 'unavailable';
+    portableStatus = portable.value || 'unavailable';
+    drawModels();
   });
   part('enable').addEventListener('click', async () => {
     const enable = part('enable');
@@ -392,11 +485,33 @@ export function renderBlip(target) {
       await prepareBlipModel(lifetime.signal, fraction => {
         if (!lifetime.signal.aborted) modelStatus.textContent = `Downloading model · ${Math.round(fraction * 100)}%`;
       });
-      if (!lifetime.signal.aborted) setModelStatus('available');
+      if (!lifetime.signal.aborted) {
+        nativeStatus = 'available';
+        drawModels();
+      }
     } catch {
       if (!lifetime.signal.aborted) modelStatus.textContent = 'The browser could not prepare its model. Try again.';
     } finally {
       enable.disabled = false;
+    }
+  });
+  part('portable').addEventListener('click', async () => {
+    const download = part('portable');
+    const notice = part('portable-status');
+    download.disabled = true;
+    notice.textContent = 'Preparing the local model…';
+    try {
+      await preparePortableBlipModel(lifetime.signal, (fraction, description) => {
+        if (!lifetime.signal.aborted) notice.textContent = `${description || 'Preparing local AI'} · ${Math.round(fraction * 100)}%`;
+      });
+      if (!lifetime.signal.aborted) {
+        portableStatus = 'available';
+        drawModels();
+      }
+    } catch {
+      if (!lifetime.signal.aborted) notice.textContent = 'The portable model could not start here. Try again or use the local tools.';
+    } finally {
+      download.disabled = false;
     }
   });
   for (const [popover, other] of [[modelSettings, musicSettings], [musicSettings, modelSettings]]) {
@@ -411,5 +526,6 @@ export function renderBlip(target) {
     for (const id of pending.keys()) stopReply(id);
     if (dialog.open) dialog.close();
     stopMusic();
+    void releasePortableBlipModel();
   };
 }

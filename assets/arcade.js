@@ -1,5 +1,5 @@
 import { games } from './catalog.js';
-import { createLibrary, gameAvailability, queryLibrary, restorePreferences } from './library.js';
+import { createLibrary, gameAvailability, normalize, queryLibrary, restorePreferences } from './library.js';
 import { arcadeEmbed, isMiniplayAddress } from './embedded-content.js';
 
 const storageKey = 'gamefor-ffun-complete-v2';
@@ -16,11 +16,11 @@ const mainCatalogCount = games.filter(game => game.collection === 'github' || ga
 const categories = [...library.categoryCounts.keys()].sort((a, b) => a.localeCompare(b));
 const altFeatured = ['2048', 'subway', 'ffun-skyline-v1', 'minecraft-classic', 'snake', 'retrobowl', 'stickman', 'drivemad', 'memory-match', 'pong'];
 const drawerMedia = matchMedia('(max-width: 860px)');
-const routes = new Set(['home', 'explore', 'games', 'categories', 'trending', 'new', 'favorites', 'recent', 'youtube', 'movies', 'browse', 'web-search', 'blip', 'play-hub', 'settings', 'credits', 'play']);
+const routes = new Set(['home', 'explore', 'games', 'categories', 'trending', 'new', 'favorites', 'recent', 'youtube', 'movies', 'music', 'browse', 'web-search', 'blip', 'play-hub', 'settings', 'credits', 'play']);
 const routeNames = {
   home: 'Home', explore: 'Explore', games: 'All Games', categories: 'Categories', trending: 'Trending',
   new: 'New Games', favorites: 'Favorites', recent: 'Recently Played',
-  youtube: 'YouTube', movies: 'Movies', browse: 'Proxy Gemini', 'web-search': 'Web Search', blip: 'blip.ai', 'play-hub': 'Play Hub',
+  youtube: 'YouTube', movies: 'Movies', music: 'Music', browse: 'Proxy Gemini', 'web-search': 'Web Search', blip: 'blip.ai', 'play-hub': 'Play Hub',
   settings: 'Settings', credits: 'Credits'
 };
 const labels = { local: 'Built in', embed: 'In-page player', external: 'External', unverified: 'Link unverified' };
@@ -36,6 +36,7 @@ const paths = {
   gamepad: '<path d="M7 7h10c3.1 0 4.2 3 5 7.7.6 3.4-2 4.8-4.3 2.4L15.5 15h-7l-2.2 2.1C4 19.5 1.4 18.1 2 14.7 2.8 10 3.9 7 7 7zM7.5 9.5v4m-2-2h4m6.5.9h.02m2.2-2.1h.02"/>',
   video: '<rect x="3" y="5.5" width="18" height="13" rx="3"/><path d="m10 9 5 3-5 3z"/>',
   film: '<rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M7.5 4v16m9-16v16M3.5 9h4m-4 6h4m9-6h4m-4 6h4"/>',
+  music: '<path d="M9 18V5l11-2v13M9 9l11-2"/><ellipse cx="6" cy="18" rx="3" ry="2.3"/><ellipse cx="17" cy="16" rx="3" ry="2.3"/>',
   globe: '<circle cx="12" cy="12" r="8.8"/><path d="M3.2 12h17.6M12 3.2c2.5 2.4 3.9 5.4 3.9 8.8s-1.4 6.4-3.9 8.8C9.5 18.4 8.1 15.4 8.1 12S9.5 5.6 12 3.2Z"/>',
   activity: '<path d="M3 12h4l2.5-6 4 12 2.5-6h5"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="m9 3-.5 2.2-2 .9-2.1-.8-1.9 3.3 1.8 1.5v3.8l-1.8 1.5 1.9 3.3 2.1-.8 2 .9L9 21h4l.5-2.2 2-.9 2.1.8 1.9-3.3-1.8-1.5v-3.8l1.8-1.5-1.9-3.3-2.1.8-2-.9L13 3z"/>',
@@ -510,8 +511,9 @@ function renderCategories(target) {
   target.append(list);
 }
 
-function mountSearchPanel(target, { media, searchWikipedia, renderGoogleSearch, renderSearchMaps, renderAssistantPanel }, { setTitle }, mode) {
-  const { findCuratedVideos, openShortsFeed, openYouTubeSearchVideo, parseYouTubeVideo, searchConnectedVideos } = media;
+function mountSearchPanel(target, modules, { setTitle }, mode) {
+  const { media, searchWikipedia, renderGoogleSearch, renderSearchMaps, renderAssistantPanel, gameSearchSources, openSearchResource } = modules;
+  const { findCuratedVideos, openSearchVideoDialog, openShortsFeed, openYouTubeSearchVideo, parseYouTubeVideo, searchConnectedVideos } = media;
   const windowPanel = element('section', 'proxy-window web-search-window');
   const nav = element('div', 'proxy-tab-row web-search-tabs');
   nav.setAttribute('role', 'group');
@@ -521,7 +523,7 @@ function mountSearchPanel(target, { media, searchWikipedia, renderGoogleSearch, 
   const googlePanel = element('div', 'proxy-stage web-search-stage');
   const mapPanel = element('div', 'proxy-stage web-search-stage');
   const panels = new Map([
-    ['Web & YouTube', searchPanel], ['AI Mode', aiPanel], ['Google & Shopping', googlePanel], ['Maps', mapPanel]
+    ['Web & YouTube', searchPanel], ['AI Mode', aiPanel], ['Google', googlePanel], ['Maps', mapPanel]
   ]);
 
   function queryForm(label, placeholder, buttonLabel) {
@@ -544,18 +546,30 @@ function mountSearchPanel(target, { media, searchWikipedia, renderGoogleSearch, 
     return { form, input };
   }
 
-  const { form, input } = queryForm('Search the web', 'Search topics or paste a YouTube link', 'Search');
+  const { form, input } = queryForm('Search the web', 'Search games, topics, or YouTube links', 'Search');
   const stage = element('div', 'proxy-stage web-search-stage');
   const answer = element('section', 'web-search-answer');
   answer.setAttribute('aria-live', 'polite');
   const answerTitle = element('h2', '', 'Web & YouTube');
-  const answerText = element('p', 'muted', 'Search Wikipedia and the arcade’s video library, or open Google for results from your configured engine.');
-  const sources = element('div', 'web-search-sources');
-  answer.append(answerTitle, answerText, sources);
+  const answerText = element('p', 'muted', 'Find games, wiki references, and YouTube videos together.');
+  answer.append(answerTitle, answerText);
   const webPanel = element('section', 'web-search-videos');
   webPanel.hidden = true;
   const webList = element('ul', 'web-search-results');
-  webPanel.append(element('h2', '', 'More from Wikipedia'), webList);
+  webPanel.append(element('h2', '', 'Wiki and references'), webList);
+  const gamePanel = element('section', 'web-search-videos');
+  gamePanel.hidden = true;
+  const gameList = element('ul', 'web-search-results');
+  gamePanel.append(element('h2', '', 'Games'), gameList);
+  const groups = element('div', 'interaction-row search-result-groups');
+  groups.setAttribute('role', 'group');
+  groups.setAttribute('aria-label', 'Result category');
+  groups.hidden = true;
+  const noResults = element('p', 'muted');
+  noResults.setAttribute('role', 'status');
+  noResults.hidden = true;
+  const musicResults = link('Search Music', '#music', 'button');
+  musicResults.hidden = true;
   const videosPanel = element('section', 'web-search-videos');
   videosPanel.hidden = true;
   const videoCount = element('p', 'muted');
@@ -564,7 +578,7 @@ function mountSearchPanel(target, { media, searchWikipedia, renderGoogleSearch, 
   videoFilters.setAttribute('aria-label', 'Video format');
   const scrollShorts = action('Scroll matching Shorts', () => {
     closeVideo?.();
-    closeVideo = openShortsFeed(windowPanel, matches.filter(video => video.short));
+    closeVideo = openShortsFeed(windowPanel, matches.filter(video => video.short), { inPageOnly: true });
   });
   scrollShorts.setAttribute('aria-haspopup', 'dialog');
   const videoTools = element('div', 'interaction-row');
@@ -575,7 +589,9 @@ function mountSearchPanel(target, { media, searchWikipedia, renderGoogleSearch, 
   const next = action('Next video results', () => { page++; drawVideoPage(); });
   videoPagination.append(previous, next);
   videosPanel.append(element('h2', '', 'YouTube'), videoTools, videoCount, list, videoPagination);
-  stage.append(answer, webPanel, videosPanel);
+  const resultTools = element('div', 'interaction-row search-result-tools');
+  resultTools.append(groups, musicResults);
+  stage.append(answer, resultTools, noResults, gamePanel, webPanel, videosPanel);
   searchPanel.append(form, stage);
 
   windowPanel.append(nav, ...panels.values());
@@ -593,7 +609,28 @@ function mountSearchPanel(target, { media, searchWikipedia, renderGoogleSearch, 
   let videoDescription = '';
   let format = 'All';
   let page = 0;
+  let group = 'All results';
+  let searched = false;
   const videosPerPage = 20;
+
+  function showResults() {
+    groups.hidden = !searched;
+    musicResults.hidden = !searched;
+    for (const item of groups.children) item.setAttribute('aria-pressed', String(item.textContent === group));
+    gamePanel.hidden = !searched || !gameList.childElementCount || !['All results', 'Games'].includes(group);
+    webPanel.hidden = !searched || !webList.childElementCount || !['All results', 'Wiki'].includes(group);
+    videosPanel.hidden = !searched || !['All results', 'YouTube'].includes(group);
+    const emptyGroup = (group === 'Games' && gamePanel.hidden) || (group === 'Wiki' && webPanel.hidden);
+    noResults.hidden = !searched || !emptyGroup;
+    noResults.textContent = emptyGroup ? `No ${group === 'Wiki' ? 'wiki references' : 'games'} match this search.` : '';
+  }
+
+  for (const name of ['All results', 'Games', 'Wiki', 'YouTube']) {
+    groups.append(action(name, () => {
+      group = name;
+      showResults();
+    }));
+  }
 
   function selectPanel(name) {
     for (const [label, panel] of panels) panel.hidden = label !== name;
@@ -602,8 +639,15 @@ function mountSearchPanel(target, { media, searchWikipedia, renderGoogleSearch, 
       disposeMap = renderSearchMaps(mapPanel);
       mapReady = true;
     }
-    if (name === 'Google & Shopping' && !googleReady) {
-      disposeGoogle = renderGoogleSearch(googlePanel, setTitle);
+    if (name === 'Google' && !googleReady) {
+      disposeGoogle = renderGoogleSearch(googlePanel, {
+        onQuery: setTitle,
+        onArcadeSearch(query) {
+          input.value = query;
+          selectPanel('Web & YouTube');
+          form.requestSubmit();
+        }
+      });
       googleReady = true;
     }
     if (name === 'AI Mode' && !aiReady) {
@@ -615,22 +659,47 @@ function mountSearchPanel(target, { media, searchWikipedia, renderGoogleSearch, 
   for (const name of panels.keys()) {
     nav.append(action(name, () => selectPanel(name), 'button web-search-tab'));
   }
-  selectPanel(new Map([['ai', 'AI Mode'], ['google', 'Google & Shopping'], ['maps', 'Maps']]).get(mode) || 'Web & YouTube');
+  selectPanel(new Map([['ai', 'AI Mode'], ['google', 'Google'], ['maps', 'Maps']]).get(mode) || 'Web & YouTube');
 
-  function setSource(credits, source) {
-    credits.replaceChildren();
-    if (source) {
-      credits.append(
-        link(`Wikipedia · ${source.title}`, source.url, 'text-action'),
-        link('CC BY-SA 4.0', 'https://creativecommons.org/licenses/by-sa/4.0/', 'text-action')
-      );
-    }
+  function openResource(resource) {
+    closeVideo?.();
+    closeVideo = openSearchResource(windowPanel, resource);
   }
 
-  function drawAnswer(title, text, source) {
+  function drawAnswer(title, text) {
     answerTitle.textContent = title;
     answerText.textContent = text;
-    setSource(sources, source);
+    answerText.hidden = !text;
+  }
+
+  function drawGames(found) {
+    gameList.replaceChildren(...found.map(game => {
+      const item = element('li', 'web-search-game');
+      const site = gameSearchSources[game.id]?.site;
+      item.append(element('strong', '', game.title), element('p', 'muted', site?.description || game.category));
+      if (game.local || arcadeEmbed(game)) {
+        item.append(link(`Play ${game.title}`, gamePath(game), 'button', 'play'));
+      } else if (site?.preview) {
+        item.append(action(`Preview ${game.title}`, () => openResource({
+          ...site, provider: 'Official game', preview: site.url
+        }), 'button', 'play'));
+      } else {
+        item.append(link(`View ${game.title}`, gamePath(game), 'button'));
+      }
+      return item;
+    }));
+  }
+
+  function drawReferences(resources) {
+    webList.replaceChildren(...resources.map(resource => {
+      const item = element('li');
+      item.append(
+        action(resource.title, () => openResource(resource), 'button'),
+        element('p', 'muted', resource.description),
+        element('span', 'muted', resource.provider)
+      );
+      return item;
+    }));
   }
 
   function drawVideoPage() {
@@ -645,8 +714,7 @@ function mountSearchPanel(target, { media, searchWikipedia, renderGoogleSearch, 
       const item = element('li');
       const play = action(video.title, () => {
         closeVideo?.();
-        const path = video.short ? `https://www.youtube.com/shorts/${video.id}` : video.id;
-        closeVideo = openYouTubeSearchVideo(windowPanel, path);
+        closeVideo = openSearchVideoDialog(windowPanel, video);
       }, 'button web-search-video', 'play');
       const thumbnail = element('img', 'web-search-thumbnail');
       thumbnail.alt = '';
@@ -675,8 +743,8 @@ function mountSearchPanel(target, { media, searchWikipedia, renderGoogleSearch, 
     matches = found;
     videoDescription = description;
     page = 0;
-    videosPanel.hidden = false;
     drawVideoPage();
+    showResults();
   }
 
   form.addEventListener('submit', async event => {
@@ -693,16 +761,29 @@ function mountSearchPanel(target, { media, searchWikipedia, renderGoogleSearch, 
     const { signal } = pending;
     const video = parseYouTubeVideo(query);
     const searchQuery = query.replace(/\b(?:violion|violon)\b/gi, 'violin');
-    const localMatches = findCuratedVideos(searchQuery);
-    webPanel.hidden = true;
+    const normalized = normalize(searchQuery.replace(/^https?:\/\/(?:www\.)?/i, ''));
+    const matchingGames = normalized.length < 3 ? [] : queryLibrary(library, { search: normalized }).slice(0, 5);
+    const exact = matchingGames.find(game => [game.id, game.title, ...(game.aliases || [])].some(label => normalize(label) === normalized));
+    const official = exact && gameSearchSources[exact.id];
+    const references = [official?.reference, official?.site].filter(Boolean);
+    const localMatches = [...new Map([
+      ...(official?.videos || []), ...findCuratedVideos(searchQuery)
+    ].map(video => [video.id, video])).values()];
+    group = 'All results';
+    searched = false;
     if (video && (query !== video.id || localMatches.some(item => item.id === video.id))) {
-      videosPanel.hidden = true;
+      showResults();
       drawAnswer('YouTube', 'The official YouTube player opens here when the video allows embedding.');
       closeVideo = openYouTubeSearchVideo(windowPanel, query);
       return;
     }
+    searched = true;
+    musicResults.href = hashFor('music', { q: searchQuery });
     format = 'All';
+    drawGames(exact ? [exact, ...matchingGames.filter(game => game !== exact)] : matchingGames);
+    drawReferences(references);
     drawVideos(localMatches, 'Arcade YouTube library.');
+    if (exact && references.length) drawAnswer(exact.title, 'Explore the game, read a reference, or play a matching video here.');
     searchConnectedVideos(searchQuery, AbortSignal.any([signal, AbortSignal.timeout(6500)])).then(online => {
       if (signal.aborted || !online?.length) return;
       const onlineIds = new Set(online.map(item => item.id));
@@ -715,18 +796,15 @@ function mountSearchPanel(target, { media, searchWikipedia, renderGoogleSearch, 
         drawVideoPage();
       }
     });
+    if (exact && references.length) return;
     drawAnswer('Web results', 'Looking up Wikipedia…');
     const found = await searchWikipedia(searchQuery, AbortSignal.any([signal, AbortSignal.timeout(5000)])).catch(() => []);
     if (signal.aborted) return;
-    const [source, ...more] = found;
-    if (source) drawAnswer('Wikipedia excerpt', source.text, source);
-    else drawAnswer('Web results', 'No Wikipedia excerpt is available for this search.');
-    webPanel.hidden = !more.length;
-    webList.replaceChildren(...more.map(source => {
-      const item = element('li');
-      item.append(link(source.title, source.url, 'text-action'), element('p', 'muted', source.text));
-      return item;
-    }));
+    drawAnswer(`Results for “${query}”`, found.length ? '' : 'No Wikipedia excerpt is available for this search.');
+    drawReferences(found.map(article => ({
+      title: article.title, description: article.text, url: article.url, provider: 'Wikipedia · CC BY-SA 4.0'
+    })));
+    showResults();
   });
 
   return () => {
@@ -997,6 +1075,12 @@ async function renderRoute(focus = true) {
         if (token === version) cleanup = renderFilms(target, { watchDialog, collection: route.params.get('collection') });
         break;
       }
+      case 'music': {
+        target.append(element('p', 'boot-note', 'Loading music…'));
+        const { renderMusic } = await import('./music-library.js');
+        if (token === version) cleanup = renderMusic(target, route.params);
+        break;
+      }
       case 'blip': {
         target.append(element('p', 'boot-note', 'Loading blip.ai…'));
         const { renderBlip } = await import('./blip.js');
@@ -1004,13 +1088,15 @@ async function renderRoute(focus = true) {
         break;
       }
       case 'web-search': {
-        const [media, { searchWikipedia }, { renderGoogleSearch }, { renderSearchMaps }, { renderAssistantPanel }, { renderSearchTabs }] = await Promise.all([
+        const [media, { searchWikipedia }, { renderGoogleSearch }, { renderSearchMaps }, { renderAssistantPanel }, { renderSearchTabs },
+          { gameSearchSources }, { openSearchResource }] = await Promise.all([
           import('./media.js'), import('./search-answer.js'), import('./search-google.js'),
-          import('./search-map.js'), import('./assistant-panel.js'), import('./search-tabs.js')
+          import('./search-map.js'), import('./assistant-panel.js'), import('./search-tabs.js'),
+          import('./search-game-sources.js'), import('./search-resource.js')
         ]);
         if (token === version) {
           target.append(heading('Web Search', 'Search, watch, and ask questions in separate tabs.'));
-          const modules = { media, searchWikipedia, renderGoogleSearch, renderSearchMaps, renderAssistantPanel };
+          const modules = { media, searchWikipedia, renderGoogleSearch, renderSearchMaps, renderAssistantPanel, gameSearchSources, openSearchResource };
           let firstMode = route.params.get('mode');
           cleanup = renderSearchTabs(target, (panel, tools) => {
             const teardown = mountSearchPanel(panel, modules, tools, firstMode);
