@@ -147,7 +147,7 @@ test('catalog records have distinct sources, correct status, and safe relative a
     }
     if (typeof game.local === 'string') await readFile(new URL(game.local, new URL('../', import.meta.url)));
   }
-  assert.deepEqual(statusCounts, { local: 25, embed: 2, external: 534, unverified: 2 });
+  assert.deepEqual(statusCounts, { local: 25, embed: 4, external: 532, unverified: 2 });
 });
 
 test('search spans titles, punctuated names, legacy aliases, categories and availability', () => {
@@ -184,7 +184,7 @@ test('Proxy Gemini resolves website previews, official embeds, local play and re
   assert.equal(resolveBrowserAddress('https://www.miniplay.com/game/snow-rider-3d', site).title, 'Snow Rider 3D');
   for (const input of [
     'https://www.miniplay.com/embed/unlisted-game', 'https://www.coolmathgames.com/0-eggy-car/?ref=fixture',
-    'poki.com/en/g/unlisted-game', 'https://territorial.io/', 'https://voodoo.io/paper2'
+    'poki.com/en/g/unlisted-game', 'https://voodoo.io/paper2'
   ]) {
     const destination = resolveBrowserAddress(input, site);
     assert.equal(destination.kind, 'external-game');
@@ -192,6 +192,7 @@ test('Proxy Gemini resolves website previews, official embeds, local play and re
     assert.equal(destination.url, undefined);
   }
   assert.equal(resolveBrowserAddress('https://play.fancade.com/5BEC8352E4E078B1', site).kind, 'game');
+  assert.equal(resolveBrowserAddress('https://territorial.io/', site).kind, 'game');
   assert.equal(resolveBrowserAddress('https://proxy-arcade-play.base44.app/browse/', site).kind, 'unavailable');
   assert.equal(resolveBrowserAddress('my next game', site).kind, 'search');
   assert.equal(resolveBrowserAddress('https://www.youtube.com/shorts/aqz-KE-bpKQ', site).embed, 'https://www.youtube-nocookie.com/embed/aqz-KE-bpKQ');

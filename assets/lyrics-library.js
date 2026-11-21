@@ -1,9 +1,10 @@
 const release = new URL(import.meta.url).search;
-const [{ lyricsChart }, { lyricsSources, normalizeLyricsText: normalize, appleMusicSearchUrl }, { sevenCloudsLyrics }, { otherChannelLyrics }] = await Promise.all([
+const [{ lyricsChart }, { lyricsSources, normalizeLyricsText: normalize, appleMusicSearchUrl }, { sevenCloudsLyrics }, { otherChannelLyrics }, { sevenCloudsChannels, sevenCloudsUploads }] = await Promise.all([
   import(`./lyrics-chart.js${release}`),
   import(`./lyrics-sources.js${release}`),
   import(`./lyrics-7clouds.js${release}`),
-  import(`./lyrics-other-channels.js${release}`)
+  import(`./lyrics-other-channels.js${release}`),
+  import(`./seven-clouds-channels.js${release}`)
 ]);
 
 const batchSize = 25;
@@ -79,7 +80,65 @@ export function findChartSongs(query = '', chart = '', videosOnly = false) {
   return searchTracks(songIndex, query, song => (!chart || song.sourceUrl === chart) && (!videosOnly || trackVideo(song)));
 }
 
+function renderSevenClouds(target, params) {
+  const page = element('section', 'lyrics-library');
+  const head = element('header', 'lyrics-heading');
+  const copy = element('div');
+  copy.append(element('h1', '', 'Music'), element('p', 'muted', 'Browse the 7clouds channels and play their public uploads here when embedding is available.'));
+  head.append(copy);
+  const views = element('nav', 'lyrics-views');
+  views.setAttribute('aria-label', 'Music views');
+  const current = link('7clouds channels', '#music?lyrics=channels', 'button primary');
+  current.setAttribute('aria-current', 'page');
+  views.append(link('Watch lyrics', '#music?lyrics=watch'), link('All chart songs', '#music'), link('Music videos', '#music?view=videos'), current);
+
+  const section = element('section', 'info-panel seven-clouds-channels');
+  section.append(element('h2', '', '7clouds channels'));
+  const label = element('label', '', 'Choose a 7clouds channel');
+  const picker = element('select', 'field');
+  for (const [id, name] of sevenCloudsChannels) picker.append(new Option(name, id));
+  if (sevenCloudsChannels.some(([handle]) => handle === params.get('channel'))) picker.value = params.get('channel');
+  label.append(picker);
+  const actions = element('div', 'interaction-row');
+  const stage = element('div', 'media-player');
+  stage.hidden = true;
+  const status = element('p', 'muted');
+  const channelLink = link('Open channel on YouTube', '', 'button', true);
+  const play = button('Play channel uploads', () => {
+    const frame = element('iframe');
+    const url = new URL('https://www.youtube-nocookie.com/embed/videoseries');
+    url.searchParams.set('list', `UU${sevenCloudsUploads[picker.value].slice(2)}`);
+    frame.src = url.href;
+    frame.title = `${picker.selectedOptions[0].text} uploads`;
+    frame.allow = 'encrypted-media; picture-in-picture; fullscreen';
+    frame.allowFullscreen = true;
+    frame.referrerPolicy = 'strict-origin-when-cross-origin';
+    stage.replaceChildren(frame);
+    stage.hidden = false;
+  }, 'button primary');
+
+  function selectChannel() {
+    stage.replaceChildren();
+    stage.hidden = true;
+    channelLink.href = `https://www.youtube.com/@${picker.value}/videos`;
+    play.hidden = !sevenCloudsUploads[picker.value];
+    status.textContent = play.hidden ? 'Browse this channel’s uploads on YouTube.' : 'Playback depends on the uploader’s settings and your connection.';
+    current.href = `#music?${new URLSearchParams({ lyrics: 'channels', channel: picker.value })}`;
+  }
+  picker.addEventListener('change', () => {
+    selectChannel();
+    history.replaceState(null, '', current.href);
+  });
+  selectChannel();
+  actions.append(play, channelLink, link('See all featured channels', 'https://www.youtube.com/@7clouds/channels', 'button', true));
+  section.append(label, actions, stage, status);
+  page.append(head, views, section);
+  target.replaceChildren(page);
+  return () => stage.replaceChildren();
+}
+
 export function renderLyrics(target, params) {
+  if (params?.get('lyrics') === 'channels') return renderSevenClouds(target, params);
   let watchView = params?.get('lyrics') === 'watch';
   const page = element('section', 'lyrics-library');
   const head = element('header', 'lyrics-heading');
@@ -92,7 +151,7 @@ export function renderLyrics(target, params) {
   const watchLyrics = button('Watch lyrics', () => chooseView(true), 'button primary');
   const allSongs = button('All chart songs', () => chooseView(false));
   const musicVideos = link('Music videos', '#music?view=videos');
-  views.append(watchLyrics, allSongs, musicVideos);
+  views.append(watchLyrics, allSongs, musicVideos, link('7clouds channels', '#music?lyrics=channels'));
   page.append(head, views);
 
   const filters = element('div', 'lyrics-filters');

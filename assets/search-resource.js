@@ -5,7 +5,7 @@ const assetVersion = new URL(import.meta.url).search;
 const { gameSearchSources } = await import(`./search-game-sources.js${assetVersion}`);
 const gamePreviews = new Set(Object.values(gameSearchSources).map(({ site }) => site?.preview).filter(Boolean));
 
-export function openSearchResource(target, { title, description, url, provider, preview, kind }) {
+export function openSearchResource(target, { title, description, url, provider, preview, kind, playRoute }) {
   const previewUrl = gamePreviews.has(preview) && !isGamePortalAddress(preview) ? preview : null;
   const portal = isGamePortalAddress(url);
   const dialog = document.createElement('dialog');
@@ -49,14 +49,27 @@ export function openSearchResource(target, { title, description, url, provider, 
     const status = document.createElement('p');
     status.className = 'media-player-status';
     status.textContent = 'The official game loads here if the publisher and your network allow it.';
-    body.append(stage, status);
+    const recovery = document.createElement('div');
+    recovery.className = 'interaction-row';
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'button';
+    retry.textContent = 'Retry player';
+    retry.addEventListener('click', () => { frame.src = previewUrl; });
+    recovery.append(retry);
+    if (playRoute) appendGameLink(recovery, playRoute, 'Open game page');
+    appendGameLink(recovery, '#games?option=in-page', 'Browse in-page games');
+    body.append(stage, status, recovery);
   } else if (kind === 'game' || portal) {
+    appendGameLink(body, '#games?option=in-page', 'Browse in-page games');
+  }
+  function appendGameLink(parent, href, text) {
     const alternative = document.createElement('a');
     alternative.className = 'button';
-    alternative.href = '#games?option=in-page';
-    alternative.textContent = 'Browse in-page games';
+    alternative.href = href;
+    alternative.textContent = text;
     alternative.addEventListener('click', () => dialog.close());
-    body.append(alternative);
+    parent.append(alternative);
   }
   if (url) {
     const credit = document.createElement('p');

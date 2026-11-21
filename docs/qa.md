@@ -1,5 +1,13 @@
 # Arcade release verification
 
+## Direct play links and 7clouds uploads
+
+The Music picker includes all 43 handles on the official 7clouds roster. Official YouTube oEmbed responses confirmed an uploader match on a representative video for each handle. The in-page player uses the corresponding uploads playlist. In live WebKit checks, the main playlist loaded its first entry but media requests returned HTTP 403. Rock’s player said the video was unavailable. Both channel links remained available. [Official 7clouds roster](https://7clouds.org/) · [YouTube embedding help](https://support.google.com/youtube/answer/171780)
+
+The real Territorial.io player opened inside the arcade from a direct play link. WebKit opened Custom Scenario on the arcade page and a separate guest test reached the battlefield. HexGL’s live Start menu reached its continue prompt. The 3D race was outside the verified path. Blocked-frame fixtures verified retry, neutral playback status, same-tab alternatives, and keyboard focus. [Territorial.io terms](https://territorial.io/terms) · [HexGL project](https://github.com/BKcore/HexGL)
+
+All 38 unit tests, 21 gateway tests, and 97 Chromium cases passed across the full run and two isolated timeout retries. Nine focused cases passed in each of Firefox and WebKit. The exported Pages package passed 25 route checks at four widths and 14 further rounds that exercised all 43 channel-to-playlist mappings alongside direct game links.
+
 ## Modes, in-page play, and learning collections
 
 | Area | Verification |
