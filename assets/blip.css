@@ -305,6 +305,7 @@
 }
 
 .blip-example:hover { border-color: var(--blip-key); }
+.blip-welcome-setup { margin-top: 12px; }
 .blip-messages { display: grid; justify-items: start; gap: 14px; min-width: 0; }
 .blip-messages:empty { display: none; }
 
@@ -336,6 +337,15 @@
 .blip-message--user .blip-message-author { color: var(--blip-ink); }
 .blip-answer-source { margin-bottom: 5px; color: var(--blip-faint); font-size: .76rem; }
 .blip-message-text { color: var(--blip-ink); line-height: 1.53; white-space: pre-wrap; }
+.blip-message-text :is(p, h4, pre, ul, ol) { margin: 0 0 6px; }
+.blip-message-text :last-child { margin-bottom: 0; }
+.blip-message-text :is(ul, ol) { padding-inline-start: 1.4em; }
+.blip-message-text pre { padding: 10px; border-radius: 6px; background: var(--blip-background); overflow-x: auto; white-space: pre; }
+.blip-message-text :not(pre) > code { padding: 1px 4px; background: var(--blip-background); border-radius: 4px; }
+.blip-code-keyword { color: #bfd0ff; }
+.blip-code-string { color: #b9e99e; }
+.blip-answer-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.blip-answer-actions .blip-button { min-height: 32px; padding: 4px 7px; font-size: .75rem; }
 .blip-file-preview {
   margin-top: 6px;
   padding: 7px 9px;

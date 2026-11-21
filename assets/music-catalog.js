@@ -236,6 +236,237 @@ export const musicCatalog = [
     "artist": "Wham!",
     "category": "Chart picks",
     "style": "Holiday pop"
+  },
+  {
+    "id": "pdxXAPI-dVg",
+    "title": "Before You",
+    "artist": "Benson Boone",
+    "category": "Benson Boone",
+    "style": "Pop"
+  },
+  {
+    "id": "vL19WbWOxag",
+    "title": "Mr Electric Blue",
+    "artist": "Benson Boone",
+    "category": "Benson Boone",
+    "style": "Pop"
+  },
+  {
+    "id": "SB69blyX46c",
+    "title": "Momma Song",
+    "artist": "Benson Boone",
+    "category": "Benson Boone",
+    "style": "Pop"
+  },
+  {
+    "id": "4BuWrb8A_w4",
+    "title": "Pretty Slowly",
+    "artist": "Benson Boone",
+    "category": "Benson Boone",
+    "style": "Pop"
+  },
+  {
+    "id": "LXj8S9ISL3k",
+    "title": "Little Runaway",
+    "artist": "Benson Boone",
+    "category": "Benson Boone",
+    "style": "Pop"
+  },
+  {
+    "id": "LRBBzbFQ7mw",
+    "title": "What Was",
+    "artist": "Benson Boone",
+    "category": "Benson Boone",
+    "style": "Pop"
+  },
+  {
+    "id": "HlI4icpg9uE",
+    "title": "To Love Someone",
+    "artist": "Benson Boone",
+    "category": "Benson Boone",
+    "style": "Pop"
+  },
+  {
+    "id": "aHkwrs__Z6o",
+    "title": "Room for 2",
+    "artist": "Benson Boone",
+    "category": "Benson Boone",
+    "style": "Pop"
+  },
+  {
+    "id": "fvXn3rmhdc4",
+    "title": "Better Alone",
+    "artist": "Benson Boone",
+    "category": "Benson Boone",
+    "style": "Pop"
+  },
+  {
+    "id": "dEtuadwCd6c",
+    "title": "Nights Like These",
+    "artist": "Benson Boone",
+    "category": "Benson Boone",
+    "style": "Pop"
+  },
+  {
+    "id": "8YX_205D7iU",
+    "title": "Forever and a Day",
+    "artist": "Benson Boone",
+    "category": "Benson Boone",
+    "style": "Pop"
+  },
+  {
+    "id": "nNjVmAsaBdY",
+    "title": "Hello Love",
+    "artist": "Benson Boone",
+    "category": "Benson Boone",
+    "style": "Pop"
+  },
+  {
+    "id": "mWDwNydOlho",
+    "title": "There She Goes",
+    "artist": "Benson Boone",
+    "category": "Benson Boone",
+    "style": "Pop"
+  },
+  {
+    "id": "ptlsli-QXXc",
+    "title": "The Time of My Life",
+    "artist": "Benson Boone",
+    "category": "Benson Boone",
+    "style": "Pop"
+  },
+  {
+    "id": "vOXZkm9p_zY",
+    "title": "Birds",
+    "artist": "Imagine Dragons",
+    "category": "Imagine Dragons",
+    "style": "Pop rock"
+  },
+  {
+    "id": "hqAauanvEew",
+    "title": "Zero",
+    "artist": "Imagine Dragons",
+    "category": "Imagine Dragons",
+    "style": "Pop rock"
+  },
+  {
+    "id": "zHfIkyLh-Ew",
+    "title": "Children of the Sky (a Starfield song)",
+    "artist": "Imagine Dragons",
+    "category": "Imagine Dragons",
+    "style": "Pop rock"
+  },
+  {
+    "id": "81fer9ulOeA",
+    "title": "Shots",
+    "artist": "Imagine Dragons",
+    "category": "Imagine Dragons",
+    "style": "Pop rock"
+  },
+  {
+    "id": "1nv9br7P7g0",
+    "title": "Walking the Wire",
+    "artist": "Imagine Dragons",
+    "category": "Imagine Dragons",
+    "style": "Pop rock"
+  },
+  {
+    "id": "1DoI5WTjd3w",
+    "title": "Follow You",
+    "artist": "Imagine Dragons",
+    "category": "Imagine Dragons",
+    "style": "Pop rock"
+  },
+  {
+    "id": "v08qmr8m_-w",
+    "title": "Eyes Closed",
+    "artist": "Imagine Dragons",
+    "category": "Imagine Dragons",
+    "style": "Pop rock"
+  },
+  {
+    "id": "4ht80uzIhNs",
+    "title": "I Bet My Life",
+    "artist": "Imagine Dragons",
+    "category": "Imagine Dragons",
+    "style": "Pop rock"
+  },
+  {
+    "id": "Y2NkuFIlLEo",
+    "title": "Wrecked",
+    "artist": "Imagine Dragons",
+    "category": "Imagine Dragons",
+    "style": "Pop rock"
+  },
+  {
+    "id": "x12CWu3V0lg",
+    "title": "Rise Up",
+    "artist": "Imagine Dragons",
+    "category": "Imagine Dragons",
+    "style": "Pop rock"
+  },
+  {
+    "id": "WQB4oNpGuDw",
+    "title": "West Coast",
+    "artist": "Imagine Dragons",
+    "category": "Imagine Dragons",
+    "style": "Pop rock"
+  },
+  {
+    "id": "bJ1AADXS5UI",
+    "title": "Not Today",
+    "artist": "Imagine Dragons",
+    "category": "Imagine Dragons",
+    "style": "Pop rock"
+  },
+  {
+    "id": "fmI_Ndrxy14",
+    "title": "Warriors",
+    "artist": "Imagine Dragons",
+    "category": "Imagine Dragons",
+    "style": "Pop rock"
+  },
+  {
+    "id": "9uiJPHNcesA",
+    "title": "Clair de lune",
+    "artist": "Claude Debussy, performed by Lang Lang",
+    "category": "Classical",
+    "style": "Piano instrumental"
+  },
+  {
+    "id": "1prweT95Mo0",
+    "title": "Cello Suite No. 1: Prélude",
+    "artist": "Johann Sebastian Bach, performed by Yo-Yo Ma",
+    "category": "Classical",
+    "style": "Cello instrumental"
+  },
+  {
+    "id": "5w3rRFWzjcM",
+    "title": "Sweden",
+    "artist": "C418",
+    "category": "Soundtracks",
+    "style": "Minecraft · Game soundtrack"
+  },
+  {
+    "id": "K0HSD_i2DvA",
+    "title": "Around the World",
+    "artist": "Daft Punk",
+    "category": "Electronic",
+    "style": "French house · Dance"
+  },
+  {
+    "id": "3JcmQONgXJM",
+    "title": "Gettin’ Jiggy Wit It",
+    "artist": "Will Smith",
+    "category": "Hip-hop",
+    "style": "Pop rap"
+  },
+  {
+    "id": "ApXoWvfEYVU",
+    "title": "Sunflower",
+    "artist": "Post Malone & Swae Lee",
+    "category": "Hip-hop",
+    "style": "Spider-Man: Into the Spider-Verse · Soundtrack"
   }
 ];
 

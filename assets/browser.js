@@ -21,12 +21,15 @@ const youtubeHosts = new Set([
   "youtu.be", "www.youtu.be", "www.youtube-nocookie.com",
 ]);
 const browserViews = new WeakMap();
+const browsingStorageKey = "gamefor-ffun-proxy-v1";
+const addressLimit = 2048;
+const savedLimits = { favorites: 40, history: 30 };
 const builtInGames = games.filter(game => game.local);
 const embeddedGames = games.filter(arcadeEmbed);
 const gameEmbeds = new Map(
   embeddedGames.flatMap(game => [[game.url, game], [arcadeEmbed(game), game]])
 );
-const appEmbeds = new Map(browserApps.map(app => [app.embed, app]));
+const appEmbeds = new Map(browserApps.flatMap(app => [[app.embed, app], [app.url, app]]));
 
 export function youtubeVideoId(url) {
   if (!youtubeHosts.has(url.hostname)) return "";
@@ -43,6 +46,7 @@ export function youtubeVideoId(url) {
 }
 
 export function resolveBrowserAddress(input, pageUrl) {
+  if (typeof input !== "string" || input.length > addressLimit) return null;
   const address = input.trim();
   if (!address) return home;
 
@@ -109,6 +113,21 @@ export function resolveBrowserAddress(input, pageUrl) {
   return { kind: "website", title: url.hostname, address: url.href, url: url.href, embed: url.href };
 }
 
+function recoverBrowsingData(pageUrl) {
+  const data = { favorites: [], history: [] };
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(browsingStorageKey));
+    for (const [key, limit] of Object.entries(savedLimits)) {
+      if (!Array.isArray(stored?.[key])) continue;
+      const addresses = stored[key].slice(0, limit).map(value => resolveBrowserAddress(value, pageUrl)?.address);
+      data[key] = [...new Set(addresses.filter(Boolean))];
+    }
+  } catch {
+    // Browsing is still available when private mode or browser policy disables storage.
+  }
+  return data;
+}
+
 function element(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -137,7 +156,7 @@ function createBrowser() {
   const shell = element("section", "proxy-viewer");
   const heading = element("div", "proxy-heading");
   const title = element("h1", "", "Proxy Gemini");
-  const description = element("p", "", "Preview websites, games, and videos inside the arcade when their providers allow embedding.");
+  const description = element("p", "", "Preview websites, games, and videos. Back and Forward follow the addresses you open in this viewer.");
   heading.append(title, description);
 
   const windowPanel = element("div", "proxy-window");
@@ -159,6 +178,9 @@ function createBrowser() {
   progress.setAttribute("role", "progressbar");
   progress.setAttribute("aria-label", "Loading preview");
   progress.hidden = true;
+  const savedStatus = element("p", "sr-only");
+  savedStatus.setAttribute("role", "status");
+  const browsing = recoverBrowsingData(window.location.href);
 
   let counter = 0;
   const createTab = () => ({ id: ++counter, entries: [home], index: 0 });
@@ -167,6 +189,105 @@ function createBrowser() {
   let present = false;
   let releaseFrame;
   const current = () => active.entries[active.index];
+
+  function storeBrowsing(message = "") {
+    try {
+      window.localStorage.setItem(browsingStorageKey, JSON.stringify(browsing));
+      savedStatus.textContent = message;
+    } catch {
+      savedStatus.textContent = "Your browser could not save this change. It is available during this visit.";
+    }
+  }
+
+  function recordVisit(page) {
+    if (!page.address) return;
+    browsing.history = [page.address, ...browsing.history.filter(value => value !== page.address)].slice(0, savedLimits.history);
+    storeBrowsing();
+  }
+
+  function syncFavorite() {
+    const pageAddress = current().address;
+    const isSaved = browsing.favorites.includes(pageAddress);
+    saveFavorite.disabled = !pageAddress;
+    saveFavorite.textContent = isSaved ? "★" : "☆";
+    saveFavorite.title = isSaved ? "Remove current page from favorites" : "Save current page to favorites";
+    saveFavorite.setAttribute("aria-label", saveFavorite.title);
+    saveFavorite.setAttribute("aria-pressed", String(isSaved));
+  }
+
+  function toggleFavorite() {
+    const pageAddress = current().address;
+    if (!pageAddress) return;
+    const isSaved = browsing.favorites.includes(pageAddress);
+    browsing.favorites = isSaved
+      ? browsing.favorites.filter(value => value !== pageAddress)
+      : [pageAddress, ...browsing.favorites].slice(0, savedLimits.favorites);
+    storeBrowsing(isSaved ? "Page removed from favorites." : "Page saved to favorites.");
+    syncFavorite();
+  }
+
+  function showSaved(kind) {
+    const favorites = kind === "favorites";
+    const title = favorites ? "Favorite pages" : "Browsing history";
+    const dialog = element("dialog", "proxy-saved");
+    const heading = element("h2", "", title);
+    const close = control("Close " + title.toLowerCase(), "×", () => dialog.close());
+    close.autofocus = true;
+    const header = element("div", "proxy-saved-heading");
+    header.append(heading, close);
+    const contents = element("div", "proxy-saved-content");
+    dialog.setAttribute("aria-label", title);
+    dialog.addEventListener("close", () => dialog.remove(), { once: true });
+    dialog.append(header, contents);
+
+    function drawSaved() {
+      const entries = browsing[kind];
+      if (!entries.length) {
+        contents.replaceChildren(element("p", "proxy-saved-empty", favorites
+          ? "You can save a page using the star beside the address bar."
+          : "Addresses and searches you open appear here."));
+        return;
+      }
+      const list = element("ul", "proxy-saved-list");
+      for (const value of entries) {
+        const page = resolveBrowserAddress(value, window.location.href);
+        if (!page?.address) continue;
+        const row = element("li");
+        const open = control(`Open ${value}`, "", () => {
+          dialog.close();
+          submit(value);
+          address.focus();
+        });
+        open.className = "proxy-saved-link";
+        open.append(element("strong", "", page.title));
+        if (page.title !== value) open.append(element("small", "", value));
+        const remove = control(`Remove ${value}`, "×", () => {
+          browsing[kind] = browsing[kind].filter(item => item !== value);
+          storeBrowsing(favorites ? "Favorite removed." : "History entry removed.");
+          syncFavorite();
+          drawSaved();
+          close.focus();
+        });
+        row.append(open, remove);
+        list.append(row);
+      }
+      contents.replaceChildren(list);
+      if (!favorites) {
+        const clear = control("Clear browsing history", "Clear history", () => {
+          browsing.history = [];
+          storeBrowsing("Browsing history cleared.");
+          drawSaved();
+          close.focus();
+        });
+        clear.className = "button proxy-clear-history";
+        contents.append(clear);
+      }
+    }
+
+    drawSaved();
+    windowPanel.append(dialog);
+    dialog.showModal();
+  }
 
   function renderTabs(focus = false) {
     const entries = items.map(tab => {
@@ -247,6 +368,7 @@ function createBrowser() {
   function submit(value) {
     const page = resolveBrowserAddress(value, window.location.href);
     if (page) {
+      recordVisit(page);
       visit(page);
     } else {
       address.setAttribute("aria-invalid", "true");
@@ -316,17 +438,19 @@ function createBrowser() {
       return content;
     }
     const title = element("h2", "", search ? `Search for “${page.title}”` : page.title);
-    const detail = element("p", "", search
-      ? "Find matching games in the arcade. Google results are available in a separate tab."
-      : "Base44 blocks embedding this viewer.");
     const actions = element("div", "proxy-direct-actions");
     if (search) {
-      const arcadeSearch = element("a", "button proxy-action", "Search arcade games");
-      arcadeSearch.href = `#games?${new URLSearchParams({ q: page.title })}`;
-      actions.append(arcadeSearch);
+      const params = new URLSearchParams({ q: page.title }).toString();
+      const webSearch = element("a", "button proxy-action", "Search web and YouTube");
+      webSearch.href = `#web-search?${params}`;
+      const arcadeSearch = element("a", "button", "Search arcade games");
+      arcadeSearch.href = `#games?${params}`;
+      actions.append(webSearch, arcadeSearch);
     }
     actions.append(external(page.url, search ? "Search Google in new tab" : "Open Base44 in new tab", "proxy-source"));
-    content.append(title, detail, actions);
+    content.append(title);
+    if (!search) content.append(element("p", "", "Base44 blocks embedding this viewer."));
+    content.append(actions);
     return content;
   }
 
@@ -363,22 +487,27 @@ function createBrowser() {
       stage.removeAttribute("aria-busy");
       status.textContent = message;
     };
-    const timer = setTimeout(() => {
+    const fail = (heading, message) => {
+      controller.abort();
       source.hidden = false;
-      finish("The preview is taking longer than expected. Try refreshing or opening it in a new tab.");
-    }, 10000);
+      finish("");
+      const panel = element("div", "proxy-direct");
+      panel.append(element("h2", "", heading), element("p", "", message));
+      stage.replaceChildren(panel);
+      syncFullscreen();
+    };
+    const timer = setTimeout(() => fail("Preview timed out", "Try Refresh to start again, or open the original in a new tab."), 10000);
     frame.addEventListener("load", () => {
       if (local) {
         const ready = Boolean(frame.contentDocument?.getElementById("star"));
-        source.hidden = ready;
-        finish(ready ? "The game is ready." : "The local game could not be confirmed. Try refreshing.");
+        if (ready) finish("The game is ready.");
+        else fail("The local game could not load", "Try Refresh, or open the game in a new tab.");
       } else {
         finish("If the preview is blank, the site may block embedding. Go back or open it in a new tab.");
       }
     }, listenerOptions);
     frame.addEventListener("error", () => {
-      source.hidden = false;
-      finish("The preview could not load. Try refreshing or opening it in a new tab.");
+      fail("Preview unavailable", "Try Refresh, or open the original in a new tab.");
     }, listenerOptions);
     frame.src = page.embed || page.url;
     stage.append(frame);
@@ -414,11 +543,18 @@ function createBrowser() {
     forward.disabled = active.index === active.entries.length - 1;
     refresh.disabled = page.kind !== "local" && page.kind !== "built-in" && !page.embed;
     homeButton.disabled = page.kind === "home";
+    syncFavorite();
 
     if (page.kind === "home") {
       stage.append(landing());
     } else if (page.kind === "built-in") {
-      releaseFrame = mountLocalGame(page.id, stage);
+      try {
+        releaseFrame = mountLocalGame(page.id, stage);
+      } catch {
+        const panel = element("div", "proxy-direct");
+        panel.append(element("h2", "", "The game did not start"), element("p", "", "Try Refresh to start the game again."));
+        stage.replaceChildren(panel);
+      }
     } else if (page.kind === "local" || page.embed) {
       releaseFrame = mountFrame(page);
     } else {
@@ -432,6 +568,8 @@ function createBrowser() {
   const forward = control("Forward", "›", () => navigate(1));
   const refresh = control("Refresh", "↻", showPage);
   const homeButton = control("Home", "⌂", () => visit(home));
+  const saveFavorite = control("Save current page to favorites", "☆", toggleFavorite);
+  saveFavorite.classList.add("proxy-save-favorite");
   const expand = control("Fullscreen", "⛶", async () => {
     try {
       if (document.fullscreenElement === windowPanel) await document.exitFullscreen();
@@ -445,6 +583,7 @@ function createBrowser() {
   const form = element("form", "proxy-address");
   const address = element("input", "field");
   address.type = "text";
+  address.maxLength = addressLimit;
   address.placeholder = "Enter an HTTPS address or search games";
   address.autocapitalize = "off";
   address.autocomplete = "off";
@@ -459,14 +598,24 @@ function createBrowser() {
   });
   form.append(address, go);
   navigation.append(back, forward, refresh, homeButton);
-  tabsRow.append(tabs, add);
-  toolbar.append(navigation, form, expand);
+  const savedTools = element("div", "proxy-saved-tools");
+  savedTools.setAttribute("role", "group");
+  savedTools.setAttribute("aria-label", "Saved browsing");
+  const favorites = control("Favorite pages", "Favorites", () => showSaved("favorites"));
+  const history = control("Browsing history", "History", () => showSaved("history"));
+  favorites.classList.add("proxy-saved-trigger");
+  history.classList.add("proxy-saved-trigger");
+  savedTools.append(favorites, history);
+  const panelActions = element("div", "proxy-panel-actions");
+  panelActions.append(saveFavorite, expand);
+  tabsRow.append(tabs, add, savedTools);
+  toolbar.append(navigation, form, panelActions);
   statusRow.append(status, source);
   windowPanel.append(tabsRow, toolbar, statusRow, progress, stage);
   const legacy = element("details", "proxy-legacy");
   legacy.append(element("summary", "", "Legacy Base44 viewer"),
     external(legacyViewer, "Open Base44 in new tab", "proxy-source"));
-  shell.append(heading, windowPanel, legacy);
+  shell.append(heading, windowPanel, legacy, savedStatus);
 
   return {
     shell,
@@ -481,6 +630,7 @@ function createBrowser() {
     suspend() {
       releaseFrame?.();
       releaseFrame = undefined;
+      windowPanel.querySelector("dialog[open]")?.close();
       present = false;
     },
   };

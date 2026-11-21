@@ -1,0 +1,6 @@
+# Copy to .dev.vars for local testing. Keep the actual values out of Git.
+ACCESS_CODE=replace-with-a-long-random-secret
+ALLOWED_ORIGINS=http://127.0.0.1:3000,http://127.0.0.1:4178
+OPENAI_API_KEY=
+BRAVE_SEARCH_API_KEY=
+YOUTUBE_API_KEY=

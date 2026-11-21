@@ -1,6 +1,7 @@
 import { addedShorts, addedVideos } from './media-curated.js';
 import { expansionVideos } from './media-expansion.js';
 import { videoLibraryLink, videoTopics } from './video-topics.js';
+import { gatewayConnected, renderGatewaySettings, searchGatewayVideos } from './service-gateway.js';
 
 const SHORTS = [
   ['80VtSQHvWBo', 'Minecraft, But I Shrunk', 'camman18', ['Minecraft', 'Challenges']],
@@ -211,7 +212,7 @@ function loadIframeApi() {
   return iframeApi;
 }
 
-function playEmbedded(stage, status, video, isOpen, hasDirectLink, autoplay = false) {
+function playEmbedded(stage, status, video, isOpen, hasDirectLink, autoplay = false, onPlaying) {
   if (video.embeddable === false) {
     status.textContent = 'The creator has disabled embedded playback.' +
       (hasDirectLink ? ' Watch this video on YouTube.' : '');
@@ -246,6 +247,9 @@ function playEmbedded(stage, status, video, isOpen, hasDirectLink, autoplay = fa
             event?.target?.playVideo();
           }
         },
+        onStateChange: event => {
+          if (isOpen() && event.data === 1) onPlaying?.();
+        },
         onError: () => {
           if (!isOpen()) return;
           clearTimeout(timer);
@@ -262,7 +266,7 @@ function playEmbedded(stage, status, video, isOpen, hasDirectLink, autoplay = fa
   };
 }
 
-export function watchDialog(target, {title, subtitle, description, video, external, directLabel, details, short}) {
+export function watchDialog(target, {title, subtitle, description, video, external, directLabel, details, short, onPlaying}) {
   const dialog = node('dialog', '', 'media-dialog');
   dialog.setAttribute('aria-label', title);
   const top = node('header', '', 'media-dialog-header');
@@ -300,7 +304,7 @@ export function watchDialog(target, {title, subtitle, description, video, extern
   dialog.append(controls);
   target.append(dialog);
   dialog.showModal();
-  const release = video ? playEmbedded(stage, status, video, () => dialog.open, Boolean(external)) : () => {};
+  const release = video ? playEmbedded(stage, status, video, () => dialog.open, Boolean(external), false, onPlaying) : () => {};
   let removed = false;
   const remove = () => {
     if (removed) return;
@@ -784,10 +788,12 @@ function youtubePage(target, params) {
   count.setAttribute('aria-live', 'polite');
   const grid = node('div', '', 'media-grid media-videos');
   const controls = node('div', '', 'media-actions media-pages');
+  const loadMore = button('Load more', appendNextPage, 'button primary media-load-more');
   const prev = button('Previous page', () => changePage(-1));
   const next = button('Next page', () => changePage(1));
   const pageLabel = node('span', '', 'media-meta');
-  controls.append(prev, pageLabel, next);
+  pageLabel.setAttribute('aria-live', 'polite');
+  controls.append(loadMore, prev, pageLabel, next);
   const addressForm = node('form', '', 'media-filters media-link-form');
   const address = search('Paste a YouTube video or Shorts link');
   address.required = true;
@@ -797,6 +803,8 @@ function youtubePage(target, params) {
   const externalSearch = link('Search on YouTube', 'https://www.youtube.com/', 'button');
   let view = videoFormats.get(params.get('format')) || 'Shorts';
   let page = 0;
+  let visiblePages = 1;
+  let currentResults = [];
   let closeDialog;
   let active = true;
   let videoCheck;
@@ -821,6 +829,7 @@ function youtubePage(target, params) {
       notice.textContent = '';
       view = tab;
       page = 0;
+      visiblePages = 1;
       draw();
     }, 'button media-tab');
     viewButtons.set(tab, choice);
@@ -843,16 +852,18 @@ function youtubePage(target, params) {
   const settingsStatus = node('p', '', 'media-meta');
   settingsStatus.setAttribute('role', 'status');
   const online = button('Search connected service', searchOnline);
-  online.hidden = !state.endpoint;
+  const updateOnlineAvailability = () => { online.hidden = !state.endpoint && !gatewayConnected(); };
+  updateOnlineAvailability();
   linkTools.append(online);
   settings.append(endpointLabel, saveEndpoint, settingsStatus);
   connectedSearch.append(node('summary', 'Connected YouTube search'), settings);
+  renderGatewaySettings(connectedSearch, 'Connect a YouTube Data API backend', updateOnlineAvailability);
   settings.addEventListener('submit', (event) => {
     event.preventDefault();
     try {
       const address = endpoint.value.trim();
       state.endpoint = address ? searchServiceUrl(address).href : '';
-      online.hidden = !state.endpoint;
+      updateOnlineAvailability();
       const saved = save();
       settingsStatus.textContent = `Search endpoint ${address ? 'updated' : 'removed'}.${saved ? '' : ' Browser storage is unavailable.'}`;
     } catch (error) {
@@ -971,30 +982,52 @@ function youtubePage(target, params) {
     const results = view === 'Connected search' ? videos : videos.filter((video) =>
       (category.selectedIndex === 0 || video.tags.includes(category.value)) &&
       (creator.selectedIndex === 0 || video.creator === creator.value) && matches(input.value, video.title, video.creator, ...video.tags));
+    currentResults = results;
     currentShorts = view === 'Shorts' ? results : [];
     scrollShorts.hidden = view !== 'Shorts';
     scrollShorts.disabled = currentShorts.length === 0;
     const pages = Math.max(1, Math.ceil(results.length / PAGE_SIZE));
     page = Math.min(page, pages - 1);
+    visiblePages = Math.min(visiblePages, pages - page);
     const prefs = view === 'Favorites' || view === 'Recently opened';
     const resultType = view === 'Shorts' ? 'Short' : 'video';
     count.textContent = `${results.length} ${resultType}${results.length === 1 ? '' : 's'}`;
     grid.classList.toggle('media-shorts', view === 'Shorts');
-    grid.replaceChildren(...results.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(card));
+    grid.replaceChildren(...results.slice(page * PAGE_SIZE, (page + visiblePages) * PAGE_SIZE).map(card));
     if (!results.length) {
       grid.append(node('p', prefs && !videos.length ? `Your ${view.toLowerCase()} collection is empty.` : 'No videos match your search.', 'media-empty'));
     }
-    controls.hidden = pages === 1;
-    pageLabel.textContent = `Page ${page + 1} of ${pages}`;
-    prev.disabled = page === 0;
-    next.disabled = page + 1 === pages;
+    updatePageControls();
     externalSearch.href = input.value.trim()
       ? `https://www.youtube.com/results?${new URLSearchParams({search_query: input.value.trim()})}`
       : 'https://www.youtube.com/';
   }
 
+  function updatePageControls() {
+    const pages = Math.max(1, Math.ceil(currentResults.length / PAGE_SIZE));
+    const lastVisible = page + visiblePages;
+    controls.hidden = pages === 1;
+    pageLabel.textContent = visiblePages === 1
+      ? `Page ${page + 1} of ${pages}`
+      : `Pages ${page + 1}–${lastVisible} of ${pages}`;
+    prev.disabled = page === 0;
+    next.disabled = lastVisible >= pages;
+    loadMore.hidden = next.disabled;
+  }
+
+  function appendNextPage() {
+    const start = (page + visiblePages) * PAGE_SIZE;
+    const appended = currentResults.slice(start, start + PAGE_SIZE).map(card);
+    if (!appended.length) return;
+    grid.append(...appended);
+    visiblePages += 1;
+    updatePageControls();
+    appended[0].querySelector('.media-card-launch').focus();
+  }
+
   function changePage(direction) {
-    page += direction;
+    page += direction === 1 ? visiblePages : direction;
+    visiblePages = 1;
     draw();
     count.scrollIntoView({block: 'nearest'});
   }
@@ -1012,11 +1045,13 @@ function youtubePage(target, params) {
     const {signal} = request;
     notice.textContent = 'Searching the connected service…';
     try {
-      const results = await fetchConnectedVideos(state.endpoint, query, signal);
+      const results = state.endpoint ? await fetchConnectedVideos(state.endpoint, query, signal)
+        : (await searchGatewayVideos(query, AbortSignal.any([signal, AbortSignal.timeout(12000)]))).map(sanitizeVideo).filter(Boolean);
       if (signal.aborted) return;
       onlineResults = results;
       view = 'Connected search';
       page = 0;
+      visiblePages = 1;
       notice.textContent = 'Results from the connected YouTube search service.';
       draw();
     } catch (error) {
@@ -1028,6 +1063,7 @@ function youtubePage(target, params) {
 
   const changeFilters = () => {
     page = 0;
+    visiblePages = 1;
     draw();
   };
   input.addEventListener('input', changeFilters);

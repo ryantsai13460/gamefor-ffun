@@ -94,6 +94,8 @@ test('navigation, catalog pagination, filtering, favorites, play history and set
   await page.getByRole('button', { name: 'Random Game' }).click();
   await expect(page.getByRole('button', { name: 'Play game', exact: true })).toBeVisible();
   await go(page, 'Settings');
+  await page.getByLabel('Theme').selectOption('graphite');
+  await page.getByRole('checkbox', { name: 'Featured games', exact: true }).uncheck();
   await page.getByLabel('Compact game cards').check();
   await expect(page.locator('body')).toHaveClass(/compact/);
   await page.getByRole('button', { name: 'Clear saved games' }).click();
@@ -107,6 +109,8 @@ test('navigation, catalog pagination, filtering, favorites, play history and set
   await go(page, 'Credits');
   await expect(page.getByText(/548 recovered from the main libraries/)).toBeVisible();
   await go(page, 'Home', 'Pocket Circuit');
+  await expect(page.locator('body')).toHaveAttribute('data-theme', 'graphite');
+  await expect(page.getByRole('heading', { name: 'Featured games', exact: true })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -243,6 +247,11 @@ test('the expanded YouTube tabs show the curated catalog and support pagination'
   await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
   const count = page.locator('.media-result-count');
   const watch = page.getByRole('button', { name: /^Watch / });
+  const firstWatch = await watch.first().getAttribute('aria-label');
+  await expect(watch).toHaveCount(18);
+  await page.getByRole('button', { name: 'Load more', exact: true }).click();
+  await expect(watch).toHaveCount(36);
+  await expect(watch.first()).toHaveAttribute('aria-label', firstWatch);
   for (const [tab, destination, minimum] of [['Shorts', '/shorts/', 350], ['Full videos', '/watch', 170]]) {
     await page.getByRole('button', { name: tab, exact: true }).click();
     expect(parseInt(await count.textContent(), 10)).toBeGreaterThanOrEqual(minimum);
@@ -404,7 +413,7 @@ test('Web Search shows a sourced answer and opens matching YouTube videos in the
     } });
   });
   await page.goto('/#web-search');
-  await page.getByRole('searchbox', { name: 'Search the web' }).fill('What is Minecraft');
+  await page.getByRole('combobox', { name: 'Search the web' }).fill('What is Minecraft');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Wiki and references' })).toBeVisible();
   await expect(page.getByText('Minecraft is a sandbox video game.')).toBeVisible();
@@ -473,12 +482,12 @@ test('AI Help opens directly and converts units without a model or external sear
   await expect(page.getByText('5 mi = 8.04672 km')).toBeVisible();
   expect(wikipediaQueries).toBe(0);
   await page.getByRole('button', { name: 'New search tab', exact: true }).click();
-  await expect(page.getByRole('searchbox', { name: 'Search the web' })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Search the web' })).toBeVisible();
 });
 
 test('search tabs keep paged violin results with separate Shorts and videos', async ({ page }) => {
   await page.goto('/#web-search');
-  const input = page.getByRole('searchbox', { name: 'Search the web' });
+  const input = page.getByRole('combobox', { name: 'Search the web' });
   await input.fill('violion');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
   await expect(page.getByText(/Showing 1–20 of 116/)).toBeVisible();
@@ -515,7 +524,7 @@ test('game details offer an in-arcade preview and Home collects Miniplay links',
 
 test('Web Search opens a pasted YouTube URL in the official player', async ({ page }) => {
   await page.goto('/#web-search');
-  await page.getByRole('searchbox', { name: 'Search the web' }).fill('https://youtu.be/dQw4w9WgXcQ');
+  await page.getByRole('combobox', { name: 'Search the web' }).fill('https://youtu.be/dQw4w9WgXcQ');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ/);
@@ -576,16 +585,78 @@ test('searching Territorial.io from Google shows its preview, wiki and videos wi
 });
 
 test('Music finds official songs and opens the player inside the arcade', async ({ page }) => {
-  await page.goto('/#music?q=hall+of+fame');
+  const musicRequests = [];
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (/\/assets\/music-(library|catalog)\.js$/.test(url.pathname)) musicRequests.push(url);
+  });
+  await page.goto('/#music');
+  await expect(page.getByRole('button', { name: 'Play featured track, Hall of Fame', exact: true })).toBeVisible();
+  const entry = await page.locator('script[src*="/arcade.js"]').getAttribute('src');
+  const release = new URL(entry, page.url()).search;
+  expect(release).toMatch(/^\?v=.+/);
+  expect(musicRequests.map(url => url.search)).toEqual([release, release]);
   const search = page.getByRole('searchbox', { name: 'Search music by title, artist, or style' });
-  await expect(search).toHaveValue('hall of fame');
+  await search.fill('hall of fame');
   await page.getByRole('button', { name: 'Play Hall of Fame', exact: true }).click();
   const player = page.getByRole('dialog', { name: 'Hall of Fame' });
   await expect(player.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/mk48xRzuNvA/);
   await player.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Save Hall of Fame', exact: true }).click();
+  await search.fill('');
+  await page.getByRole('button', { name: 'Saved music', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Play Hall of Fame', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Discover', exact: true }).click();
   await search.fill('Benson Boone');
   await expect(page.getByRole('button', { name: 'Play Beautiful Things', exact: true })).toBeVisible();
   expect(page.context().pages()).toHaveLength(1);
+});
+
+test('game pages launch unified wiki and video search', async ({ page }) => {
+  await page.goto('/#play/territorial');
+  await page.getByRole('link', { name: 'Find wiki and videos' }).click();
+  await expect(page.getByRole('button', { name: 'Game Play – Territorial.io Wiki', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Trailer - Territorial.io', exact: true })).toBeVisible();
+
+  await page.goto('/#play/snake');
+  const search = page.getByRole('searchbox', { name: 'Search the arcade' });
+  await search.fill('territorial.io');
+  await search.press('Enter');
+  await expect(page.getByRole('combobox', { name: 'Search the web' })).toHaveValue('territorial.io');
+  await expect(page.getByRole('button', { name: 'Trailer - Territorial.io', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/#web-search\?q=territorial\.io$/);
+});
+
+test('connected web results open the arcade viewer and preserve the official link', async ({ page }) => {
+  let searched = false;
+  await page.route('https://gateway.example/api/search', async route => {
+    const headers = {
+      'access-control-allow-origin': '*',
+      'access-control-allow-headers': 'authorization, content-type',
+      'access-control-allow-methods': 'POST, OPTIONS'
+    };
+    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
+    searched = true;
+    expect(route.request().postDataJSON()).toEqual({ q: 'learning html' });
+    return route.fulfill({ headers, json: { results: [
+      { title: 'HTML on MDN', description: 'Official learning reference.', url: 'https://developer.mozilla.org/en-US/docs/Web/HTML' },
+      { title: 'Invalid site', description: '', url: 'javascript:alert(1)' }
+    ] } });
+  });
+  await page.goto('/#web-search');
+  await page.getByText('Connect a web search provider', { exact: true }).click();
+  await page.getByLabel('Backend URL').fill('https://gateway.example');
+  await page.getByLabel('Backend access code').fill('fixture-access');
+  await page.getByRole('button', { name: 'Connect backend' }).click();
+  await page.getByRole('combobox', { name: 'Search the web' }).fill('learning html');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await page.getByRole('group', { name: 'Result category' }).getByRole('button', { name: 'Web', exact: true }).click();
+  await expect(page.getByText('HTML on MDN', { exact: true })).toBeVisible();
+  await expect(page.getByText('Invalid site', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Open website', exact: true })).toHaveAttribute('href', 'https://developer.mozilla.org/en-US/docs/Web/HTML');
+  await page.getByRole('link', { name: 'Preview website', exact: true }).click();
+  await expect(page).toHaveURL(/#browse\?address=/);
+  expect(searched).toBe(true);
 });
 
 test('Web Search finds a place and opens the map in the same tab', async ({ page }) => {

@@ -237,6 +237,16 @@
   justify-content: center;
 }
 
+.media-pages .media-load-more {
+  min-inline-size: 8.5rem;
+}
+
+@media (max-width: 520px) {
+  .media-pages .media-load-more {
+    flex-basis: 100%;
+  }
+}
+
 .media-empty {
   grid-column: 1 / -1;
   margin: 0;

@@ -202,3 +202,40 @@ test('blip.ai background music is opt-in and keeps playing while switching chats
   await music.click();
   await expect(page.getByRole('button', { name: 'Play music' })).toBeVisible();
 });
+
+test('connected Blip streams authorized replies and regenerates the last answer', async ({ page }) => {
+  let requests = 0;
+  await page.route('https://gateway.example/api/chat', async route => {
+    const headers = {
+      'access-control-allow-origin': '*',
+      'access-control-allow-headers': 'authorization, content-type',
+      'access-control-allow-methods': 'POST, OPTIONS'
+    };
+    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
+    requests++;
+    expect(route.request().headers().authorization).toBe('Bearer fixture-access');
+    expect(route.request().postDataJSON()).toEqual({
+      messages: [{ role: 'user', content: 'Show a JavaScript example' }], mode: 'quick', stream: true
+    });
+    const text = requests === 1 ? '**First example**\n\n```js\nconst score = 1;\n```' : '**Updated example**';
+    const event = JSON.stringify({ choices: [{ delta: { content: text } }] });
+    await route.fulfill({ status: 200, headers, contentType: 'text/event-stream',
+      body: `data: ${event}\n\ndata: [DONE]\n\n` });
+  });
+  await page.goto('/#blip');
+  await page.locator('.blip-settings-popover > summary').click();
+  await page.getByText('Connect an AI provider', { exact: true }).click();
+  await page.getByLabel('Backend URL').fill('https://gateway.example');
+  await page.getByLabel('Backend access code').fill('fixture-access');
+  await page.getByRole('button', { name: 'Connect backend' }).click();
+  await page.getByRole('checkbox', { name: 'Use the connected model for chats without files' }).check();
+  await page.locator('.blip-settings-popover > summary').click();
+  await page.getByRole('textbox', { name: 'Message blip.ai' }).fill('Show a JavaScript example');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.locator('.blip-message strong')).toHaveText('First example');
+  await expect(page.locator('.blip-code-keyword')).toHaveText('const');
+  await expect(page.getByRole('button', { name: 'Copy response', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
+  await expect(page.locator('.blip-message strong')).toHaveText('Updated example');
+  expect(requests).toBe(2);
+});
