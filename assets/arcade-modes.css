@@ -72,7 +72,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 16px;
-  margin-bottom: 20px;
+  margin-bottom: 8px;
 }
 .mode-ribbon > a { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; }
 .mode-ribbon > a .icon { width: 16px; height: 16px; }
@@ -103,7 +103,7 @@
 .mode-choice-copy small { color: var(--muted); font-size: .84rem; }
 .mode-masthead {
   padding: clamp(22px, 4vw, 52px);
-  margin-bottom: 16px;
+  margin-bottom: 4px;
   border: 1px solid var(--line);
   border-top: 3px solid var(--mode-tone);
   border-radius: 14px;
@@ -117,7 +117,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
   gap: 9px;
-  margin-bottom: 26px;
+  margin-bottom: 12px;
 }
 .mode-destination {
   display: flex;
@@ -146,6 +146,7 @@
 .settings-shortcuts { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 15px; }
 .appearance-settings { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 13px; margin-bottom: 13px; }
 .appearance-settings .info-panel { align-content: start; min-width: 0; }
+.mode-settings > .section-heading, .mode-actions-detail, .palette-grid { justify-self: stretch; }
 .mode-actions-detail {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr));
@@ -193,7 +194,7 @@
   .appearance-settings { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 450px) {
-  .mode-ribbon { gap: 5px; margin-bottom: 13px; }
+  .mode-ribbon { gap: 5px; margin-bottom: 4px; }
   .mode-ribbon > a { min-height: 34px; }
   .mode-ribbon .mode-actions {
     display: grid;

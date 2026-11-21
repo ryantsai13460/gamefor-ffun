@@ -38,7 +38,7 @@ The static site runs its built-in games, catalog filters, saved games, media lib
 
 Home puts Games, Movies, YouTube, and Web Search up front. **Play here** links to built-in and publisher-approved in-page games, and **Watch and listen** previews the film, music, and video collections. **Search the library** looks up the catalogs together, and **My library** brings together saved items, playlists, activity, and chats.
 
-The Home switcher offers Arcade, School, Gaming, Watching, and Library modes. School prioritizes topic search, AI Study Help, and practice games. Gaming filters Home search to in-page games. Watching prioritizes family films, Shorts, and new releases. Library puts saved items and recent activity first. Modes change the Home experience and quick actions.
+The Home switcher offers Arcade, School, Gaming, Watching, and Library modes. School prioritizes topic search, AI Study Help, and practice games. Gaming filters Home search to in-page games. Watching prioritizes family films, Shorts, and recently added media. Library puts saved items and recent activity first. Modes change the Home experience and quick actions.
 
 **Colors & modes** previews ten site themes, including the new Lagoon, Berry, Cobalt, and Dune palettes. **Game backgrounds** lets you pick a preset, choose a custom color, or upload an image. Mode, theme, and background preferences save independently in the same browser.
 

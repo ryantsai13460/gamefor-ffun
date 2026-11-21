@@ -38,6 +38,8 @@ test('mode, site palette, and game background save independently', async ({ page
   await page.goto('/#settings?panel=appearance');
   const palettes = page.getByRole('group', { name: 'Color previews' });
   await expect(palettes.getByRole('button')).toHaveCount(10);
+  const topOffsets = await palettes.getByRole('button').evaluateAll(buttons => buttons.slice(0, 2).map(button => button.offsetTop));
+  expect(topOffsets[0]).toBe(topOffsets[1]);
   await palettes.getByRole('button', { name: 'Berry', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Theme', exact: true })).toHaveValue('berry');
   await expect(page.locator('body')).toHaveAttribute('data-theme', 'berry');
@@ -66,6 +68,7 @@ test('Watching leads to the media shelves and Library keeps saved games visible'
   await modeButtons(page).getByRole('button', { name: 'Watching', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Watching mode', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Watch and listen', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'New to the library', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'New videos', exact: true })).toHaveAttribute('href', '#youtube?format=new');
   await expect(page.getByRole('link', { name: 'Recently added films', exact: true })).toHaveAttribute('href', '#movies?collection=additions');
   await expect(page.getByRole('link', { name: /^Family films/ }).first()).toHaveAttribute('href', '#movies?collection=family');

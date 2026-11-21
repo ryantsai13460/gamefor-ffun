@@ -444,7 +444,7 @@ function renderModeHome(target, mode) {
     input.type = 'search';
     input.required = true;
     input.maxLength = 150;
-    input.placeholder = 'Try fractions or photosynthesis';
+    input.placeholder = 'Try fractions';
     const submit = element('button', 'button primary', 'Search');
     submit.type = 'submit';
     form.addEventListener('submit', event => {

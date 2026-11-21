@@ -393,9 +393,10 @@ export async function populateHomeMedia(target, { watching = false } = {}) {
   if (films.status === 'fulfilled') {
     const [{ featuredFilm, filmCatalog }, { filmPlayback }] = films.value;
     const fullFilms = filmCatalog.filter(film => filmPlayback(film));
+    if (watching) fullFilms.sort((a, b) => (Date.parse(b.addedAt) || 0) - (Date.parse(a.addedAt) || 0));
     const lane = homeMediaLane({
-      title: 'Featured films',
-      records: homeMediaPicks(fullFilms, [featuredFilm.id, 'little-bear-movie', 'waterwalker'], filmItem),
+      title: watching ? 'New to the library' : 'Featured films',
+      records: homeMediaPicks(fullFilms, watching ? [] : [featuredFilm.id, 'little-bear-movie', 'waterwalker'], filmItem),
       href: '#movies', browse: 'Browse movies',
       shortcut: watching ? ['Recently added films', '#movies?collection=additions'] : ['Family films', '#movies?collection=family']
     });
