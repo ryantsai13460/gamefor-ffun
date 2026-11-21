@@ -122,7 +122,7 @@ export function runCpuBlipPrompt(messages, mode, signal, onUpdate) {
       useCache: true,
       nPredict: mode === 'quick' ? 120 : 220,
       sampling: {
-        temp: mode === 'brainstorm' ? .72 : .3,
+        temp: ['brainstorm', 'creative'].includes(mode) ? .72 : .3,
         penalty_last_n: 64,
         penalty_repeat: 1.1
       },

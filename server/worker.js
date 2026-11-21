@@ -20,6 +20,9 @@ const modeInstructions = new Map([
   ['think', 'Explain the relevant tradeoffs and give a practical next step.'],
   ['brainstorm', 'Offer several distinct ideas with short descriptions.'],
   ['study', 'Explain the concept clearly and give a short example or practice question.'],
+  ['code', 'Explain the approach and give concise, runnable examples in fenced code blocks. When debugging, identify the cause and suggest a check. Never claim to have run the code.'],
+  ['creative', 'Build on the user’s creative constraints. Offer concrete, original ideas or write the requested scene, outline, or draft.'],
+  ['games', 'Give practical tips for the named game and version. Distinguish general strategies from version-specific facts, and say when current details need verification.'],
 ]);
 
 function permittedOrigin(request, env) {
@@ -176,6 +179,17 @@ function searchInput(body) {
     throw new HttpError(400, 'Enter a search query of up to 200 characters.');
   }
   return body.q.trim();
+}
+
+function youtubeInput(body) {
+  if (body.pageToken !== undefined && !validVideoPageToken(body.pageToken)) {
+    throw new HttpError(400, 'The YouTube page token is invalid.');
+  }
+  return { query: searchInput(body), pageToken: body.pageToken };
+}
+
+function validVideoPageToken(token) {
+  return typeof token === 'string' && /^[!-~]{1,512}$/.test(token);
 }
 
 function requireRateLimits(env) {
@@ -432,13 +446,14 @@ function videoResult(value) {
   return { id, title, creator, thumbnail, embeddable: true };
 }
 
-async function youtube(query, request, env, origin) {
+async function youtube({ query, pageToken }, request, env, origin) {
   const url = new URL(youtubeEndpoint);
   url.search = new URLSearchParams({
     q: query, part: 'snippet', type: 'video', maxResults: '12', safeSearch: 'strict',
     videoEmbeddable: 'true', videoSyndicated: 'true',
-    fields: 'items(id(videoId),snippet(title,channelTitle,thumbnails(default,medium)))',
+    fields: 'nextPageToken,items(id(videoId),snippet(title,channelTitle,thumbnails(default,medium)))',
   });
+  if (pageToken) url.searchParams.set('pageToken', pageToken);
   const signal = AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]);
   const provider = await fetch(url, {
     headers: { Accept: 'application/json', 'X-Goog-Api-Key': env.YOUTUBE_API_KEY },
@@ -454,13 +469,15 @@ async function youtube(query, request, env, origin) {
   }
   const data = await providerJson(provider, signal);
   const items = Array.isArray(data.items) ? data.items.slice(0, 12).map(videoResult).filter(Boolean) : [];
-  return json(origin, { items });
+  const nextPageToken = validVideoPageToken(data.nextPageToken) && data.nextPageToken !== pageToken
+    ? data.nextPageToken : undefined;
+  return json(origin, { items, nextPageToken });
 }
 
 const routes = new Map([
   ['/api/chat', { key: 'OPENAI_API_KEY', parse: chatInput, handle: chat }],
   ['/api/search', { key: 'BRAVE_SEARCH_API_KEY', parse: searchInput, handle: search }],
-  ['/api/youtube', { key: 'YOUTUBE_API_KEY', parse: searchInput, handle: youtube }],
+  ['/api/youtube', { key: 'YOUTUBE_API_KEY', parse: youtubeInput, handle: youtube }],
   ['/api/capabilities', { parse: () => null, handle: capabilities }],
 ]);
 
@@ -475,6 +492,7 @@ function capabilities(_input, _request, env, origin) {
     youtube: Boolean(env.YOUTUBE_API_KEY),
     standardOutputTokens,
     advancedOutputTokens: advancedOutputTokens(env),
+    modes: [...modeInstructions.keys()],
   });
 }
 

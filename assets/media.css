@@ -478,7 +478,28 @@
 
 .shorts-feed-dialog[open] {
   display: grid;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.shorts-feed-content {
+  display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.shorts-feed-content:fullscreen {
+  padding: clamp(.65rem, 2vw, 1.25rem);
+  color: var(--text, #f5f6f8);
+  background: var(--panel, #171b22);
+}
+
+.shorts-feed-header-tools {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  align-items: center;
+  gap: .4rem;
 }
 
 .shorts-feed-viewport {
@@ -639,4 +660,49 @@
 
 .youtube-page .media-image:has(img.is-ready) .media-image-fallback {
   visibility: hidden;
+}
+
+.media-scroll-sentinel { height: 1px; }
+.media-scroll-more {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  min-height: 44px;
+  color: var(--muted, #b5bfcc);
+  font-size: .85rem;
+}
+.media-scroll-more input { accent-color: var(--accent, #baff60); }
+.media-continuation:empty { display: none; }
+
+.media-image .media-duration {
+  position: absolute;
+  inset-block-end: .4rem;
+  inset-inline-end: .4rem;
+  padding: .12rem .34rem;
+  border-radius: 4px;
+  color: #fff;
+  background: #111218eb;
+  font-size: .8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.media-related {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35rem;
+  min-width: 0;
+  padding-top: .55rem;
+  border-top: 1px solid var(--line, #354351);
+}
+.media-related h3 { flex-basis: 100%; font-size: .95rem; }
+.media-related .button { min-width: 0; text-align: start; overflow-wrap: anywhere; }
+
+.media-player:fullscreen { position: relative; background: #0a0a0d; }
+.media-fullscreen-exit {
+  position: absolute;
+  z-index: 1;
+  inset: .5rem .5rem auto auto;
+  min-height: 44px;
 }

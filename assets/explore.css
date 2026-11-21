@@ -133,7 +133,7 @@
 }
 .explore-hero-cover .explore-tile-text strong { font-size: clamp(1.15rem, 2.2vw, 1.65rem); }
 
-.home-destinations { display: grid; gap: 13px; }
+.home-destinations { display: grid; gap: 13px; margin-bottom: 24px; }
 .home-destination-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .home-destination-grid .explore-tile {
   min-height: 66px;

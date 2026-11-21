@@ -112,7 +112,7 @@ export function resolveBrowserAddress(input, pageUrl) {
   }
 
   if (isMiniplayAddress(url)) {
-    return { kind: "miniplay", title: "Miniplay", address: url.href };
+    return { kind: "miniplay", title: "Miniplay", address: url.href, url: url.href };
   }
 
   if (url.origin === new URL(legacyViewer).origin && url.pathname.replace(/\/$/, "") === "/browse") {
@@ -223,7 +223,7 @@ function createBrowser() {
   const shell = element("section", "proxy-viewer");
   const heading = element("div", "proxy-heading");
   const title = element("h1", "", "Proxy Gemini");
-  const description = element("p", "", "Preview websites, games, and videos. Back and Forward follow the addresses you open in this viewer.");
+  const description = element("p", "", "Search the web or preview permitted websites, games, and videos. Back and Forward follow the addresses you open here.");
   heading.append(title, description);
 
   const windowPanel = element("div", "proxy-window");
@@ -263,10 +263,12 @@ function createBrowser() {
     panel.tabIndex = 0;
     panel.hidden = true;
     panels.append(panel);
-    return { id, entries, index, panel, preview: null, draft: undefined };
+    return { id, entries, index, panel, preview: null, draft: undefined, invalid: false };
   }
   let active = createTab();
   const items = [active];
+  const searchCache = new WeakMap();
+  let searchWeb;
   let present = false;
   const current = () => active.entries[active.index];
 
@@ -353,7 +355,7 @@ function createBrowser() {
           const remove = control(`Remove ${value}`, "×", () => {
             browsing[kind] = browsing[kind].filter(item => item !== value);
             storeBrowsing(favorites ? "Favorite removed." : "History entry removed.");
-            if (favorites && current().kind === "home") showPage(true);
+            if (current().kind === "home") showPage(true);
             else syncFavorite();
             drawSaved();
             close.focus();
@@ -369,6 +371,7 @@ function createBrowser() {
           closedTabs.length = 0;
           saveClosedTabs();
           storeBrowsing("Browsing history cleared.");
+          if (current().kind === "home") showPage(true);
           drawSaved();
           close.focus();
         });
@@ -479,13 +482,17 @@ function createBrowser() {
   }
 
   function visit(page) {
+    const restoreFocus = active.panel.contains(document.activeElement);
     active.draft = undefined;
+    active.invalid = false;
+    const repeatSearch = page.kind === "search" && page.address === current().address;
     if (page.kind !== current().kind || page.address !== current().address) {
       active.entries.splice(active.index + 1, Infinity, page);
       active.index++;
     }
-    showPage(true);
+    showPage(true, repeatSearch);
     renderTabs();
+    if (restoreFocus) active.panel.focus({ preventScroll: true });
   }
 
   function navigate(offset) {
@@ -493,6 +500,7 @@ function createBrowser() {
     if (!active.entries[index]) return;
     active.index = index;
     active.draft = undefined;
+    active.invalid = false;
     showPage(true);
     renderTabs();
   }
@@ -513,14 +521,15 @@ function createBrowser() {
     addressError.hidden = true;
   }
 
-  function showAddressError(value) {
+  function showAddressError(value, focus = true) {
     active.draft = typeof value === "string" ? value.slice(0, addressLimit) : "";
+    active.invalid = true;
     address.value = active.draft;
     address.setAttribute("aria-invalid", "true");
     address.setAttribute("aria-describedby", addressError.id);
     addressError.textContent = "Enter a public HTTPS address or a search term.";
     addressError.hidden = false;
-    address.focus();
+    if (focus) address.focus();
   }
 
   function landing() {
@@ -595,6 +604,24 @@ function createBrowser() {
       }
       content.append(favoritesSection);
     }
+    if (browsing.history.length) {
+      const recent = element("section", "proxy-playable");
+      const recentHeading = element("div", "proxy-playable-heading");
+      const all = control("Show browsing history", "Show history", () => showSaved("history"));
+      all.className = "button proxy-all-favorites";
+      recentHeading.append(element("h2", "", "Recent pages"), all);
+      const list = element("ul", "proxy-playable-list proxy-start-favorites");
+      for (const value of browsing.history.slice(0, 4)) {
+        const page = resolveBrowserAddress(value, window.location.href);
+        const entry = element("li");
+        const open = control(`Reopen ${value}`, page.title, () => submit(value));
+        open.className = "proxy-bookmark";
+        entry.append(open);
+        list.append(entry);
+      }
+      recent.append(recentHeading, list);
+      content.append(recent);
+    }
     content.append(apps, playable);
     return content;
   }
@@ -605,7 +632,10 @@ function createBrowser() {
     if (page.kind === "miniplay") {
       const homeLink = element("a", "button proxy-action", "Go to Home");
       homeLink.href = "#home";
-      content.append(element("h2", "", "Miniplay links are on Home"), homeLink);
+      const actions = element("div", "proxy-direct-actions");
+      actions.append(homeLink, external(page.url, "Open Miniplay in new tab", "proxy-source"));
+      content.append(element("h2", "", "Miniplay links are on Home"),
+        element("p", "", "This destination opens on the publisher’s website."), actions);
       return content;
     }
     const title = element("h2", "", search ? `Search for “${page.title}”` : page.title);
@@ -623,6 +653,84 @@ function createBrowser() {
     if (!search) content.append(element("p", "", "Base44 blocks embedding this viewer."));
     content.append(actions);
     return content;
+  }
+
+  function mountSearch(tab, page, panel, refresh) {
+    const preview = tab.preview;
+    const controller = new AbortController();
+    const statusText = element("p", "proxy-search-note");
+    statusText.setAttribute("role", "status");
+    const section = element("section", "proxy-search-results");
+    const list = element("ul", "proxy-search-result-list");
+    section.append(element("h3", "", "Web results"), statusText, list);
+
+    function draw(records) {
+      const destinations = new Set();
+      for (const result of records) {
+        const destination = resolveBrowserAddress(result.url, window.location.href);
+        if (!destination?.address.startsWith("https:") || !destination.url || destinations.has(destination.url)) continue;
+        destinations.add(destination.url);
+        const row = element("li");
+        row.append(element("h4", "", result.title), element("p", "proxy-search-source", new URL(destination.url).hostname));
+        if (result.description) row.append(element("p", "", result.description));
+        const actions = element("div", "proxy-result-actions");
+        if (destination.embed) {
+          const openPreview = control(`Preview ${result.title}`, "Preview here", () => submit(destination.address));
+          openPreview.className = "button";
+          actions.append(openPreview);
+        }
+        const official = external(destination.url, "Open in new tab", "proxy-source");
+        official.setAttribute("aria-label", `Open ${result.title} in new tab`);
+        actions.append(official);
+        row.append(actions);
+        list.append(row);
+      }
+      return destinations.size;
+    }
+
+    function show(records) {
+      const count = draw(records);
+      statusText.textContent = count
+        ? `${count} ${count === 1 ? "result" : "results"} from your connected search provider.`
+        : "The connected provider found no results that can be listed here.";
+    }
+
+    const cached = !refresh && searchCache.get(page);
+    if (cached) {
+      preview.canRefresh = Boolean(searchWeb);
+      show(cached);
+      panel.append(section);
+      return;
+    }
+    const shortQuery = page.title.length <= 200;
+    const request = shortQuery && searchWeb?.(page.title,
+      AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]));
+    if (!request) {
+      panel.append(element("p", "proxy-search-unconfigured", shortQuery
+        ? "Connect a provider in Web Search to see live results here."
+        : "Use a query of up to 200 characters for results from a connected provider."));
+      return;
+    }
+    preview.canRefresh = true;
+    statusText.textContent = "Searching the connected provider…";
+    panel.append(section);
+    preview.busy = true;
+    preview.busyLabel = "Searching the web";
+    request.then(records => {
+      if (controller.signal.aborted) return;
+      const results = records.slice(0, 10);
+      searchCache.set(page, results);
+      show(results);
+    }).catch(error => {
+      if (controller.signal.aborted) return;
+      statusText.textContent = error.name === "TimeoutError" ? "Web search timed out. Try Refresh or choose another search option above."
+        : "The connected search provider could not return results. Try Refresh or choose another search option above.";
+    }).finally(() => {
+      if (controller.signal.aborted) return;
+      preview.busy = false;
+      if (tab === active) syncPreview();
+    });
+    return () => controller.abort();
   }
 
   function mountFrame(tab, page) {
@@ -742,6 +850,8 @@ function createBrowser() {
     const preview = active.preview;
     status.textContent = preview?.message || "";
     progress.hidden = !preview?.busy;
+    progress.setAttribute("aria-label", preview?.busyLabel || "Loading preview");
+    if (current().kind === "search") refresh.disabled = !preview?.canRefresh;
     source.hidden = !preview?.source;
     dismissPreview.hidden = !preview?.dismissible;
     if (preview?.source) source.href = preview.source;
@@ -768,7 +878,7 @@ function createBrowser() {
     source.focus();
   }
 
-  function showPage(reset = false) {
+  function showPage(reset = false, refreshSearch = false) {
     for (const tab of items) {
       const selected = tab === active;
       tab.panel.hidden = !selected;
@@ -778,14 +888,15 @@ function createBrowser() {
     const stage = active.panel;
     const page = current();
     address.value = active.draft ?? page.address;
-    clearAddressError();
+    if (active.invalid) showAddressError(active.draft, false);
+    else clearAddressError();
     back.disabled = active.index === 0;
     forward.disabled = active.index === active.entries.length - 1;
-    refresh.disabled = page.kind !== "local" && page.kind !== "built-in" && !page.embed;
+    refresh.disabled = page.kind !== "local" && page.kind !== "built-in" && page.kind !== "search" && !page.embed;
     homeButton.disabled = page.kind === "home";
     syncFavorite();
 
-    if (reset || !active.preview) {
+    if (reset || !active.preview || page.kind === "home") {
       unloadTab(active);
       const preview = active.preview = {};
       if (page.kind === "home") {
@@ -801,7 +912,9 @@ function createBrowser() {
       } else if (page.kind === "local" || page.embed) {
         preview.release = mountFrame(active, page);
       } else {
-        stage.append(directPage(page));
+        const panel = directPage(page);
+        stage.append(panel);
+        if (page.kind === "search") preview.release = mountSearch(active, page, panel, refreshSearch);
       }
     }
     syncPreview();
@@ -812,7 +925,8 @@ function createBrowser() {
   const forward = control("Forward", "›", () => navigate(1));
   const refresh = control("Refresh", "↻", () => {
     active.draft = undefined;
-    showPage(true);
+    active.invalid = false;
+    showPage(true, true);
   });
   const homeButton = control("Home", "⌂", () => visit(home));
   const saveFavorite = control("Save current page to favorites", "☆", toggleFavorite);
@@ -838,6 +952,7 @@ function createBrowser() {
   address.setAttribute("aria-label", "Address or search query");
   address.addEventListener("input", () => {
     active.draft = address.value;
+    active.invalid = false;
     clearAddressError();
   });
   const go = element("button", "button proxy-action", "Go");
@@ -874,7 +989,8 @@ function createBrowser() {
 
   return {
     shell,
-    show(initialAddress) {
+    show(initialAddress, options) {
+      searchWeb = options.searchWeb;
       const firstShow = !present;
       present = true;
       const destination = initialAddress ? resolveBrowserAddress(initialAddress, window.location.href) : null;
@@ -895,14 +1011,14 @@ function createBrowser() {
   };
 }
 
-export function renderBrowser(target, initialAddress = "") {
+export function renderBrowser(target, initialAddress = "", options = {}) {
   let browser = browserViews.get(target);
   if (!browser) {
     browser = createBrowser();
     browserViews.set(target, browser);
   }
   if (browser.shell.parentNode !== target) target.replaceChildren(browser.shell);
-  browser.show(initialAddress);
+  browser.show(initialAddress, options);
 }
 
 export function suspendBrowser(target) {

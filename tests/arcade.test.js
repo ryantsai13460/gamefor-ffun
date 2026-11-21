@@ -7,20 +7,25 @@ import { resolveBrowserAddress } from '../assets/browser.js';
 import { findCuratedVideos, getVideoCollections, parseYouTubeVideo } from '../assets/media.js';
 import { expansionVideos } from '../assets/media-expansion.js';
 import { discoveryVideos } from '../assets/media-discovery-videos.js';
+import { entertainmentVideos } from '../assets/media-entertainment-videos.js';
 import { featuredFilm, filmCatalog } from '../assets/film-catalog.js';
+import { filmPlayback } from '../assets/film-playback.js';
+import { featuredTrack, musicCatalog } from '../assets/music-catalog.js';
 
 const library = createLibrary(games);
 const site = 'https://ryantsai13460.github.io/gamefor-ffun/#browse';
 
-test('the two video additions preserve the library and add 600 unique official player IDs', () => {
+test('the video expansions preserve the library and use unique official player IDs', () => {
   const library = getVideoCollections();
-  assert.equal(library.count, 1253);
+  assert.equal(library.count, 1353);
   assert.equal(library.added, 600);
   assert.equal(expansionVideos.length, 500);
   assert.equal(expansionVideos.filter(({ short }) => short).length, 250);
   assert.equal(discoveryVideos.length, 100);
   assert.equal(discoveryVideos.filter(({ short }) => short).length, 50);
-  for (const video of [...expansionVideos, ...discoveryVideos]) {
+  assert.equal(entertainmentVideos.length, 100);
+  assert.equal(entertainmentVideos.filter(({ short }) => short).length, 51);
+  for (const video of [...expansionVideos, ...discoveryVideos, ...entertainmentVideos]) {
     assert.match(video.id, /^[A-Za-z0-9_-]{11}$/);
     assert.ok(video.title && video.creator && video.tags.length);
     const thumbnail = new URL(video.thumbnail);
@@ -31,14 +36,18 @@ test('the two video additions preserve the library and add 600 unique official p
   assert.equal(library.topics.filter(({ count }) => count > 0).length, 10);
 });
 
-test('the cinema catalog keeps 48 distinct films and uses official playback routes', () => {
-  assert.equal(filmCatalog.length, 48);
-  assert.equal(new Set(filmCatalog.map(({ id }) => id)).size, 48);
+test('the cinema catalog separates complete films from trailers and uses legitimate playback routes', () => {
+  assert.equal(new Set(filmCatalog.map(({ id }) => id)).size, filmCatalog.length);
+  assert.ok(filmCatalog.filter(film => !film.regionLimited && filmPlayback(film)).length >= 100);
+  assert.equal(filmCatalog.filter(film => !filmPlayback(film) && filmPlayback(film, true)).length, 12);
+  assert.ok(filmCatalog.some(film => film.format === 'feature' && film.runtimeMinutes >= 40 && filmPlayback(film)));
+  assert.ok(filmCatalog.some(film => film.format === 'short' && film.runtimeMinutes > 0 && filmPlayback(film)));
   assert.ok(featuredFilm.fullVideo);
   for (const film of filmCatalog) {
     assert.ok(film.title && film.credit && film.genres.length);
     assert.equal(new URL(film.source).protocol, 'https:');
-    assert.ok(film.trailer || film.fullVideo || film.embed);
+    assert.ok(filmPlayback(film, true) || filmPlayback(film), film.id);
+    if (film.fullWatch) assert.equal(new URL(film.fullWatch).protocol, 'https:');
     for (const id of [film.trailer, film.fullVideo].filter(Boolean)) {
       assert.match(id, /^[A-Za-z0-9_-]{11}$/);
     }
@@ -46,6 +55,26 @@ test('the cinema catalog keeps 48 distinct films and uses official playback rout
       const embed = new URL(film.embed);
       assert.equal(embed.origin, 'https://www.nfb.ca');
       assert.ok(embed.pathname.endsWith('/embed/player/'));
+    }
+  }
+});
+
+test('the expanded music catalog has unique provider IDs and attributable chart ranks', () => {
+  assert.ok(musicCatalog.length >= 300);
+  assert.equal(new Set(musicCatalog.map(({ id }) => id)).size, musicCatalog.length);
+  assert.equal(featuredTrack.title, 'Hall of Fame');
+  for (const track of musicCatalog) {
+    assert.match(track.id, /^[A-Za-z0-9_-]{11}$/);
+    assert.ok(track.title && track.artist && track.category && track.channel);
+    const artwork = new URL(track.thumbnail);
+    assert.equal(artwork.hostname, 'i.ytimg.com');
+    assert.ok(artwork.pathname.startsWith(`/vi/${track.id}/`));
+    assert.equal(new URL(track.channelUrl).hostname, 'www.youtube.com');
+    if (track.chart) {
+      assert.ok(Number.isInteger(track.chart.rank) && track.chart.rank > 0);
+      assert.match(track.chart.date, /^\d{4}-\d{2}-\d{2}$/);
+      assert.ok(track.chart.source && track.chart.market);
+      assert.equal(new URL(track.chart.url).protocol, 'https:');
     }
   }
 });

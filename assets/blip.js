@@ -1,16 +1,15 @@
-import { mountBlipMusic } from './blip-music.js';
-
 const assetVersion = new URL(import.meta.url).search;
 const [{ BLIP_FILE_ACCEPT, BLIP_FILE_LIMITS, normalizeBlipAttachments, readBlipFiles }, { BLIP_LIMITS, createBlipStore }, {
   answerBlip, blipModelAvailability, blipModes, cpuBlipAvailability, portableBlipAvailability,
   prepareBlipModel, prepareCpuBlipModel, preparePortableBlipModel,
   releaseCpuBlipModel, releasePortableBlipModel
-}, { formatBlipReply }, { gatewayConnected, getGatewayCapabilities, hostedBlipReply, renderGatewaySettings }] = await Promise.all([
+}, { formatBlipReply }, { gatewayConnected, getGatewayCapabilities, hostedBlipReply, renderGatewaySettings }, { mountBlipMusic }] = await Promise.all([
   import(`./blip-files.js${assetVersion}`),
   import(`./blip-store.js${assetVersion}`),
   import(`./blip-answer.js${assetVersion}`),
   import(`./blip-format.js${assetVersion}`),
-  import(`./service-gateway.js${assetVersion}`)
+  import(`./service-gateway.js${assetVersion}`),
+  import(`./blip-music.js${assetVersion}`)
 ]);
 
 const examples = [
@@ -19,6 +18,8 @@ const examples = [
   ['Brainstorm ideas', 'Brainstorm three ideas for a weekend game project.', 'brainstorm'],
   ['Convert units', 'Convert 5 miles to km', 'quick']
 ];
+const themeKey = 'gamefor-ffun:blip-theme';
+const legacyHostedModes = { code: 'think', creative: 'brainstorm', games: 'think' };
 
 const messageSources = {
   model: 'On-device AI',
@@ -84,12 +85,13 @@ function downloadTranscript(chat) {
 
 function messageView(message, { onEdit, onRetry } = {}) {
   const item = element('article', `blip-message blip-message--${message.role}`);
+  if (message.kind) item.dataset.replyKind = message.kind;
   item.append(element('h3', 'blip-message-author', message.role === 'user' ? 'You' : 'blip.ai'));
   if (message.kind) item.append(element('p', 'blip-answer-source', messageSources[message.kind]));
   let body;
   if (message.text) {
     body = element('div', 'blip-message-text');
-    if (message.role === 'assistant') formatBlipReply(body, message.text);
+    if (message.role === 'assistant') formatBlipReply(body, message.text, message.sources);
     else body.textContent = message.text;
     item.append(body);
   }
@@ -161,7 +163,11 @@ function messageView(message, { onEdit, onRetry } = {}) {
   return item;
 }
 
-export function renderBlip(target) {
+export function getBlipChatSummary() {
+  return createBlipStore().getState().chats.map(({ id, title, mode }) => ({ id, title, mode }));
+}
+
+export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}) {
   const root = element('section', 'blip');
   root.innerHTML = `
     <header class="blip-header">
@@ -197,9 +203,9 @@ export function renderBlip(target) {
         </details>
       </div>
     </header>
-    <div class="blip-layout" data-chats-open="false">
+    <div class="blip-layout" data-chats-open="true">
       <aside class="blip-rail" id="blip-chats" aria-label="Saved conversations">
-        <button class="blip-button blip-button--primary blip-new-chat" data-blip="new" type="button"><span aria-hidden="true">+</span> New chat</button>
+        <button class="blip-button blip-button--primary blip-new-chat" data-blip="new" type="button" aria-keyshortcuts="Alt+Shift+N"><span aria-hidden="true">+</span> New chat</button>
         <h2>Chats</h2>
         <input class="blip-chat-search" type="search" data-blip="chat-search" aria-label="Search chats" placeholder="Search chats" maxlength="200" autocomplete="off">
         <ul class="blip-chat-list" data-blip="chats"></ul>
@@ -208,7 +214,7 @@ export function renderBlip(target) {
       </aside>
       <section class="blip-thread" aria-label="Chat workspace">
         <header class="blip-thread-header">
-          <button class="blip-button blip-chat-toggle" data-blip="toggle" type="button" aria-controls="blip-chats" aria-expanded="false">Chats</button>
+          <button class="blip-button blip-chat-toggle" data-blip="toggle" type="button" aria-controls="blip-chats" aria-expanded="true" aria-keyshortcuts="Alt+Shift+H">Chats</button>
           <h2 class="blip-thread-title" data-blip="title">New chat</h2>
           <div class="blip-thread-actions">
             <details class="blip-popover blip-chat-actions" data-blip="chat-actions">
@@ -216,6 +222,10 @@ export function renderBlip(target) {
               <div class="blip-popover-content">
                 <button class="blip-button" type="button" data-blip="pin">Pin chat</button>
                 <button class="blip-button" type="button" data-blip="download">Download transcript</button>
+                <label class="blip-theme-control">Chat theme
+                  <select data-blip="theme"><option value="dark">Dark</option><option value="light">Light</option></select>
+                </label>
+                <button class="blip-button" type="button" data-blip="shortcuts">Keyboard shortcuts</button>
               </div>
             </details>
             <button class="blip-button" type="button" data-blip="rename">Rename</button>
@@ -262,7 +272,7 @@ export function renderBlip(target) {
             <button class="blip-button blip-attach" type="button" data-blip="attach" title="PDF, TXT, Markdown, CSV, TSV, or JSON">Attach files</button>
             <input type="file" data-blip="file-input" aria-label="Choose files to attach" multiple hidden>
             <label class="sr-only" for="blip-prompt">Message blip.ai</label>
-            <textarea id="blip-prompt" data-blip="input" rows="2" maxlength="2000" enterkeyhint="send" placeholder="Message blip.ai…"></textarea>
+            <textarea id="blip-prompt" data-blip="input" rows="2" maxlength="3000" enterkeyhint="send" aria-keyshortcuts="Alt+Shift+M" placeholder="Message blip.ai…"></textarea>
             <button class="blip-button blip-button--primary" data-blip="send" type="submit">Send</button>
             <button class="blip-button" data-blip="stop" type="button" hidden>Stop</button>
           </div>
@@ -271,6 +281,18 @@ export function renderBlip(target) {
         </form>
       </section>
     </div>
+    <dialog class="blip-dialog" data-blip="shortcuts-dialog" aria-labelledby="blip-shortcuts-title">
+      <h2 id="blip-shortcuts-title">Keyboard shortcuts</h2>
+      <dl class="blip-shortcuts">
+        <div><dt>New chat</dt><dd><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd></dd></div>
+        <div><dt>Toggle chat history</dt><dd><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>H</kbd></dd></div>
+        <div><dt>Focus message</dt><dd><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd></dd></div>
+        <div><dt>Send message</dt><dd><kbd>Enter</kbd></dd></div>
+        <div><dt>New line</dt><dd><kbd>Shift</kbd> + <kbd>Enter</kbd></dd></div>
+        <div><dt>Close menu or stop reply</dt><dd><kbd>Escape</kbd></dd></div>
+      </dl>
+      <form method="dialog"><div class="blip-dialog-actions"><button class="blip-button" type="submit">Close</button></div></form>
+    </dialog>
     <dialog class="blip-dialog blip-attachment-dialog" data-blip="attachment-dialog" aria-labelledby="blip-attachment-title">
       <h2 id="blip-attachment-title" data-blip="attachment-title"></h2>
       <p class="blip-attachment-metadata" data-blip="attachment-metadata"></p>
@@ -315,15 +337,28 @@ export function renderBlip(target) {
   fileInput.accept = BLIP_FILE_ACCEPT;
   const dialog = part('chat-dialog');
   const attachmentDialog = part('attachment-dialog');
+  const shortcutsDialog = part('shortcuts-dialog');
   const nameInput = part('chat-name');
   const nameLabel = nameInput.closest('label');
+  const theme = part('theme');
+  try { theme.value = localStorage.getItem(themeKey) === 'light' ? 'light' : 'dark'; } catch {}
+  root.dataset.theme = theme.value;
+  theme.addEventListener('change', () => {
+    root.dataset.theme = theme.value;
+    try { localStorage.setItem(themeKey, theme.value); } catch {}
+  });
+  let compact = root.clientWidth <= 750;
+  let desktopChatsOpen = true;
+  let mobileChatsOpen = false;
   const stopMusic = mountBlipMusic(part('music'));
   let capabilities;
   let capabilityRequest;
+  let capabilityProblem;
   renderGatewaySettings(part('gateway'), 'Connect an AI provider', refreshGatewayCapabilities, result => {
     capabilityRequest?.abort();
     capabilityRequest = undefined;
     capabilities = result;
+    capabilityProblem = undefined;
     updateHostedOptions();
   });
   const musicLink = element('a', 'blip-button', 'Open Music library');
@@ -344,6 +379,7 @@ export function renderBlip(target) {
     const notice = part('gateway-capabilities');
     notice.textContent = !gatewayConnected() ? 'Connect an AI provider to check for Advanced replies.'
       : capabilityRequest ? 'Checking the connected gateway…'
+      : capabilityProblem ? capabilityProblem.message
       : capabilities?.advanced ? 'Advanced replies allow more detail and may use more tokens.'
       : capabilities?.chat === false ? 'Hosted chat needs an OpenAI API key on this gateway.'
       : 'This gateway’s Advanced replies are unavailable.';
@@ -355,6 +391,7 @@ export function renderBlip(target) {
     capabilityRequest?.abort();
     capabilityRequest = undefined;
     capabilities = undefined;
+    capabilityProblem = undefined;
     if (!gatewayConnected()) {
       updateHostedOptions();
       return;
@@ -367,8 +404,10 @@ export function renderBlip(target) {
         request.signal, lifetime.signal, AbortSignal.timeout(5000)
       ]));
       if (capabilityRequest === request) capabilities = result;
-    } catch {
-      // Legacy gateways can still answer standard requests.
+    } catch (error) {
+      if (capabilityRequest === request && !lifetime.signal.aborted) {
+        capabilityProblem = error.name === 'TimeoutError' ? new Error('The gateway check timed out.') : error;
+      }
     } finally {
       if (capabilityRequest === request && !lifetime.signal.aborted) {
         capabilityRequest = undefined;
@@ -383,9 +422,23 @@ export function renderBlip(target) {
   };
 
   function showChats(open) {
+    if (compact) mobileChatsOpen = open;
+    else desktopChatsOpen = open;
+    syncChats();
+  }
+
+  function syncChats() {
+    const open = compact ? mobileChatsOpen : desktopChatsOpen;
     layout.dataset.chatsOpen = String(open);
     part('toggle').setAttribute('aria-expanded', String(open));
   }
+
+  const layoutObserver = new ResizeObserver(([entry]) => {
+    compact = entry.contentRect.width <= 750;
+    syncChats();
+  });
+  layoutObserver.observe(root);
+  syncChats();
 
   function drawRail() {
     const { chats, activeId } = store.getState();
@@ -397,7 +450,7 @@ export function renderBlip(target) {
       const open = button(chat.title, () => {
         if (store.selectChat(chat.id)) {
           draw();
-          showChats(false);
+          if (compact) showChats(false);
           input.focus({ preventScroll: true });
         }
       }, 'blip-chat-link');
@@ -427,7 +480,9 @@ export function renderBlip(target) {
     const revision = revisions.get(chat?.id);
     const currentMode = blipModes[revision?.mode || chat?.mode] || blipModes.quick;
     const request = pending.get(chat?.id);
+    transcript.setAttribute('aria-busy', String(Boolean(request)));
     for (const [id, option] of modeInputs) option.checked = currentMode.id === id;
+    input.placeholder = currentMode.id === 'quick' ? 'Message blip.ai…' : currentMode.example;
     part('mode-description').textContent = currentMode.description;
     part('stop').hidden = !request;
     part('send').hidden = Boolean(request);
@@ -507,7 +562,8 @@ export function renderBlip(target) {
     revisions.delete(id);
   }
 
-  function draw() {
+  function draw({ follow = true } = {}) {
+    const previousScroll = transcript.scrollTop;
     const chat = currentChat();
     drawRail();
     part('title').textContent = chat?.title || 'New chat';
@@ -528,7 +584,11 @@ export function renderBlip(target) {
     part('messages').replaceChildren(...items);
     drawPartial(chat?.id);
     drawComposer(chat);
-    transcript.scrollTop = transcript.scrollHeight;
+    transcript.scrollTop = follow ? transcript.scrollHeight : previousScroll;
+  }
+
+  function nearTranscriptEnd() {
+    return transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 90;
   }
 
   function drawPartial(id) {
@@ -539,6 +599,7 @@ export function renderBlip(target) {
       partial?.remove();
       return;
     }
+    const follow = nearTranscriptEnd();
     if (!partial) {
       partial = messageView({ role: 'assistant', kind: request.engine === 'hosted' ? 'hosted' : 'model' });
       partial.classList.add('blip-reply-stream');
@@ -546,7 +607,7 @@ export function renderBlip(target) {
       part('messages').append(partial);
     }
     partial.lastElementChild.textContent = text;
-    transcript.scrollTop = transcript.scrollHeight;
+    if (follow) transcript.scrollTop = transcript.scrollHeight;
   }
 
   for (const mode of Object.values(blipModes)) {
@@ -586,11 +647,40 @@ export function renderBlip(target) {
     if (!store.createChat()) return;
     chatSearch.value = '';
     draw();
-    showChats(false);
+    if (compact) showChats(false);
     input.focus({ preventScroll: true });
   });
   chatSearch.addEventListener('input', drawRail);
   part('toggle').addEventListener('click', () => showChats(layout.dataset.chatsOpen !== 'true'));
+  part('shortcuts').addEventListener('click', () => shortcutsDialog.showModal());
+  root.addEventListener('keydown', event => {
+    if (dialog.open || attachmentDialog.open || shortcutsDialog.open || event.isComposing) return;
+    if (event.key === 'Escape') {
+      const menu = root.querySelector('.blip-popover[open]');
+      if (menu) {
+        menu.open = false;
+        menu.querySelector('summary').focus();
+      } else if (pending.has(currentChat()?.id)) {
+        part('stop').click();
+      } else if (compact && mobileChatsOpen) {
+        showChats(false);
+        part('toggle').focus();
+      } else return;
+      event.preventDefault();
+      return;
+    }
+    if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey || event.repeat) return;
+    if (event.code === 'KeyN') {
+      part('new').click();
+    } else if (event.code === 'KeyH') {
+      const open = layout.dataset.chatsOpen !== 'true';
+      showChats(open);
+      (open ? chatSearch : part('toggle')).focus({ preventScroll: true });
+    } else if (event.code === 'KeyM') {
+      input.focus({ preventScroll: true });
+    } else return;
+    event.preventDefault();
+  });
   part('attach').addEventListener('click', () => fileInput.click());
   part('close-attachment').addEventListener('click', () => attachmentDialog.close());
   attachmentDialog.addEventListener('close', () => { part('attachment-preview').textContent = ''; });
@@ -759,7 +849,9 @@ export function renderBlip(target) {
           drawEngineState(currentChat());
         }
         const answer = await hostedBlipReply({
-          text, history: chat.messages, mode: chat.mode, research,
+          text, history: chat.messages,
+          mode: capabilities?.modes?.includes(chat.mode) ? chat.mode : legacyHostedModes[chat.mode] || chat.mode,
+          research,
           depth: advanced ? 'advanced' : undefined,
           signal: AbortSignal.any([request.controller.signal, AbortSignal.timeout(advanced ? 95_000 : 65_000)]),
           onSources(value) { sources = value; },
@@ -810,7 +902,7 @@ export function renderBlip(target) {
       ? reply.kind !== 'unavailable' && store.replaceAssistantReply(chat.id, replaceId, bounded, reply)
       : store.addMessage(chat.id, 'assistant', bounded, reply);
     if (active) {
-      draw();
+      draw({ follow: nearTranscriptEnd() });
       status.textContent = saved ? 'Reply added.' : reply.kind === 'unavailable' ? bounded : 'The reply could not be saved.';
     } else if (saved) drawRail();
   }
@@ -893,7 +985,8 @@ export function renderBlip(target) {
   }
 
   function hostedAvailable() {
-    return part('hosted').checked && gatewayConnected() && capabilities?.chat !== false;
+    return part('hosted').checked && gatewayConnected() && capabilities?.chat !== false
+      && ![401, 403, 503].includes(capabilityProblem?.status);
   }
 
   function hostedFor(chat) {
@@ -1057,15 +1150,22 @@ export function renderBlip(target) {
     popover.addEventListener('toggle', () => { if (popover.open) other.open = false; });
   }
 
-  if (!currentChat()) store.createChat();
+  const selectedChat = requestedChat && store.selectChat(requestedChat);
+  const initialDraft = typeof draft === 'string' ? draft.trim().slice(0, input.maxLength) : '';
+  const chat = initialDraft && !selectedChat && currentChat()?.messages.length ? store.createChat() : null;
+  const initialChat = chat || currentChat() || store.createChat();
+  if (initialChat && initialDraft) drafts.set(initialChat.id, initialDraft);
   draw();
+  if (initialChat && initialDraft) input.focus({ preventScroll: true });
   void refreshGatewayCapabilities();
 
   return () => {
     lifetime.abort();
+    layoutObserver.disconnect();
     for (const id of pending.keys()) stopReply(id);
     if (dialog.open) dialog.close();
     if (attachmentDialog.open) attachmentDialog.close();
+    if (shortcutsDialog.open) shortcutsDialog.close();
     stopMusic();
     void releaseCpuBlipModel();
     void releasePortableBlipModel();

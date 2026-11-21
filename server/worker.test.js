@@ -168,11 +168,27 @@ test('authenticated capabilities describe configured routes without contacting a
   assert.deepEqual(await direct.json(), {
     chat: true, advanced: true, research: false, search: false, youtube: true,
     standardOutputTokens: 700, advancedOutputTokens: 2400,
+    modes: ['quick', 'think', 'brainstorm', 'study', 'code', 'creative', 'games'],
   });
   const unconfigured = await worker.fetch(post('/api/capabilities', {}), { ...env, SITE_RATE_LIMITER: undefined });
   assert.equal(unconfigured.status, 503);
   assert.equal(rateLimitCalls, 0);
   assert.equal(provider.mock.callCount(), 0);
+});
+
+test('specialized Blip modes reach the authorized model with corresponding instructions', async context => {
+  const instructions = [];
+  context.mock.method(globalThis, 'fetch', async (_url, options) => {
+    instructions.push(JSON.parse(options.body).messages[0].content);
+    return Response.json({ choices: [{ message: { content: 'Fixture generated response' } }] });
+  });
+  for (const mode of ['code', 'creative', 'games']) {
+    const response = await worker.fetch(post('/api/chat', { messages: [userMessage], mode }), settings());
+    assert.equal(response.status, 200);
+  }
+  assert.match(instructions[0], /runnable examples in fenced code blocks/);
+  assert.match(instructions[1], /original ideas/);
+  assert.match(instructions[2], /version-specific facts/);
 });
 
 test('chat streaming reconstructs split provider events and emits text deltas and a completion marker', async context => {
@@ -352,4 +368,23 @@ test('YouTube search restricts results to eligible videos and shapes only offici
     { id: 'a-zA_Z01234', title: 'Game & guides', creator: 'Arcade',
       thumbnail: 'https://i.ytimg.com/vi/a-zA_Z01234/mqdefault.jpg', embeddable: true },
   ] });
+});
+
+test('YouTube search follows an opaque provider page token under the same request limits', async context => {
+  const pageToken = 'Next+Page/Fixture=';
+  let calls = 0;
+  const provider = context.mock.method(globalThis, 'fetch', async url => {
+    assert.equal(url.searchParams.get('pageToken'), pageToken);
+    assert.equal(url.searchParams.get('q'), 'game guides');
+    assert.match(url.searchParams.get('fields'), /nextPageToken/);
+    return Response.json({ items: [], nextPageToken: 'AnotherPage' });
+  });
+  const limiter = { async limit() { calls++; return { success: true }; } };
+  const env = settings({ CLIENT_RATE_LIMITER: limiter });
+  const invalid = await worker.fetch(post('/api/youtube', { q: 'game guides', pageToken: 'invalid token' }), env);
+  assert.equal(invalid.status, 400);
+  const result = await worker.fetch(post('/api/youtube', { q: 'game guides', pageToken }), env);
+  assert.deepEqual(await result.json(), { items: [], nextPageToken: 'AnotherPage' });
+  assert.equal(calls, 1);
+  assert.equal(provider.mock.callCount(), 1);
 });

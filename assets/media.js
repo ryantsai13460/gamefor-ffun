@@ -2,9 +2,13 @@ import { addedShorts, addedVideos } from './media-curated.js';
 import { expansionVideos } from './media-expansion.js';
 import { discoveryVideos } from './media-discovery-videos.js';
 import { videoLibraryLink, videoTopics } from './video-topics.js';
+import { createSearchFullscreen } from './search-fullscreen.js';
 
 const assetVersion = new URL(import.meta.url).search;
-const { gatewayConnected, renderGatewaySettings, searchGatewayVideos } = await import(`./service-gateway.js${assetVersion}`);
+const [{ gatewayConnected, renderGatewaySettings, searchGatewayVideoPage }, { entertainmentVideos }] = await Promise.all([
+  import(`./service-gateway.js${assetVersion}`),
+  import(`./media-entertainment-videos.js${assetVersion}`),
+]);
 
 const SHORTS = [
   ['80VtSQHvWBo', 'Minecraft, But I Shrunk', 'camman18', ['Minecraft', 'Challenges']],
@@ -47,13 +51,17 @@ const CREATOR_VIDEOS = [
 const previousVideos = [...addedVideos, ...CREATOR_VIDEOS, ...SHORTS, ...addedShorts].map(video => ({
   ...video, tags: [video.tags.includes('Violin') ? 'Music' : 'Gaming', ...video.tags]
 }));
-const CURATED_VIDEOS = new Map([...previousVideos, ...expansionVideos, ...discoveryVideos]
+const CURATED_VIDEOS = new Map([...previousVideos, ...expansionVideos, ...discoveryVideos, ...entertainmentVideos]
   .map((video) => [video.id, video]));
 const expandedIds = new Set([...discoveryVideos, ...expansionVideos].map(video => video.id));
 const videoFormats = new Map([
   ['shorts', 'Shorts'], ['videos', 'Full videos'], ['all', 'All videos'], ['new', 'New additions'],
-  ['favorites', 'Favorites'], ['recent', 'Recently opened']
+  ['favorites', 'Favorites'], ['recent', 'Recently opened'], ['watched', 'Recently watched']
 ]);
+
+export function getCuratedVideos() {
+  return [...CURATED_VIDEOS.values()];
+}
 
 export function getVideoCollections() {
   const videos = [...CURATED_VIDEOS.values()];
@@ -147,15 +155,42 @@ function persist(key, value) {
 function sanitizeVideo(video) {
   if (!video || typeof video.id !== 'string' || !VIDEO_ID.test(video.id) ||
       typeof video.title !== 'string' || !video.title.trim()) return null;
-  return {
+  const value = {
     id: video.id,
     title: video.title.trim().slice(0, 250),
     creator: typeof video.creator === 'string' ? video.creator.trim().slice(0, 160) : '',
     short: video.short === true,
     embeddable: video.embeddable !== false,
     tags: [],
-    channelId: video.channelId
+    channelId: CHANNEL_ID.test(video.channelId || '') ? video.channelId : undefined
   };
+  if (Number.isFinite(video.duration) && video.duration > 0) value.duration = Math.min(video.duration, 86400);
+  if (typeof video.publishedAt === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(video.publishedAt)) value.publishedAt = video.publishedAt.slice(0, 35);
+  if (typeof video.thumbnail === 'string') {
+    try {
+      const url = new URL(video.thumbnail);
+      if (url.origin === 'https://i.ytimg.com' && !url.username && !url.password && url.pathname.startsWith(`/vi/${video.id}/`)) value.thumbnail = url.href;
+    } catch {
+      // The renderer can use the standard thumbnail for this exact video ID.
+    }
+  }
+  return value;
+}
+
+function storedVideoIds(values, limit = 100) {
+  return Array.isArray(values) ? [...new Set(values.filter(id => typeof id === 'string' && VIDEO_ID.test(id)))].slice(0, limit) : [];
+}
+
+function videoMap(extra, channels) {
+  return new Map([...channels.flatMap(({items}) => items), ...extra, ...CURATED_VIDEOS.values()].map(video => [video.id, video]));
+}
+
+export function getVideoLibraryState() {
+  const store = preference(VIDEO_STORE);
+  const extras = Array.isArray(store.extra) ? store.extra.map(sanitizeVideo).filter(Boolean).slice(-100) : [];
+  const known = videoMap(extras, validChannels(preference(CHANNEL_STORE).channels));
+  const read = (value, limit) => storedVideoIds(value, limit).map(id => known.get(id)).filter(Boolean);
+  return { favorites: read(store.favorites), recent: read(store.recent, 30), watched: read(store.watched, 30) };
 }
 
 function validChannels(channels) {
@@ -302,16 +337,25 @@ export function watchDialog(target, {title, subtitle, description, video, extern
   let removeFullscreenListener = () => {};
   if (external) controls.append(link(directLabel, external, 'button primary'));
   if (video && video.embeddable !== false && document.fullscreenEnabled && stage.requestFullscreen) {
-    const full = button('Fullscreen', async () => {
+    const toggle = async () => {
       try {
         if (document.fullscreenElement === stage) await document.exitFullscreen();
         else await stage.requestFullscreen();
       } catch {
         status.textContent = 'Fullscreen is unavailable in this browser.';
       }
-    });
+    };
+    const full = button('Fullscreen', toggle);
+    const exit = button('Exit fullscreen', toggle, 'button media-fullscreen-exit');
     const update = () => {
-      full.textContent = document.fullscreenElement === stage ? 'Exit fullscreen' : 'Fullscreen';
+      if (document.fullscreenElement === stage) {
+        stage.append(exit);
+        exit.focus({ preventScroll: true });
+      } else if (exit.isConnected) {
+        const restoreFocus = document.activeElement === exit;
+        exit.remove();
+        if (restoreFocus) full.focus({ preventScroll: true });
+      }
     };
     document.addEventListener('fullscreenchange', update);
     removeFullscreenListener = () => document.removeEventListener('fullscreenchange', update);
@@ -349,16 +393,20 @@ export function watchDialog(target, {title, subtitle, description, video, extern
   };
 }
 
-export function openShortsFeed(target, videos, { startIndex = 0, onVisit, inPageOnly = false } = {}) {
+export function openShortsFeed(target, videos, { startIndex = 0, onVisit, onPlaying, inPageOnly = false } = {}) {
   if (!videos.length) return () => {};
   const dialog = node('dialog', '', 'media-dialog shorts-feed-dialog');
   dialog.setAttribute('aria-label', 'Shorts feed');
+  const content = node('div', '', 'shorts-feed-content');
+  const fullscreen = createSearchFullscreen(content, { label: 'Shorts feed' });
   const header = node('header', '', 'media-dialog-header');
   const heading = node('div');
   const position = node('p', '', 'media-meta');
   position.setAttribute('aria-live', 'polite');
   heading.append(node('h2', 'Shorts feed'), position);
-  header.append(heading, button('Close', () => dialog.close()));
+  const headerTools = node('div', '', 'shorts-feed-header-tools');
+  headerTools.append(fullscreen.controls, button('Close', () => dialog.close()));
+  header.append(heading, headerTools);
 
   const viewport = node('div', '', 'shorts-feed-viewport');
   viewport.tabIndex = 0;
@@ -384,7 +432,8 @@ export function openShortsFeed(target, videos, { startIndex = 0, onVisit, inPage
   controls.append(previous, next);
   if (!inPageOnly) controls.append(source);
   footer.append(caption, status, controls);
-  dialog.append(header, viewport, footer);
+  content.append(header, viewport, footer);
+  dialog.append(content);
 
   let index = -1;
   let visibleSlots = [];
@@ -414,7 +463,8 @@ export function openShortsFeed(target, videos, { startIndex = 0, onVisit, inPage
     previous.disabled = index === 0;
     next.disabled = index === videos.length - 1;
     onVisit?.(video);
-    stopPlayback = playEmbedded(stage, status, video, () => dialog.open && index === nextIndex, !inPageOnly, true);
+    stopPlayback = playEmbedded(stage, status, video, () => dialog.open && index === nextIndex, !inPageOnly, true,
+      () => onPlaying?.(video));
   }
 
   function align() {
@@ -449,6 +499,7 @@ export function openShortsFeed(target, videos, { startIndex = 0, onVisit, inPage
     closed = true;
     clearTimeout(scrollTimer);
     resize?.disconnect();
+    fullscreen.dispose();
     stopPlayback();
     dialog.remove();
   }
@@ -586,9 +637,21 @@ function searchServiceUrl(input) {
   return url;
 }
 
-async function fetchConnectedVideos(endpoint, query, signal) {
+const validPageToken = value => typeof value === 'string' && /^[!-~]{1,512}$/.test(value);
+
+function sanitizeVideoPage(data) {
+  if (!Array.isArray(data?.items)) throw new Error('The search service did not return a video list.');
+  return {
+    items: [...new Map(data.items.slice(0, 100).map(sanitizeVideo).filter(Boolean)
+      .map(video => [video.id, video])).values()],
+    nextPageToken: validPageToken(data.nextPageToken) ? data.nextPageToken : undefined,
+  };
+}
+
+async function fetchConnectedVideoPage(endpoint, query, signal, pageToken) {
   const url = searchServiceUrl(endpoint);
   url.search = new URLSearchParams({q: query, safeSearch: 'strict', videoEmbeddable: 'true'});
+  if (pageToken) url.searchParams.set('pageToken', pageToken);
   const timeout = AbortSignal.timeout(12000);
   const response = await fetch(url, {
     credentials: 'omit',
@@ -597,17 +660,14 @@ async function fetchConnectedVideos(endpoint, query, signal) {
     headers: {Accept: 'application/json'}
   });
   if (!response.ok) throw new Error('The connected search service is unavailable.');
-  const data = await response.json();
-  if (!Array.isArray(data.items)) throw new Error('The search service did not return a video list.');
-  return [...new Map(data.items.slice(0, 100).map(sanitizeVideo).filter(Boolean)
-    .map((video) => [video.id, video])).values()];
+  return sanitizeVideoPage(await response.json());
 }
 
 export async function searchConnectedVideos(query, signal) {
   const endpoint = preference(VIDEO_STORE).endpoint;
   if (typeof endpoint !== 'string' || !endpoint.trim()) return null;
   const value = typeof query === 'string' ? query.trim().slice(0, 200) : '';
-  return value ? fetchConnectedVideos(endpoint.trim(), value, signal) : [];
+  return value ? (await fetchConnectedVideoPage(endpoint.trim(), value, signal)).items : [];
 }
 
 async function youtubeData(endpoint, parameters, key, signal) {
@@ -786,22 +846,23 @@ async function identifyVideo(video, signal) {
 function youtubePage(target, params) {
   const store = preference(VIDEO_STORE);
   const channelStore = preference(CHANNEL_STORE);
-  const ids = (values) => Array.isArray(values) ? [...new Set(values.filter((id) => VIDEO_ID.test(id)))].slice(0, 100) : [];
   const state = {
-    favorites: ids(store.favorites),
-    recent: ids(store.recent).slice(0, 30),
+    favorites: storedVideoIds(store.favorites),
+    recent: storedVideoIds(store.recent, 30),
+    watched: storedVideoIds(store.watched, 30),
     extra: Array.isArray(store.extra) ? store.extra.map(sanitizeVideo).filter(Boolean).slice(-100) : [],
     endpoint: typeof store.endpoint === 'string' ? store.endpoint : '',
     channels: validChannels(channelStore.channels),
     handles: typeof channelStore.handles === 'string' ? channelStore.handles : DEFAULT_CREATORS
   };
   const save = () => persist(VIDEO_STORE, {
-    favorites: state.favorites, recent: state.recent, extra: state.extra, endpoint: state.endpoint
+    favorites: state.favorites, recent: state.recent, watched: state.watched, extra: state.extra, endpoint: state.endpoint
   });
   const root = node('section', '', 'media-page');
   const filters = node('div', '', 'media-filters');
   const views = node('div', '', 'media-tabs');
   const input = search('Search titles, creators, or topics');
+  input.value = (params.get('q') || '').slice(0, input.maxLength);
   root.classList.add('youtube-page');
   const { count: catalogCount, topics: collections } = getVideoCollections();
   const topics = [...new Set([...CURATED_VIDEOS.values()].flatMap(video => video.tags))].sort();
@@ -816,11 +877,20 @@ function youtubePage(target, params) {
   const grid = node('div', '', 'media-grid media-videos');
   const controls = node('div', '', 'media-actions media-pages');
   const loadMore = button('Load more', appendNextPage, 'button primary media-load-more');
+  const scrollMoreLabel = node('label', '', 'media-scroll-more');
+  const scrollMore = node('input');
+  scrollMore.type = 'checkbox';
+  const canAutoLoad = typeof IntersectionObserver === 'function';
+  const sentinel = node('div', '', 'media-scroll-sentinel');
+  sentinel.setAttribute('aria-hidden', 'true');
+  scrollMoreLabel.append(scrollMore, document.createTextNode('Load while scrolling'));
+  const continuation = node('p', '', 'media-meta media-continuation');
+  continuation.setAttribute('role', 'status');
   const prev = button('Previous page', () => changePage(-1));
   const next = button('Next page', () => changePage(1));
   const pageLabel = node('span', '', 'media-meta');
   pageLabel.setAttribute('aria-live', 'polite');
-  controls.append(loadMore, prev, pageLabel, next);
+  controls.append(loadMore, prev, pageLabel, next, scrollMoreLabel);
   const addressForm = node('form', '', 'media-filters media-link-form');
   const address = search('Paste a YouTube video or Shorts link');
   address.required = true;
@@ -838,10 +908,13 @@ function youtubePage(target, params) {
   let videoCheck;
   let onlineResults = [];
   let onlineRequest;
+  let onlineSearch;
   let currentShorts = [];
   const scrollShorts = button('Scroll Shorts', () => {
     closeDialog?.();
-    closeDialog = openShortsFeed(root, currentShorts, { startIndex: page * PAGE_SIZE, onVisit: rememberVideo });
+    closeDialog = openShortsFeed(root, currentShorts, {
+      startIndex: page * PAGE_SIZE, onVisit: rememberVideo, onPlaying: rememberWatched
+    });
   }, 'button primary shorts-feed-launch');
   scrollShorts.setAttribute('aria-haspopup', 'dialog');
 
@@ -853,7 +926,7 @@ function youtubePage(target, params) {
   const viewButtons = new Map();
   for (const tab of videoFormats.values()) {
     const choice = button(tab, () => {
-      onlineRequest?.abort();
+      resetOnlineSearch();
       notice.textContent = '';
       view = lastLocalView = tab;
       page = 0;
@@ -880,7 +953,17 @@ function youtubePage(target, params) {
   const settingsStatus = node('p', '', 'media-meta');
   settingsStatus.setAttribute('role', 'status');
   const online = button('Search connected service', searchOnline);
-  const updateOnlineAvailability = () => { online.hidden = !state.endpoint && !gatewayConnected(); };
+  const updateOnlineAvailability = () => {
+    online.hidden = !state.endpoint && !gatewayConnected();
+    if (!onlineSearch && !onlineRequest) return;
+    resetOnlineSearch();
+    if (view === 'Connected search') {
+      view = lastLocalView;
+      page = 0;
+      visiblePages = 1;
+      draw();
+    }
+  };
   updateOnlineAvailability();
   linkTools.append(online);
   settings.append(endpointLabel, saveEndpoint, settingsStatus);
@@ -911,7 +994,10 @@ function youtubePage(target, params) {
   const tools = node('div', '', 'youtube-library-tools');
   const topicLinks = node('nav', '', 'media-topic-nav');
   topicLinks.setAttribute('aria-label', 'Browse video topics');
-  for (const { topic, count } of collections.filter(collection => collection.count > 0)) {
+  const videoEntries = getCuratedVideos();
+  const newTopics = ['Brawl Stars', 'Animation', 'Family', 'Programming'].filter(topic => !videoTopics.includes(topic))
+    .map(topic => ({ topic, count: videoEntries.filter(video => video.tags.includes(topic)).length }));
+  for (const { topic, count } of [...collections, ...newTopics].filter(collection => collection.count > 0)) {
     const topicLink = node('a', topic, 'chip');
     topicLink.href = videoLibraryLink(topic);
     topicLink.dataset.topic = topic;
@@ -920,12 +1006,11 @@ function youtubePage(target, params) {
   }
   tools.append(views, filters);
   root.append(heading('YouTube', `${catalogCount.toLocaleString()} videos and Shorts across gaming, music, science, and more.`),
-    feature, topicLinks, tools, count, grid, controls, linkTools, notice, importer.section, connectedSearch);
+    feature, topicLinks, tools, count, grid, sentinel, controls, continuation, linkTools, notice, importer.section, connectedSearch);
   target.replaceChildren(root);
 
   function allVideos() {
-    return new Map([...state.channels.flatMap(({items}) => items), ...state.extra,
-      ...CURATED_VIDEOS.values()].map((video) => [video.id, video]));
+    return videoMap(state.extra, state.channels);
   }
 
   function rememberOnlineVideo(video) {
@@ -940,6 +1025,14 @@ function youtubePage(target, params) {
     save();
   }
 
+  function rememberWatched(video) {
+    if (!active || state.watched[0] === video.id) return;
+    rememberOnlineVideo(video);
+    state.watched = [video.id, ...state.watched.filter(id => id !== video.id)].slice(0, 30);
+    save();
+    if (view === 'Recently watched') draw();
+  }
+
   function showVideo(video) {
     closeDialog?.();
     rememberVideo(video);
@@ -948,13 +1041,24 @@ function youtubePage(target, params) {
       draw();
       if (launchId) grid.querySelector(`[data-video-id="${launchId}"]`)?.focus({preventScroll: true});
     }
+    const details = node('section', '', 'media-related');
+    const sameCreator = item => Boolean(video.creator && item.creator === video.creator);
+    const related = [...new Map([...currentResults, ...allVideos().values()].map(item => [item.id, item])).values()]
+      .filter(item => item.id !== video.id && (sameCreator(item) || item.tags.some(tag => video.tags.includes(tag))))
+      .sort((first, second) => Number(sameCreator(second)) - Number(sameCreator(first))).slice(0, 4);
+    if (related.length) {
+      details.append(node('h3', 'Related videos'));
+      for (const item of related) details.append(button(`Watch ${item.title}`, () => showVideo(item)));
+    }
     closeDialog = watchDialog(root, {
       title: video.title,
       subtitle: video.creator,
       video,
       external: lookup(video.id, video.short),
       directLabel: 'Watch on YouTube',
-      short: video.short
+      short: video.short,
+      details: related.length ? details : undefined,
+      onPlaying: () => rememberWatched(video),
     });
   }
 
@@ -972,6 +1076,10 @@ function youtubePage(target, params) {
     watch.setAttribute('aria-haspopup', 'dialog');
     watch.setAttribute('aria-label', `Watch ${video.title}`);
     const art = image(video.thumbnail || `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`, video.title);
+    if (Number.isFinite(video.duration) && video.duration > 0) {
+      const seconds = Math.floor(video.duration);
+      art.append(node('span', `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`, 'media-duration'));
+    }
     const info = node('span', '', 'media-card-body');
     info.append(node('strong', video.title, 'media-card-title'), node('span', video.creator, 'media-meta'));
     watch.append(art, info);
@@ -1010,13 +1118,14 @@ function youtubePage(target, params) {
     let videos;
     if (view === 'Favorites') videos = state.favorites.map((id) => library.get(id)).filter(Boolean);
     else if (view === 'Recently opened') videos = state.recent.map((id) => library.get(id)).filter(Boolean);
+    else if (view === 'Recently watched') videos = state.watched.map(id => library.get(id)).filter(Boolean);
     else if (view === 'Connected search') videos = onlineResults;
     else if (view === 'New additions') videos = [...expandedIds].map(id => library.get(id)).filter(Boolean);
     else if (view === 'All videos') videos = [...library.values()];
     else videos = [...library.values()].filter(video => Boolean(video.short) === (view === 'Shorts'));
     const results = view === 'Connected search' ? videos : videos.filter((video) =>
       (category.selectedIndex === 0 || video.tags.includes(category.value)) &&
-      (creator.selectedIndex === 0 || video.creator === creator.value) && matches(terms, video.title, video.creator, ...video.tags));
+      (creator.selectedIndex === 0 || video.creator === creator.value) && matches(terms, video.title, video.creator, video.id, ...video.tags));
     currentResults = results;
     currentShorts = view === 'Shorts' ? results : [];
     scrollShorts.hidden = view !== 'Shorts';
@@ -1024,7 +1133,7 @@ function youtubePage(target, params) {
     const pages = Math.max(1, Math.ceil(results.length / PAGE_SIZE));
     page = Math.min(page, pages - 1);
     visiblePages = Math.min(visiblePages, pages - page);
-    const prefs = view === 'Favorites' || view === 'Recently opened';
+    const prefs = ['Favorites', 'Recently opened', 'Recently watched'].includes(view);
     const resultType = view === 'Shorts' ? 'Short' : 'video';
     count.textContent = `${results.length} ${resultType}${results.length === 1 ? '' : 's'}`;
     grid.classList.toggle('media-shorts', view === 'Shorts');
@@ -1041,23 +1150,32 @@ function youtubePage(target, params) {
   function updatePageControls() {
     const pages = Math.max(1, Math.ceil(currentResults.length / PAGE_SIZE));
     const lastVisible = page + visiblePages;
-    controls.hidden = pages === 1;
-    pageLabel.textContent = visiblePages === 1
+    const connected = view === 'Connected search';
+    const remoteNext = Boolean(connected && onlineSearch?.nextPageToken);
+    controls.hidden = pages === 1 && !remoteNext;
+    pageLabel.textContent = connected ? `${currentResults.length} connected videos loaded` : visiblePages === 1
       ? `Page ${page + 1} of ${pages}`
       : `Pages ${page + 1}–${lastVisible} of ${pages}`;
     prev.disabled = page === 0;
     next.disabled = lastVisible >= pages;
-    loadMore.hidden = next.disabled;
+    loadMore.hidden = next.disabled && !remoteNext;
+    loadMore.disabled = connected && Boolean(onlineRequest);
+    scrollMoreLabel.hidden = connected || !canAutoLoad;
+    if (!connected) continuation.textContent = scrollMore.checked && next.disabled && currentResults.length
+      ? 'All matching videos are shown.' : '';
   }
 
-  function appendNextPage() {
+  function appendNextPage(event) {
     const start = (page + visiblePages) * PAGE_SIZE;
     const appended = currentResults.slice(start, start + PAGE_SIZE).map(card);
-    if (!appended.length) return;
+    if (!appended.length) {
+      if (event && view === 'Connected search' && onlineSearch?.nextPageToken) void loadConnectedPage(onlineSearch, true);
+      return;
+    }
     grid.append(...appended);
     visiblePages += 1;
     updatePageControls();
-    appended[0].querySelector('.media-card-launch').focus();
+    if (event) appended[0].querySelector('.media-card-launch').focus();
   }
 
   function changePage(direction) {
@@ -1067,39 +1185,75 @@ function youtubePage(target, params) {
     count.scrollIntoView({block: 'nearest'});
   }
 
-  async function searchOnline() {
+  function resetOnlineSearch() {
+    onlineRequest?.abort();
+    onlineRequest = undefined;
+    onlineSearch = undefined;
+    onlineResults = [];
+    continuation.textContent = '';
+    online.disabled = false;
+  }
+
+  function searchOnline() {
     const query = input.value.trim().slice(0, 200);
     if (!query) {
       input.focus();
       notice.textContent = 'Enter a video topic first.';
       return;
     }
-    onlineRequest?.abort();
+    resetOnlineSearch();
+    onlineSearch = { query, endpoint: state.endpoint, nextPageToken: undefined, used: new Set() };
+    void loadConnectedPage(onlineSearch, false);
+  }
+
+  async function loadConnectedPage(searchState, append) {
+    if (onlineRequest || searchState !== onlineSearch) return;
     const request = new AbortController();
     onlineRequest = request;
     const {signal} = request;
-    notice.textContent = 'Searching the connected service…';
+    const nextToken = append ? searchState.nextPageToken : undefined;
+    const message = append ? continuation : notice;
+    const shownUntil = Math.min(onlineResults.length, (page + visiblePages) * PAGE_SIZE);
+    online.disabled = true;
+    message.textContent = append ? 'Loading another connected page…' : 'Searching the connected service…';
+    updatePageControls();
     try {
-      const results = state.endpoint ? await fetchConnectedVideos(state.endpoint, query, signal)
-        : (await searchGatewayVideos(query, AbortSignal.any([signal, AbortSignal.timeout(12000)]))).map(sanitizeVideo).filter(Boolean);
-      if (signal.aborted) return;
-      onlineResults = results;
+      const answer = searchState.endpoint ? await fetchConnectedVideoPage(searchState.endpoint, searchState.query, signal, nextToken)
+        : sanitizeVideoPage(await searchGatewayVideoPage(searchState.query, AbortSignal.any([signal, AbortSignal.timeout(12000)]), nextToken));
+      if (signal.aborted || searchState !== onlineSearch) return;
+      if (nextToken) searchState.used.add(nextToken);
+      searchState.nextPageToken = searchState.used.has(answer.nextPageToken) ? undefined : answer.nextPageToken;
+      const known = new Set(onlineResults.map(video => video.id));
+      const additions = answer.items.filter(video => !known.has(video.id));
+      onlineResults = [...onlineResults, ...additions];
       view = 'Connected search';
-      page = 0;
-      visiblePages = 1;
+      if (!append) {
+        page = 0;
+        visiblePages = 1;
+      } else if (additions.length) {
+        visiblePages = Math.ceil((shownUntil + additions.length - page * PAGE_SIZE) / PAGE_SIZE);
+      }
       notice.textContent = 'Results from the connected YouTube search service.';
+      continuation.textContent = !searchState.nextPageToken ? 'No additional connected results.'
+        : append && !additions.length ? 'This page contained videos already shown. You can request the next page.' : '';
       draw();
+      if (append && additions.length) grid.querySelectorAll('.media-card-launch')[shownUntil - page * PAGE_SIZE]?.focus();
     } catch (error) {
-      if (!signal.aborted) notice.textContent = error.name === 'TimeoutError'
+      if (!signal.aborted) message.textContent = error.name === 'TimeoutError'
         ? 'The search service timed out. Try again or search on YouTube.'
-        : 'The connected search service could not be reached or returned an invalid response.';
+        : error.message || 'The connected search service could not be reached.';
+    } finally {
+      if (onlineRequest === request) {
+        onlineRequest = undefined;
+        online.disabled = false;
+        updatePageControls();
+      }
     }
   }
 
   const changeFilters = (event) => {
     if (event.currentTarget === input) {
-      onlineRequest?.abort();
-      onlineResults = [];
+      resetOnlineSearch();
       if (view === 'Connected search') view = lastLocalView;
       notice.textContent = '';
     }
@@ -1149,8 +1303,23 @@ function youtubePage(target, params) {
   });
   updateCreatorOptions();
   draw();
+  const observer = canAutoLoad ? new IntersectionObserver(entries => {
+    if (active && scrollMore.checked && view !== 'Connected search' && entries.some(entry => entry.isIntersecting)) appendNextPage();
+  }, { rootMargin: '120px 0px' }) : null;
+  observer?.observe(sentinel);
+  scrollMore.addEventListener('change', () => {
+    if (scrollMore.checked && view !== 'Connected search') appendNextPage();
+  });
+  const addressedVideo = params.get('video');
+  if (VIDEO_ID.test(addressedVideo || '')) {
+    const known = allVideos().get(addressedVideo);
+    if (known) showVideo(known);
+    else notice.replaceChildren(document.createTextNode('This video is outside the current library. '),
+      link('Open the original YouTube link', lookup(addressedVideo), 'media-credit'));
+  }
   return () => {
     active = false;
+    observer?.disconnect();
     videoCheck?.abort();
     importer.stop();
     onlineRequest?.abort();

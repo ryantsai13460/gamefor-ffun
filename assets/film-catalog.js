@@ -1,5 +1,11 @@
 // Official film and trailer sources. Release years are film release dates, not web upload dates.
 // Each title links to its rights holder, creator, or authorized viewing provider.
+const release = new URL(import.meta.url).search;
+const [{ nfbFilms }, { archiveFilms }] = await Promise.all([
+  import(`./film-nfb.js${release}`),
+  import(`./film-archive.js${release}`)
+]);
+
 export const filmCatalog = [
   {
     "id": "singularity",
@@ -47,6 +53,7 @@ export const filmCatalog = [
     "id": "sintel",
     "title": "Sintel",
     "year": 2010,
+    "duration": "14 min 48 sec",
     "collection": "open",
     "genres": ["Animation", "Fantasy", "Adventure"],
     "description": "A young traveler sets out across a harsh world in search of a dragon she once rescued.",
@@ -127,6 +134,7 @@ export const filmCatalog = [
     "id": "dailydweebs",
     "title": "The Daily Dweebs",
     "year": 2017,
+    "duration": "50 sec",
     "collection": "open",
     "genres": ["Animation", "Comedy"],
     "description": "An adorable dog has a short and unusually eventful day.",
@@ -140,6 +148,7 @@ export const filmCatalog = [
     "id": "caminandes-3",
     "title": "Caminandes: Llamigos",
     "year": 2016,
+    "duration": "2 min 30 sec",
     "collection": "open",
     "genres": ["Animation", "Comedy"],
     "description": "Koro the llama races a curious penguin to reach a coveted berry in the Patagonian winter.",
@@ -154,6 +163,7 @@ export const filmCatalog = [
     "id": "caminandes-2",
     "title": "Caminandes: Gran Dillama",
     "year": 2013,
+    "duration": "2 min 26 sec",
     "collection": "open",
     "genres": ["Animation", "Comedy"],
     "description": "Koro the llama tries to get to the other side of a fence when a tempting meal is just out of reach.",
@@ -167,6 +177,7 @@ export const filmCatalog = [
     "id": "glass-half",
     "title": "Glass Half",
     "year": 2015,
+    "duration": "3 min 13 sec",
     "collection": "open",
     "genres": ["Animation", "Comedy"],
     "description": "Two guests in an art gallery discover how differently they see the same exhibits.",
@@ -180,6 +191,7 @@ export const filmCatalog = [
     "id": "cosmos-laundromat",
     "title": "Cosmos Laundromat: First Cycle",
     "year": 2015,
+    "duration": "12 min 10 sec",
     "collection": "open",
     "genres": ["Animation", "Fantasy"],
     "description": "A sheep on a remote island encounters a stranger who offers him an unexpected way out.",
@@ -193,6 +205,7 @@ export const filmCatalog = [
     "id": "tears-of-steel",
     "title": "Tears of Steel",
     "year": 2012,
+    "duration": "12 min 14 sec",
     "collection": "open",
     "genres": ["Sci-fi", "Drama"],
     "description": "Scientists and fighters return to a pivotal moment in the past as machines threaten Amsterdam.",
@@ -206,6 +219,7 @@ export const filmCatalog = [
     "id": "big-buck-bunny",
     "title": "Big Buck Bunny",
     "year": 2008,
+    "duration": "9 min 56 sec",
     "collection": "open",
     "genres": ["Animation", "Comedy"],
     "description": "A peace-loving rabbit takes action after three woodland troublemakers spoil his afternoon.",
@@ -220,6 +234,7 @@ export const filmCatalog = [
     "id": "elephants-dream",
     "title": "Elephants Dream",
     "year": 2006,
+    "duration": "10 min 53 sec",
     "collection": "open",
     "genres": ["Animation", "Sci-fi"],
     "description": "An older guide leads a curious young traveler through an unsettling mechanical world.",
@@ -497,6 +512,7 @@ export const filmCatalog = [
     "id": "in-a-heartbeat",
     "title": "In a Heartbeat",
     "year": 2017,
+    "duration": "4 min 6 sec",
     "collection": "shorts",
     "genres": ["Animation", "Romance"],
     "description": "A shy boy’s heart takes off on its own after he spots his crush.",
@@ -662,7 +678,9 @@ export const filmCatalog = [
     "source": "https://www.pixar.com/elemental",
     "trailer": "hXzcyx9V0xw",
     "where": "https://www.disneyplus.com/browse/entity-8b489955-d30c-45b6-90ee-ae70f92bd431"
-  }
+  },
+  ...nfbFilms,
+  ...archiveFilms
 ];
 
 export const featuredFilm = filmCatalog[0];
