@@ -5,9 +5,14 @@ import { videoLibraryLink, videoTopics } from './video-topics.js';
 import { createSearchFullscreen } from './search-fullscreen.js';
 
 const assetVersion = new URL(import.meta.url).search;
-const [{ gatewayConnected, renderGatewaySettings, searchGatewayVideoPage }, { entertainmentVideos }] = await Promise.all([
+const [
+  { gatewayConnected, renderGatewaySettings, searchGatewayVideoPage },
+  { entertainmentVideos },
+  { familyVideos },
+] = await Promise.all([
   import(`./service-gateway.js${assetVersion}`),
   import(`./media-entertainment-videos.js${assetVersion}`),
+  import(`./media-family-videos.js${assetVersion}`),
 ]);
 
 const SHORTS = [
@@ -51,7 +56,7 @@ const CREATOR_VIDEOS = [
 const previousVideos = [...addedVideos, ...CREATOR_VIDEOS, ...SHORTS, ...addedShorts].map(video => ({
   ...video, tags: [video.tags.includes('Violin') ? 'Music' : 'Gaming', ...video.tags]
 }));
-const CURATED_VIDEOS = new Map([...previousVideos, ...expansionVideos, ...discoveryVideos, ...entertainmentVideos]
+const CURATED_VIDEOS = new Map([...previousVideos, ...expansionVideos, ...discoveryVideos, ...entertainmentVideos, ...familyVideos]
   .map((video) => [video.id, video]));
 const expandedIds = new Set([...discoveryVideos, ...expansionVideos].map(video => video.id));
 const videoFormats = new Map([
@@ -539,6 +544,7 @@ function matches(terms, ...fields) {
 
 function videoWords(value) {
   return value.toLowerCase().normalize('NFKD').replace(/\p{M}/gu, '')
+    .replace(/\bmr[.\s]+beast\b/g, 'mrbeast')
     .replace(/['’]s\b/g, '').match(/[\p{L}\p{N}]+/gu) || [];
 }
 

@@ -1,5 +1,6 @@
 import { createBeatBeacon, createCometCourier, createPinpointPutt } from "./bonus-arcade.js";
 import { createHarborDispatch, createTidalRescue } from "./harbor-games.js";
+import { createKiteBreeze, createPicnicPack } from "./family-games.js";
 
 const storageKey = "ffun-original-games-v1";
 const directions = {
@@ -1678,7 +1679,8 @@ function playCanvas(context, createGame) {
   const c = canvas.getContext("2d");
   if (!c) throw new Error("This browser could not start the game canvas.");
 
-  if (!game.announceHud) status.setAttribute("aria-live", "off");
+  if (game.announceHud) status.setAttribute("role", "status");
+  else status.setAttribute("aria-live", "off");
   const help = element("p", "local-game__help", game.instructions + " Press P to pause.");
   root.append(help);
   const heldInputs = new Map();
@@ -1816,6 +1818,10 @@ function playCanvas(context, createGame) {
   }
 
   function inputFor(event) {
+    const key = event.key.toLowerCase();
+    if (!event.altKey && !event.ctrlKey && !event.metaKey && game.shortcuts && Object.hasOwn(game.shortcuts, key)) {
+      return game.shortcuts[key];
+    }
     if (!event.altKey && !event.ctrlKey && !event.metaKey && !event.target.closest("button")) {
       if (game.spaceAction && event.key === " ") return game.spaceAction;
       if (game.enterAction && event.key === "Enter") return game.enterAction;
@@ -1891,6 +1897,8 @@ const localGames = {
   "beat-beacon": { title: "Beat Beacon", run: context => playCanvas(context, createBeatBeacon) },
   "harbor-dispatch": { title: "Harbor Dispatch", run: context => playCanvas(context, createHarborDispatch) },
   "tidal-rescue": { title: "Tidal Rescue", run: context => playCanvas(context, createTidalRescue) },
+  "picnic-pack": { title: "Picnic Pack", run: context => playCanvas(context, createPicnicPack) },
+  "kite-breeze": { title: "Kite Breeze", run: context => playCanvas(context, createKiteBreeze) },
   ...Object.fromEntries(Object.entries(classicGames).map(([id, { title }]) => [
     id, { title, run: context => playCanvas(context, () => classicArcade(id)) }
   ])),

@@ -273,6 +273,10 @@
   font-size: .9rem;
 }
 
+.proxy-search-unconfigured a {
+  text-decoration: underline;
+}
+
 .proxy-search-results h3 {
   margin-block-end: .35rem;
 }
@@ -550,6 +554,36 @@
   padding: .4rem .65rem .75rem;
 }
 
+.proxy-share-content {
+  display: grid;
+  gap: .75rem;
+  padding: 1rem;
+}
+
+.proxy-share-content p {
+  margin: 0;
+  color: var(--muted, #a6a9b1);
+  font-size: .875rem;
+  line-height: 1.5;
+}
+
+.proxy-share-content label {
+  display: grid;
+  gap: .35rem;
+  min-width: 0;
+  font-size: .875rem;
+  font-weight: 650;
+}
+
+.proxy-share-content input {
+  width: 100%;
+  min-width: 0;
+}
+
+.proxy-share-content .button {
+  justify-self: start;
+}
+
 .proxy-saved-empty {
   padding: .5rem;
   color: var(--muted, #a6a9b1);
@@ -692,6 +726,17 @@
 
   .proxy-saved-trigger {
     height: 2.35rem;
+  }
+}
+
+@container proxy-viewer (max-width: 23rem) {
+  .proxy-toolbar .proxy-control {
+    width: 2.1rem;
+  }
+
+  .proxy-toolbar .proxy-share-trigger {
+    width: auto;
+    padding-inline: .35rem;
   }
 }
 

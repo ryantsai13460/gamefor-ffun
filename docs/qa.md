@@ -1,5 +1,20 @@
 # Arcade release verification
 
+## Family media, backgrounds, and online Blip
+
+| Area | Verification |
+| --- | --- |
+| Family arcade | All earlier game records are preserved. Picnic Pack and Kite Breeze bring the catalog to 560 games, including 22 built-in titles. Unit tests solve their stages and exercise restart. Chromium covers keyboard play and touch controls. |
+| Game backgrounds | Tested the game-page shortcut, the Pocket Circuit screenshot, selection across a reload, an invalid upload, and saving and removing a local image. At a 320px viewport the settings and player fit the screen. |
+| YouTube and lyrics | The 44 additions bring the curated video catalog to 1,397. Chromium verifies MrBeast name variants, full-video and Shorts result sets, and the player routes. Watch Lyrics now has 84 uploads. Tests check the retained chart workflow and the Hall of Fame player from 7clouds Rock. |
+| Full family films | The 17 additions include eight features and nine complete shorts. Tests cover Family view ordering, licensed destinations, NFB embed routing, offer expiration, and the distinction between trailers and full films. |
+| Proxy Gemini | Tested a separate viewer tab from a search result, share and clipboard fallback, saved YouTube start times, provider disconnect, and the link to open search provider setup. |
+| Blip | Worker and browser fixtures cover opt-in hosted streaming, provider selection, aborted replies, usage limits, and local-only attachment conversations. The Wrangler dry run packages the optional Workers AI gateway. Live inference needs a deployed Worker and authorized access. |
+
+Player checks in Chromium used controlled provider responses. Source checks established film availability and official YouTube metadata at review time. Tubi availability depends on region and licensing windows, and YouTube playback depends on the uploader's current settings. [Media sources](media-sources.md) · [Hosted chat setup](../server/README.md)
+
+All 22 arcade unit tests, 20 gateway fixtures, and 66 Chromium tests passed. The static build opened 25 destinations under `/gamefor-ffun/` at widths of 320, 390, 768, and 1440 pixels without first-party HTTP errors, JavaScript exceptions, or horizontal overflow.
+
 ## Entertainment expansion
 
 The starting release used static HTML, CSS, and JavaScript on GitHub Pages with an optional Cloudflare Worker. The baseline checks passed. The biggest gaps were the small film and music catalogs, separate saved lists, limited video search continuation, and a viewer with no connected search results. The expansion was developed separately from the published `main` branch.
