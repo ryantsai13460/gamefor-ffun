@@ -1,5 +1,23 @@
 # Arcade release verification
 
+## Home, game colors, and search refresh
+
+| Area | Verification |
+| --- | --- |
+| Home | At 320, 390, 768, 1440, and 1920 pixels, the home page fits without horizontal overflow. Tested the eight shortcuts, the keyboard skip link, Pocket Circuit from its featured card, the mobile drawer, and all 561 catalog cards. |
+| Watch and listen | The Home media region loads as it approaches the viewport. Clicked through to the film detail, music and gaming players. Missing artwork leaves a text card, and catalog failures leave links to the media sections. |
+| Personalization | Checked six site themes, four game color presets, custom colors, image upload and removal, and preference restoration after reload. Custom images and colors stay in the browser. |
+| Clover Roll | Cleared all four boards through the browser player. Tests cover keyboard play, touch controls, undo, and board descriptions. Game art was captured from the running puzzle. |
+| Proxy Gemini | Tested the searchable in-page game picker, publisher-blocked previews, original links, retry, and switching to a local game. Tab buttons support arrow navigation and Delete. |
+| Web and AI Search | Tested recent-query replay and clearing across tabs, address exclusion, follow-ups after canceled and failed requests, local unit conversion and guides, restricted citation links, CPU session cleanup, and explicit hosted streaming with fixtures. |
+| Blip | Tested recent-turn context packing, mode-specific generation limits, streaming completion, and the continuation prompt. The pinned CPU model streamed a basic answer, recalled a game name from a previous turn, and produced valid JavaScript for a short Code request. It gave three presentation practice tips in Think mode in 36 seconds. An earlier longer local prompt timed out in the test run. Hosted response checks used fixtures. |
+
+All 27 unit tests, 21 gateway tests, 77 Chromium browser tests, and 21 focused tests in each of Firefox and WebKit passed. The static package opened 25 destinations under `/gamefor-ffun/` at 320, 390, 768, and 1440 pixels without first-party HTTP errors, JavaScript exceptions, or horizontal overflow. The gateway passed a Wrangler deployment dry run.
+
+An extended check completed 61 rounds over 32 minutes in Chromium and Firefox on the release candidate. The final static package completed 21 rounds over 10 minutes in Chromium, Firefox, and WebKit. Both runs rotated screen widths and themes and exercised Home media, local game launch, the viewer, and search without first-party errors.
+
+Automated accessibility scans covered 18 states across the Home palettes and controls in Settings, Play, Web Search, and Proxy Gemini. The final scan reported zero automated violations for those states.
+
 ## Family media, backgrounds, and online Blip
 
 | Area | Verification |
