@@ -1,11 +1,12 @@
 import { arcadeEmbed, isMiniplayAddress } from './embedded-content.js';
 import { createSearchFullscreen } from './search-fullscreen.js';
-import { gatewayConnected, renderGatewaySettings, searchGateway } from './service-gateway.js';
 
 const assetVersion = new URL(import.meta.url).search;
-const [{ games }, { createLibrary, gameAvailability, normalize, queryLibrary, restorePreferences }] = await Promise.all([
+const [{ games }, { createLibrary, gameAvailability, normalize, queryLibrary, restorePreferences },
+  { gatewayConnected, renderGatewaySettings, searchGateway }] = await Promise.all([
   import(`./catalog.js${assetVersion}`),
-  import(`./library.js${assetVersion}`)
+  import(`./library.js${assetVersion}`),
+  import(`./service-gateway.js${assetVersion}`)
 ]);
 
 const storageKey = 'gamefor-ffun-complete-v2';

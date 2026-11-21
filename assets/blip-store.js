@@ -54,6 +54,26 @@ function wikipediaSource(value) {
   return null;
 }
 
+function researchSources(values) {
+  if (!Array.isArray(values)) return [];
+  const sources = [];
+  for (const value of values.slice(0, 4)) {
+    const title = boundedText(value?.title, 180);
+    const address = boundedText(value?.url, 2048);
+    if (!title || !address) continue;
+    let url;
+    try {
+      url = new URL(address);
+    } catch {
+      continue;
+    }
+    if (url.protocol !== 'https:' || url.username || url.password) continue;
+    const description = boundedText(value.description, 360) || '';
+    sources.push(Object.freeze({ title, url: url.href, description }));
+  }
+  return Object.freeze(sources);
+}
+
 function messageRecord(id, role, value, createdAt, details) {
   if (typeof value !== 'string') return null;
   const text = value.trim();
@@ -67,6 +87,8 @@ function messageRecord(id, role, value, createdAt, details) {
     if (answerKinds.has(details.kind)) message.kind = details.kind;
     const source = wikipediaSource(details.source);
     if (source) message.source = source;
+    const sources = researchSources(details.sources);
+    if (sources.length) message.sources = sources;
   }
   if (!text && !message.attachments) return null;
   return Object.freeze(message);
@@ -209,6 +231,22 @@ export function createBlipStore({ storage = browserStorage() } = {}) {
       return saveChat(Object.freeze({
         id, title, mode, createdAt: now, updatedAt: now, unread: false, messages: Object.freeze([]),
       }), { activeId: id, first: true });
+    },
+
+    forkChatBefore(id, messageId) {
+      const chat = getChat(id);
+      if (!chat || state.chats.length >= BLIP_LIMITS.chats) return null;
+      const index = chat.messages.findIndex(message => message.id === messageId && message.role === 'user');
+      if (index === -1) return null;
+      const forkId = newId('chat', candidate => Boolean(getChat(candidate)));
+      const suffix = ' (edited)';
+      const title = chat.title.slice(0, BLIP_LIMITS.title - suffix.length).trimEnd() + suffix;
+      const now = Date.now();
+      const messages = Object.freeze(chat.messages.slice(0, index));
+      return saveChat(Object.freeze({
+        id: forkId, title, mode: chat.mode, createdAt: messages[0]?.createdAt ?? now,
+        updatedAt: now, unread: false, messages,
+      }), { activeId: forkId, first: true });
     },
 
     selectChat(id) {

@@ -123,6 +123,10 @@ test('blip.ai keeps attached text in its saved chat and skips external lookup', 
     name: 'study-notes.txt', mimeType: 'text/plain',
     buffer: Buffer.from('A cello has four strings.\nPractice slowly for ten minutes.')
   });
+  await page.getByRole('button', { name: 'Preview study-notes.txt' }).click();
+  const draftPreview = page.getByRole('dialog', { name: 'study-notes.txt' });
+  await expect(draftPreview.getByText(/A cello has four strings/)).toBeVisible();
+  await draftPreview.getByRole('button', { name: 'Close' }).click();
   await expect(page.getByRole('button', { name: 'Remove study-notes.txt' })).toBeVisible();
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByText(/2 lines · \d+ words in the loaded text/)).toBeVisible();
@@ -205,6 +209,12 @@ test('blip.ai background music is opt-in and keeps playing while switching chats
 
 test('connected Blip streams authorized replies and regenerates the last answer', async ({ page }) => {
   let requests = 0;
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async text => { window.copiedBlipText = text; } }
+    });
+  });
   await page.route('https://gateway.example/api/chat', async route => {
     const headers = {
       'access-control-allow-origin': '*',
@@ -234,8 +244,101 @@ test('connected Blip streams authorized replies and regenerates the last answer'
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.locator('.blip-message strong')).toHaveText('First example');
   await expect(page.locator('.blip-code-keyword')).toHaveText('const');
+  await page.getByRole('button', { name: 'Copy code', exact: true }).click();
+  await expect(page.getByText('Code copied.', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.copiedBlipText)).toBe('const score = 1;');
   await expect(page.getByRole('button', { name: 'Copy response', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
   await expect(page.locator('.blip-message strong')).toHaveText('Updated example');
   expect(requests).toBe(2);
+});
+
+test('Blip resends an edited message in a new chat with the earlier context', async ({ page }) => {
+  await page.goto('/#blip');
+  const input = page.getByRole('textbox', { name: 'Message blip.ai' });
+  const thread = page.getByRole('region', { name: 'Conversation messages' });
+  const rail = page.getByRole('complementary', { name: 'Saved conversations' });
+  await input.fill('hi');
+  await input.press('Enter');
+  await expect(thread.getByText(/Want to plan something/)).toBeVisible();
+  await input.fill('Calculate 6 × 7');
+  await input.press('Enter');
+  await expect(thread.getByText('42', { exact: true })).toBeVisible();
+
+  const edit = thread.locator('.blip-message--user').filter({ hasText: 'Calculate 6 × 7' })
+    .getByRole('button', { name: 'Edit & resend' });
+  await input.fill('My unfinished prompt');
+  await edit.click();
+  await expect(input).toHaveValue('Calculate 6 × 7');
+  await page.getByRole('button', { name: 'Cancel edit' }).click();
+  await expect(input).toHaveValue('My unfinished prompt');
+  await edit.click();
+  await input.fill('Calculate 6 × 8');
+  await input.press('Enter');
+  await expect(thread.getByText('48', { exact: true })).toBeVisible();
+  await expect(thread.getByText(/Want to plan something/)).toBeVisible();
+  await expect(thread.getByText('42', { exact: true })).toHaveCount(0);
+
+  const chatSearch = rail.getByRole('searchbox', { name: 'Search chats' });
+  await chatSearch.fill('edited');
+  await expect(rail.getByRole('button', { name: 'hi (edited)', exact: true })).toBeVisible();
+  await expect(rail.getByRole('button', { name: 'hi', exact: true })).toHaveCount(0);
+  await chatSearch.fill('');
+  await rail.getByRole('button', { name: 'hi', exact: true }).click();
+  await expect(input).toHaveValue('My unfinished prompt');
+  await expect(thread.getByText('42', { exact: true })).toBeVisible();
+  await page.reload();
+  await rail.getByRole('button', { name: 'hi (edited)', exact: true }).click();
+  await expect(thread.getByText('48', { exact: true })).toBeVisible();
+});
+
+test('Blip research saves source links and keeps file chats local', async ({ page }) => {
+  let requests = 0;
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'LanguageModel', { configurable: true, value: undefined });
+  });
+  await page.route('https://gateway.example/api/chat', async route => {
+    const headers = {
+      'access-control-allow-origin': '*',
+      'access-control-allow-headers': 'authorization, content-type',
+      'access-control-allow-methods': 'POST, OPTIONS'
+    };
+    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
+    requests++;
+    expect(route.request().postDataJSON()).toEqual({
+      messages: [{ role: 'user', content: 'Which planet has the longest day?' }],
+      mode: 'quick', research: true, stream: true
+    });
+    const sources = [{ title: 'NASA Venus facts', url: 'https://science.nasa.gov/venus/', description: 'Venus rotates slowly.' }];
+    const delta = { choices: [{ delta: { content: 'Venus has a long rotation period. [1]' } }] };
+    await route.fulfill({ headers, contentType: 'text/event-stream',
+      body: `data: ${JSON.stringify({ sources })}\n\ndata: ${JSON.stringify(delta)}\n\ndata: [DONE]\n\n` });
+  });
+  await page.goto('/#blip');
+  const settings = page.locator('.blip-settings-popover > summary');
+  await settings.click();
+  await page.getByText('Connect an AI provider', { exact: true }).click();
+  await page.getByLabel('Backend URL').fill('https://gateway.example');
+  await page.getByLabel('Backend access code').fill('fixture-access');
+  await page.getByRole('button', { name: 'Connect backend' }).click();
+  await page.getByRole('checkbox', { name: 'Use the connected model for chats without files' }).check();
+  await page.getByRole('checkbox', { name: 'Research current question with Brave Search' }).check();
+  await settings.click();
+
+  const input = page.getByRole('textbox', { name: 'Message blip.ai' });
+  await input.fill('Which planet has the longest day?');
+  await input.press('Enter');
+  const source = page.getByRole('link', { name: /NASA Venus facts/ });
+  await expect(source).toHaveAttribute('href', 'https://science.nasa.gov/venus/');
+  await page.reload();
+  await expect(source).toHaveAttribute('href', 'https://science.nasa.gov/venus/');
+
+  await page.locator('input[type=file]').setInputFiles({
+    name: 'private-notes.txt', mimeType: 'text/plain', buffer: Buffer.from('Private study notes for the next review.')
+  });
+  await expect(page.getByRole('button', { name: 'Preview private-notes.txt' })).toBeVisible();
+  await input.fill('Summarize the attachment');
+  await input.press('Enter');
+  await expect(page.locator('.blip-message--assistant').last()).toContainText('Private study notes for the next review.');
+  expect(requests).toBe(1);
 });

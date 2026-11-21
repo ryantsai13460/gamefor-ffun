@@ -12,6 +12,8 @@ The default Worker configuration limits its endpoints together to six requests p
 
 Hosted chat sends the messages included in its request to OpenAI. Web search sends the query to Brave. The Worker sets OpenAI's `store` parameter to false and skips prompt and query logging. Provider terms and data policies still apply. Keep restricted or private material out of hosted requests.
 
+Opt-in research sends only the latest question to Brave Search and supplies up to four returned snippets to OpenAI as reference material. A research turn uses one search request and one model request when sources are available. Chat history goes to OpenAI when hosted chat is enabled. Web excerpts can be incomplete and should be checked against the linked sources.
+
 ## Try locally
 
 Node.js 20 or newer can run the fixture tests from the repository root.
@@ -46,7 +48,7 @@ Configure only the provider keys you intend to use. An endpoint without its rele
 
 The endpoints accept POST JSON and require `Authorization: Bearer <access code>`. The browser supplies the allowed Origin header.
 
-- `/api/chat` accepts `messages`, each with a `role` of `user` or `assistant` and a string `content`. End with a user message. Optional `mode` accepts `quick`, `think`, `brainstorm`, or `study`. Success returns `{"text":"…"}`. Set `stream: true` to receive SSE with text deltas under `choices[0].delta.content`. A complete stream ends with `data: [DONE]`. An interrupted stream ends with a JSON `error` event.
+- `/api/chat` accepts `messages`, each with a `role` of `user` or `assistant` and a string `content`. End with a user message. Optional `mode` accepts `quick`, `think`, `brainstorm`, or `study`. Success returns `{"text":"…"}`. Set `stream: true` to receive SSE with text deltas under `choices[0].delta.content`. A complete stream ends with `data: [DONE]`. An interrupted stream ends with a JSON `error` event. Set `research: true` for a latest question up to 200 characters to use the Brave references. The response includes a `sources` array, as the first SSE event when streaming. Each source has a title, URL, and description. The Worker skips generation when no suitable sources are found.
 - `/api/search` accepts `{"q":"…"}` with up to 200 characters. Success returns `{"results":[{"title":"…","url":"https://…","description":"…"}]}` with up to eight results. Brave's strict search filter is enabled.
 - `/api/youtube` accepts `{"q":"…"}` with up to 200 characters. Success returns `{"items":[{"id":"…","title":"…","creator":"…","thumbnail":"…","embeddable":true}]}` with up to 12 results. It uses YouTube's strict safety, embedding, and syndication filters. Publishers can change playback permissions after search.
 

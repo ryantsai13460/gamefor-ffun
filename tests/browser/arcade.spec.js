@@ -628,8 +628,9 @@ test('Music opens a searchable chart with official lyrics sources', async ({ pag
 
   const search = page.getByRole('searchbox', { name: 'Song or artist' });
   await search.fill('house wifre');
-  await songs.getByRole('button', { name: 'Lyrics for Housewife by Tate McRae' }).click();
+  await songs.getByRole('button', { name: 'Play lyrics video for Housewife by Tate McRae' }).click();
   const housewife = page.getByRole('dialog', { name: 'Lyrics for Housewife' });
+  await expect(housewife.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/yi24DPRG0Sg/);
   await expect(housewife.getByRole('link', { name: 'Official lyric video on Apple Music' }))
     .toHaveAttribute('href', /music\.apple\.com\/us\/music-video\/housewife-official-lyric-video\//);
   await housewife.getByRole('button', { name: 'Close', exact: true }).click();
@@ -640,8 +641,21 @@ test('Music opens a searchable chart with official lyrics sources', async ({ pag
   await dracula.getByRole('button', { name: 'Play official lyric video here' }).click();
   await expect(dracula.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/0UPDBODtxzw/);
   await dracula.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Official lyric videos only' }).check();
+  await expect(songs.getByRole('button', { name: 'Play lyrics video for Dracula by Tame Impala & JENNIE' })).toBeVisible();
+  await page.getByRole('checkbox', { name: 'Official lyric videos only' }).uncheck();
   await search.fill('Benson Boone');
   await expect(page.getByRole('link', { name: 'Music videos' })).toHaveAttribute('href', '#music?view=videos&q=Benson+Boone');
+
+  await page.getByLabel('Chart source').selectOption('');
+  await search.fill('KILLY MANJARO');
+  await songs.getByRole('button', { name: 'Lyrics for KILLY MANJARO by Summer Cem & BILLA JOE' }).click();
+  const fallback = page.getByRole('dialog', { name: 'Lyrics for KILLY MANJARO' });
+  const resultsUrl = await fallback.getByRole('link', { name: /find lyric videos/i }).getAttribute('href');
+  expect(new URL(resultsUrl).origin).toBe('https://www.youtube.com');
+  const videoQuery = new URL(resultsUrl).searchParams.get('search_query');
+  expect(videoQuery).toContain('KILLY MANJARO');
+  expect(videoQuery).toContain('Summer Cem & BILLA JOE');
 });
 
 test('Web Search and All Games use fullscreen without losing the query', async ({ page }) => {

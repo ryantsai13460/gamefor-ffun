@@ -168,9 +168,8 @@
 }
 
 .blip-rail {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
   min-width: 0;
   padding: 16px;
@@ -190,7 +189,9 @@
 
 .blip-chat-list {
   display: grid;
+  flex: 1;
   align-content: start;
+  min-height: 0;
   gap: 5px;
   margin: 0 -4px;
   padding: 4px;
@@ -224,6 +225,20 @@
 
 .blip-chat-link.has-unread { color: var(--blip-key); font-weight: 710; }
 .blip-privacy { color: var(--blip-faint); font-size: .73rem; line-height: 1.35; }
+.blip-chat-search {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 9px;
+  border: 1px solid var(--blip-line);
+  border-radius: 8px;
+  color: var(--blip-ink);
+  background: var(--blip-background);
+  font: inherit;
+  font-size: .83rem;
+}
+.blip-chat-search::placeholder { color: var(--blip-faint); }
+.blip-chat-empty { padding: 6px 4px; color: var(--blip-faint); font-size: .8rem; }
 
 .blip-thread {
   display: grid;
@@ -342,10 +357,30 @@
 .blip-message-text :is(ul, ol) { padding-inline-start: 1.4em; }
 .blip-message-text pre { padding: 10px; border-radius: 6px; background: var(--blip-background); overflow-x: auto; white-space: pre; }
 .blip-message-text :not(pre) > code { padding: 1px 4px; background: var(--blip-background); border-radius: 4px; }
+.blip-code-block {
+  margin-bottom: 8px;
+  min-width: 0;
+  border: 1px solid var(--blip-line);
+  border-radius: 8px;
+  background: var(--blip-background);
+}
+.blip-code-tools {
+  display: flex;
+  align-items: center;
+  justify-content: end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--blip-line);
+  color: var(--blip-faint);
+  font-size: .75rem;
+}
+.blip-code-tools .blip-button { min-height: 30px; padding: 4px 7px; font-size: .75rem; }
 .blip-code-keyword { color: #bfd0ff; }
 .blip-code-string { color: #b9e99e; }
-.blip-answer-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.blip-answer-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .blip-answer-actions .blip-button { min-height: 32px; padding: 4px 7px; font-size: .75rem; }
+.blip-copy-feedback { color: var(--blip-faint); font-size: .75rem; }
 .blip-file-preview {
   margin-top: 6px;
   padding: 7px 9px;
@@ -364,6 +399,10 @@
 }
 .blip-credits { display: flex; flex-wrap: wrap; gap: 7px 13px; margin-top: 10px; }
 .blip-reference { color: var(--blip-key); font-size: .78rem; text-decoration: underline; }
+.blip-web-citations { display: grid; gap: 5px; margin-top: 10px; color: var(--blip-faint); font-size: .8rem; }
+.blip-web-citations ol { padding-inline-start: 1.5em; }
+.blip-web-citations li + li { margin-top: 3px; }
+.blip-web-citations a { color: var(--blip-key); text-decoration: underline; }
 
 .blip-compose {
   display: grid;
@@ -423,6 +462,22 @@
   font-size: .75rem;
 }
 .blip-attach { flex: none; }
+.blip-attachment-clear { justify-self: start; min-height: 32px; font-size: .77rem; }
+.blip-editing-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid #4c7567;
+  border-radius: 8px;
+  color: var(--blip-key);
+  background: #203a36;
+  font-size: .8rem;
+}
+.blip-editing-note .blip-button { min-height: 30px; font-size: .75rem; }
 
 .blip-prompt-box {
   display: flex;
@@ -477,6 +532,20 @@
   background: var(--blip-background);
 }
 .blip-dialog-actions { justify-content: end; }
+.blip-attachment-dialog { width: min(100% - 32px, 42rem); }
+.blip-attachment-metadata { margin-top: 5px; font-size: .8rem; }
+.blip-attachment-preview-text {
+  max-height: 50dvh;
+  overflow: auto;
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid var(--blip-line);
+  border-radius: 8px;
+  background: var(--blip-background);
+  font-size: .85rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 
 @container blip (max-width: 750px) {
   .blip-layout {
@@ -488,6 +557,7 @@
   .blip-chat-toggle { display: inline-flex; }
   .blip-rail {
     max-height: 15rem;
+    gap: 7px;
     padding: 11px;
     border: 0;
     border-bottom: 1px solid var(--blip-line);

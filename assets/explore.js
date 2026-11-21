@@ -1,5 +1,6 @@
 import { featuredFilm, filmCatalog } from './film-catalog.js';
-import { getVideoCollections } from './media.js';
+const assetVersion = new URL(import.meta.url).search;
+const { getVideoCollections } = await import(`./media.js${assetVersion}`);
 import { videoLibraryLink } from './video-topics.js';
 
 const number = new Intl.NumberFormat();

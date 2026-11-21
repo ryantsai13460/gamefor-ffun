@@ -1,7 +1,9 @@
 import { addedShorts, addedVideos } from './media-curated.js';
 import { expansionVideos } from './media-expansion.js';
 import { videoLibraryLink, videoTopics } from './video-topics.js';
-import { gatewayConnected, renderGatewaySettings, searchGatewayVideos } from './service-gateway.js';
+
+const assetVersion = new URL(import.meta.url).search;
+const { gatewayConnected, renderGatewaySettings, searchGatewayVideos } = await import(`./service-gateway.js${assetVersion}`);
 
 const SHORTS = [
   ['80VtSQHvWBo', 'Minecraft, But I Shrunk', 'camman18', ['Minecraft', 'Challenges']],

@@ -12,6 +12,25 @@ function appendInline(target, text) {
 }
 
 function appendCode(target, text) {
+  const block = document.createElement('div');
+  block.className = 'blip-code-block';
+  const tools = document.createElement('div');
+  tools.className = 'blip-code-tools';
+  const status = document.createElement('span');
+  status.setAttribute('role', 'status');
+  const copy = document.createElement('button');
+  copy.className = 'blip-button';
+  copy.type = 'button';
+  copy.textContent = 'Copy code';
+  copy.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      status.textContent = 'Code copied.';
+    } catch {
+      status.textContent = 'Clipboard unavailable.';
+    }
+  });
+  tools.append(status, copy);
   const pre = document.createElement('pre');
   const code = document.createElement('code');
   const tokens = /("([^"\\]|\\.)*"|'([^'\\]|\\.)*'|\b(?:const|let|var|function|return|if|else|for|while|class|new|import|from|true|false|null|def|print|in|await|async|export)\b)/g;
@@ -26,7 +45,8 @@ function appendCode(target, text) {
   }
   code.append(text.slice(start));
   pre.append(code);
-  target.append(pre);
+  block.append(tools, pre);
+  target.append(block);
 }
 
 export function formatBlipReply(target, text) {

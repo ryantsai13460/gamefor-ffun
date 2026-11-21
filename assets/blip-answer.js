@@ -1,6 +1,7 @@
 import { localAssistantAnswer, searchModelAvailability, searchWikipedia } from './search-answer.js';
 import { portableBlipReady, runPortableBlipPrompt } from './blip-portable.js';
 import { cpuBlipReady, runCpuBlipPrompt } from './blip-cpu.js';
+import { analyzeBlipFiles } from './blip-file-analysis.js';
 
 export { prepareSearchModel as prepareBlipModel, searchModelAvailability as blipModelAvailability } from './search-answer.js';
 export { portableBlipAvailability, preparePortableBlipModel, releasePortableBlipModel } from './blip-portable.js';
@@ -232,7 +233,7 @@ export async function answerBlip({ text, history = [], mode = 'quick', wikipedia
     if (answer) return { kind: 'model', title: 'Portable on-device AI', text: answer };
   }
 
-  if (files.length) return localFilePreview(files);
+  if (files.length) return analyzeBlipFiles(message, files) || localFilePreview(files);
   const plan = localPlan(message, mode);
   if (plan) return plan;
 

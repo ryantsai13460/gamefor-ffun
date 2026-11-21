@@ -1,16 +1,16 @@
 import { BLIP_FILE_ACCEPT, BLIP_FILE_LIMITS, normalizeBlipAttachments, readBlipFiles } from './blip-files.js';
 import { mountBlipMusic } from './blip-music.js';
-import { formatBlipReply } from './blip-format.js';
-import { gatewayConnected, hostedBlipReply, renderGatewaySettings } from './service-gateway.js';
 
 const assetVersion = new URL(import.meta.url).search;
 const [{ BLIP_LIMITS, createBlipStore }, {
   answerBlip, blipModelAvailability, blipModes, cpuBlipAvailability, portableBlipAvailability,
   prepareBlipModel, prepareCpuBlipModel, preparePortableBlipModel,
   releaseCpuBlipModel, releasePortableBlipModel
-}] = await Promise.all([
+}, { formatBlipReply }, { gatewayConnected, hostedBlipReply, renderGatewaySettings }] = await Promise.all([
   import(`./blip-store.js${assetVersion}`),
-  import(`./blip-answer.js${assetVersion}`)
+  import(`./blip-answer.js${assetVersion}`),
+  import(`./blip-format.js${assetVersion}`),
+  import(`./service-gateway.js${assetVersion}`)
 ]);
 
 const examples = [
@@ -50,12 +50,13 @@ function button(text, action, className) {
   return node;
 }
 
-function messageView(message, { onCopy, onRetry } = {}) {
+function messageView(message, { onEdit, onRetry } = {}) {
   const item = element('article', `blip-message blip-message--${message.role}`);
   item.append(element('h3', 'blip-message-author', message.role === 'user' ? 'You' : 'blip.ai'));
   if (message.kind) item.append(element('p', 'blip-answer-source', messageSources[message.kind]));
+  let body;
   if (message.text) {
-    const body = element('div', 'blip-message-text');
+    body = element('div', 'blip-message-text');
     if (message.role === 'assistant') formatBlipReply(body, message.text);
     else body.textContent = message.text;
     item.append(body);
@@ -81,9 +82,47 @@ function messageView(message, { onCopy, onRetry } = {}) {
     credits.append(reference, license);
     item.append(credits);
   }
-  if (onCopy || onRetry) {
+  if (message.sources?.length) {
+    const citations = element('section', 'blip-web-citations');
+    const list = element('ol');
+    citations.append(element('h4', '', 'Research sources'), list);
+    for (const source of message.sources) {
+      const entry = element('li');
+      const reference = element('a', 'blip-reference', source.title);
+      reference.href = source.url;
+      reference.target = '_blank';
+      reference.rel = 'noopener noreferrer';
+      entry.append(reference);
+      if (source.description) entry.append(element('p', '', source.description));
+      list.append(entry);
+    }
+    item.append(citations);
+  }
+  const canCopy = message.role === 'assistant' && body;
+  if (canCopy || onEdit || onRetry) {
     const actions = element('div', 'blip-answer-actions');
-    if (onCopy) actions.append(button('Copy response', onCopy, 'blip-button'));
+    if (canCopy) {
+      const feedback = element('span', 'blip-copy-feedback');
+      feedback.setAttribute('role', 'status');
+      const copy = button('Copy response', async () => {
+        try {
+          await navigator.clipboard.writeText(message.text);
+          feedback.textContent = 'Response copied.';
+        } catch {
+          const selection = window.getSelection();
+          if (selection && body.isConnected) {
+            const range = document.createRange();
+            range.selectNodeContents(body);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+          feedback.textContent = selection ? 'Clipboard unavailable. You can copy the selected response manually.'
+            : 'Clipboard unavailable. Select the response to copy it.';
+        }
+      }, 'blip-button');
+      actions.append(copy, feedback);
+    }
+    if (onEdit) actions.append(button('Edit & resend', onEdit, 'blip-button'));
     if (onRetry) actions.append(button('Regenerate', onRetry, 'blip-button'));
     item.append(actions);
   }
@@ -118,6 +157,8 @@ export function renderBlip(target) {
             <div data-blip="gateway"></div>
             <label class="blip-check"><input type="checkbox" data-blip="hosted"> Use the connected model for chats without files</label>
             <p>When enabled, the current question and recent messages are sent to your backend.</p>
+            <label class="blip-check"><input type="checkbox" data-blip="research" disabled> Research current question with Brave Search</label>
+            <p>With the connected model enabled, questions up to 200 characters go to Brave Search through your backend and use its search quota.</p>
           </div>
         </details>
       </div>
@@ -126,7 +167,9 @@ export function renderBlip(target) {
       <aside class="blip-rail" id="blip-chats" aria-label="Saved conversations">
         <button class="blip-button blip-button--primary blip-new-chat" data-blip="new" type="button"><span aria-hidden="true">+</span> New chat</button>
         <h2>Chats</h2>
+        <input class="blip-chat-search" type="search" data-blip="chat-search" aria-label="Search chats" placeholder="Search chats" maxlength="200" autocomplete="off">
         <ul class="blip-chat-list" data-blip="chats"></ul>
+        <p class="blip-chat-empty" data-blip="chat-empty" hidden>No conversations match your search.</p>
         <p class="blip-privacy" data-blip="privacy"></p>
       </aside>
       <section class="blip-thread" aria-label="Chat workspace">
@@ -154,7 +197,12 @@ export function renderBlip(target) {
             <div class="blip-mode-choices" data-blip="modes"></div>
             <p class="blip-mode-description" id="blip-mode-description" data-blip="mode-description"></p>
           </fieldset>
+          <div class="blip-editing-note" data-blip="revising" hidden>
+            <span>Resending starts a new chat from this message and keeps the original.</span>
+            <button class="blip-button" type="button" data-blip="cancel-revision">Cancel edit</button>
+          </div>
           <ul class="blip-attachments" data-blip="attachments" aria-label="Files attached to this draft" hidden></ul>
+          <button class="blip-button blip-attachment-clear" type="button" data-blip="clear-files" hidden>Clear attachments</button>
           <p class="blip-compose-status" data-blip="file-status" role="status"></p>
           <div class="blip-prompt-box">
             <button class="blip-button blip-attach" type="button" data-blip="attach" title="TXT, Markdown, CSV, TSV, or JSON">Attach files</button>
@@ -168,7 +216,15 @@ export function renderBlip(target) {
         </form>
       </section>
     </div>
-    <dialog class="blip-dialog" aria-labelledby="blip-dialog-title">
+    <dialog class="blip-dialog blip-attachment-dialog" data-blip="attachment-dialog" aria-labelledby="blip-attachment-title">
+      <h2 id="blip-attachment-title" data-blip="attachment-title"></h2>
+      <p class="blip-attachment-metadata" data-blip="attachment-metadata"></p>
+      <pre class="blip-attachment-preview-text" data-blip="attachment-preview" tabindex="0"></pre>
+      <div class="blip-dialog-actions">
+        <button class="blip-button" type="button" data-blip="close-attachment">Close</button>
+      </div>
+    </dialog>
+    <dialog class="blip-dialog" data-blip="chat-dialog" aria-labelledby="blip-dialog-title">
       <form data-blip="chat-edit">
         <h2 id="blip-dialog-title" data-blip="edit-title"></h2>
         <p data-blip="edit-text" hidden></p>
@@ -190,6 +246,7 @@ export function renderBlip(target) {
   const draftFiles = new Map();
   const fileNotices = new Map();
   const readingFiles = new Set();
+  const revisions = new Map();
   const modeInputs = new Map();
   const layout = root.querySelector('.blip-layout');
   const modelSettings = root.querySelector('.blip-settings-popover');
@@ -198,9 +255,11 @@ export function renderBlip(target) {
   const transcript = part('transcript');
   const status = part('status');
   const input = part('input');
+  const chatSearch = part('chat-search');
   const fileInput = part('file-input');
   fileInput.accept = BLIP_FILE_ACCEPT;
-  const dialog = root.querySelector('.blip-dialog');
+  const dialog = part('chat-dialog');
+  const attachmentDialog = part('attachment-dialog');
   const nameInput = part('chat-name');
   const nameLabel = nameInput.closest('label');
   const stopMusic = mountBlipMusic(part('music'));
@@ -226,7 +285,10 @@ export function renderBlip(target) {
 
   function drawRail() {
     const { chats, activeId } = store.getState();
-    const items = chats.map(chat => {
+    const query = chatSearch.value.trim().toLocaleLowerCase();
+    const visible = query ? chats.filter(chat => chat.title.toLocaleLowerCase().includes(query) ||
+      chat.messages.some(message => message.text.toLocaleLowerCase().includes(query))) : chats;
+    const items = visible.map(chat => {
       const item = element('li');
       const open = button(chat.title, () => {
         if (store.selectChat(chat.id)) {
@@ -244,6 +306,7 @@ export function renderBlip(target) {
       return item;
     });
     part('chats').replaceChildren(...items);
+    part('chat-empty').hidden = !query || Boolean(items.length);
     part('new').disabled = chats.length >= BLIP_LIMITS.chats;
     part('privacy').textContent = chats.length >= BLIP_LIMITS.chats
       ? `This browser can keep up to ${BLIP_LIMITS.chats} chats.`
@@ -251,35 +314,84 @@ export function renderBlip(target) {
   }
 
   function drawComposer(chat) {
-    const currentMode = blipModes[chat?.mode] || blipModes.quick;
+    const revision = revisions.get(chat?.id);
+    const currentMode = blipModes[revision?.mode || chat?.mode] || blipModes.quick;
     const request = pending.get(chat?.id);
     for (const [id, option] of modeInputs) option.checked = currentMode.id === id;
     part('mode-description').textContent = currentMode.description;
     part('stop').hidden = !request;
     part('send').hidden = Boolean(request);
     part('send').disabled = readingFiles.has(chat?.id);
+    part('send').textContent = revision ? 'Resend in new chat' : 'Send';
+    part('revising').hidden = !revision;
+    part('cancel-revision').disabled = readingFiles.has(chat?.id);
     status.textContent = request?.label || '';
     drawDraftFiles(chat?.id);
   }
 
   function drawDraftFiles(id) {
     const files = draftFiles.get(id) || [];
+    const reading = readingFiles.has(id);
     const list = part('attachments');
+    const clear = part('clear-files');
+    clear.hidden = !files.length;
+    clear.disabled = reading;
     list.hidden = !files.length;
     list.replaceChildren(...files.map((file, index) => {
       const item = element('li', 'blip-file-chip');
       item.append(element('span', '', file.name + (file.truncated ? ' · excerpt' : '')));
+      const preview = button('Preview', () => showAttachment(file), 'blip-button');
+      preview.setAttribute('aria-label', 'Preview ' + file.name);
       const remove = button('Remove', () => {
+        if (readingFiles.has(id)) return;
         draftFiles.set(id, files.filter((_, fileIndex) => fileIndex !== index));
         drawDraftFiles(id);
         part('attach').focus();
       }, 'blip-button');
+      remove.disabled = reading;
       remove.setAttribute('aria-label', 'Remove ' + file.name);
-      item.append(remove);
+      item.append(preview, remove);
       return item;
     }));
-    part('attach').disabled = !id || readingFiles.has(id) || files.length >= BLIP_FILE_LIMITS.count;
+    part('attach').disabled = !id || reading || files.length >= BLIP_FILE_LIMITS.count;
     part('file-status').textContent = fileNotices.get(id) || '';
+  }
+
+  function showAttachment(file) {
+    const size = file.size < 1024 ? `${file.size} bytes` : `${(file.size / 1024).toFixed(1)} KiB`;
+    part('attachment-title').textContent = file.name;
+    part('attachment-metadata').textContent = file.truncated ? `${size} · Preview uses a text excerpt` : size;
+    part('attachment-preview').textContent = file.text;
+    attachmentDialog.showModal();
+    part('close-attachment').focus();
+  }
+
+  function beginMessageEdit(chat, message) {
+    if (pending.has(chat.id)) return;
+    if (readingFiles.has(chat.id)) {
+      status.textContent = 'Wait for the attached files to finish reading before editing.';
+      return;
+    }
+    const original = revisions.get(chat.id) || {
+      draft: drafts.get(chat.id), files: draftFiles.get(chat.id), notice: fileNotices.get(chat.id)
+    };
+    revisions.set(chat.id, { ...original, messageId: message.id });
+    drafts.set(chat.id, message.text);
+    draftFiles.set(chat.id, message.attachments || []);
+    fileNotices.delete(chat.id);
+    input.value = message.text;
+    drawComposer(chat);
+    input.focus({ preventScroll: true });
+  }
+
+  function restoreDraft(id) {
+    const revision = revisions.get(id);
+    if (!revision) return;
+    for (const [map, value] of [[drafts, revision.draft], [draftFiles, revision.files], [fileNotices, revision.notice]]) {
+      if (value === undefined) map.delete(id);
+      else map.set(id, value);
+    }
+    revisions.delete(id);
   }
 
   function draw() {
@@ -292,14 +404,7 @@ export function renderBlip(target) {
     part('welcome').hidden = Boolean(chat?.messages.length);
     const messages = chat?.messages || [];
     const items = messages.map((message, index) => messageView(message, {
-      onCopy: message.role === 'assistant' && message.text ? async () => {
-        try {
-          await navigator.clipboard.writeText(message.text);
-          status.textContent = 'Response copied.';
-        } catch {
-          status.textContent = 'Clipboard unavailable. Select the response to copy it.';
-        }
-      } : undefined,
+      onEdit: message.role === 'user' && !pending.has(chat.id) ? () => beginMessageEdit(chat, message) : undefined,
       onRetry: message.role === 'assistant' && index === messages.length - 1 && !pending.has(chat.id)
         ? () => retryReply(chat, message.id) : undefined
     }));
@@ -334,7 +439,14 @@ export function renderBlip(target) {
     option.value = mode.id;
     option.addEventListener('change', () => {
       const chat = currentChat();
-      if (chat && option.checked) drawComposer(store.setMode(chat.id, mode.id));
+      if (!chat || !option.checked) return;
+      const revision = revisions.get(chat.id);
+      if (revision) {
+        revision.mode = mode.id;
+        drawComposer(chat);
+      } else {
+        drawComposer(store.setMode(chat.id, mode.id));
+      }
     });
     label.append(option, element('span', '', mode.label));
     part('modes').append(label);
@@ -354,12 +466,37 @@ export function renderBlip(target) {
 
   part('new').addEventListener('click', () => {
     if (!store.createChat()) return;
+    chatSearch.value = '';
     draw();
     showChats(false);
     input.focus({ preventScroll: true });
   });
+  chatSearch.addEventListener('input', drawRail);
   part('toggle').addEventListener('click', () => showChats(layout.dataset.chatsOpen !== 'true'));
   part('attach').addEventListener('click', () => fileInput.click());
+  part('close-attachment').addEventListener('click', () => attachmentDialog.close());
+  attachmentDialog.addEventListener('close', () => { part('attachment-preview').textContent = ''; });
+  part('clear-files').addEventListener('click', () => {
+    const id = store.getState().activeId;
+    if (!id || readingFiles.has(id)) return;
+    draftFiles.delete(id);
+    fileNotices.delete(id);
+    drawDraftFiles(id);
+    part('attach').focus({ preventScroll: true });
+  });
+  part('cancel-revision').addEventListener('click', () => {
+    const chat = currentChat();
+    if (!chat || readingFiles.has(chat.id)) return;
+    restoreDraft(chat.id);
+    input.value = drafts.get(chat.id) || '';
+    drawComposer(chat);
+    input.focus({ preventScroll: true });
+  });
+  part('hosted').addEventListener('change', () => {
+    const enabled = part('hosted').checked;
+    part('research').disabled = !enabled;
+    if (!enabled) part('research').checked = false;
+  });
   fileInput.addEventListener('change', async () => {
     const id = store.getState().activeId;
     const selected = [...fileInput.files];
@@ -396,7 +533,7 @@ export function renderBlip(target) {
 
   composer.addEventListener('submit', async event => {
     event.preventDefault();
-    const chat = currentChat();
+    let chat = currentChat();
     const text = input.value.trim();
     if (!chat || pending.has(chat.id) || readingFiles.has(chat.id)) return;
     const attachments = draftFiles.get(chat.id) || [];
@@ -404,7 +541,28 @@ export function renderBlip(target) {
       status.textContent = 'Enter a message or attach a file.';
       return;
     }
+    if (text.length > BLIP_LIMITS.message) {
+      status.textContent = 'This message is too long. Shorten it before sending.';
+      return;
+    }
+    const originalId = chat.id;
+    const revision = revisions.get(originalId);
+    if (revision) {
+      const fork = store.forkChatBefore(originalId, revision.messageId);
+      if (!fork) {
+        status.textContent = store.getState().chats.length >= BLIP_LIMITS.chats
+          ? 'Your saved chat list is full. Delete a chat before resending.'
+          : 'This edit could not start a new chat. The original is still saved.';
+        return;
+      }
+      chat = revision.mode ? store.setMode(fork.id, revision.mode) || fork : fork;
+    }
     if (!store.addMessage(chat.id, 'user', text, { attachments })) {
+      if (revision) {
+        store.deleteChat(chat.id);
+        store.selectChat(originalId);
+        draw();
+      }
       status.textContent = 'This message could not be saved.';
       return;
     }
@@ -412,9 +570,14 @@ export function renderBlip(target) {
       const compact = (text || attachments[0].name).replace(/\s+/g, ' ');
       store.renameChat(chat.id, compact.length > 60 ? compact.slice(0, 59).trimEnd() + '…' : compact);
     }
-    drafts.delete(chat.id);
-    draftFiles.delete(chat.id);
-    fileNotices.delete(chat.id);
+    if (revision) {
+      restoreDraft(originalId);
+      chatSearch.value = '';
+    } else {
+      drafts.delete(chat.id);
+      draftFiles.delete(chat.id);
+      fileNotices.delete(chat.id);
+    }
     input.focus({ preventScroll: true });
     await runReply(chat, text, attachments);
   });
@@ -437,17 +600,20 @@ export function renderBlip(target) {
         chat.messages.findLast(message => message.attachments?.length)?.attachments || [];
       const useHosted = part('hosted').checked && !contextFiles.length;
       if (useHosted && gatewayConnected()) {
-        request.label = 'Waiting for the connected model…';
+        const research = part('research').checked;
+        let sources = [];
+        request.label = research ? 'Researching and waiting for the connected model…' : 'Waiting for the connected model…';
         if (store.getState().activeId === chat.id) status.textContent = request.label;
         const answer = await hostedBlipReply({
-          text, history: chat.messages, mode: chat.mode,
+          text, history: chat.messages, mode: chat.mode, research,
           signal: AbortSignal.any([request.controller.signal, AbortSignal.timeout(65000)]),
+          onSources(value) { sources = value; },
           onUpdate(value) {
             request.partial = value;
             if (store.getState().activeId === chat.id) drawPartial(chat.id);
           }
         });
-        reply = { kind: 'hosted', text: answer };
+        reply = { kind: 'hosted', text: answer, sources };
       } else {
         reply = await answerBlip({
           text,
@@ -534,6 +700,7 @@ export function renderBlip(target) {
       drafts.delete(edit.id);
       draftFiles.delete(edit.id);
       fileNotices.delete(edit.id);
+      revisions.delete(edit.id);
       store.deleteChat(edit.id);
       if (!currentChat()) store.createChat();
     }
@@ -619,6 +786,7 @@ export function renderBlip(target) {
     lifetime.abort();
     for (const id of pending.keys()) stopReply(id);
     if (dialog.open) dialog.close();
+    if (attachmentDialog.open) attachmentDialog.close();
     stopMusic();
     void releaseCpuBlipModel();
     void releasePortableBlipModel();

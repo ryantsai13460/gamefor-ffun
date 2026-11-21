@@ -1,12 +1,12 @@
 const endpointKey = 'ffun.gateway.url';
-let accessCode = '';
+let connection;
 
 function endpoint() {
   try { return localStorage.getItem(endpointKey) || ''; } catch { return ''; }
 }
 
 export function gatewayConnected() {
-  return Boolean(endpoint() && accessCode);
+  return Boolean(connection);
 }
 
 function configuredUrl(value) {
@@ -36,7 +36,7 @@ export function renderGatewaySettings(target, label = 'Connect an authorized bac
   const field = form.elements.endpoint;
   const code = form.elements.access;
   const status = form.querySelector('[role="status"]');
-  field.value = endpoint();
+  field.value = connection?.url || endpoint();
   status.textContent = gatewayConnected() ? 'Backend configured for this tab.' : 'The access code stays in this tab. Provider requests may count toward your quota.';
   form.addEventListener('submit', event => {
     event.preventDefault();
@@ -53,13 +53,13 @@ export function renderGatewaySettings(target, label = 'Connect an authorized bac
       return;
     }
     field.value = url;
-    accessCode = value;
+    connection = { url, accessCode: value };
     code.value = '';
     status.textContent = 'Backend configured for this tab. A request will check the connection.';
     onChange?.();
   });
   form.querySelector('[data-disconnect]').addEventListener('click', () => {
-    accessCode = '';
+    connection = undefined;
     code.value = '';
     status.textContent = 'Backend disconnected in this tab.';
     onChange?.();
@@ -76,9 +76,8 @@ export async function searchGatewayVideos(q, signal) {
 }
 
 async function gatewayRequest(path, body, signal) {
-  if (!gatewayConnected()) throw new Error('Connect an authorized backend first.');
-  const url = configuredUrl(endpoint());
-  if (!url) throw new Error('The backend URL is invalid.');
+  if (!connection) throw new Error('Connect an authorized backend first.');
+  const { url, accessCode } = connection;
   const response = await fetch(url + path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessCode}` },
@@ -98,25 +97,47 @@ export async function searchGateway(q, signal) {
   const response = await gatewayRequest('/api/search', { q }, signal);
   const data = await response.json();
   if (!Array.isArray(data?.results)) throw new Error('The backend returned invalid search results.');
-  return data.results.slice(0, 10).flatMap(item => {
-    if (typeof item?.url !== 'string' || typeof item?.title !== 'string') return [];
+  return safeReferences(data.results, 10);
+}
+
+function safeReferences(items, limit) {
+  if (!Array.isArray(items)) return [];
+  return items.slice(0, limit).flatMap(item => {
+    if (typeof item?.url !== 'string' || !item.url || item.url.length > 2048 ||
+        typeof item?.title !== 'string' || !item.title.trim()) return [];
     let url;
     try { url = new URL(item.url); } catch { return []; }
     if (url.protocol !== 'https:' || url.username || url.password) return [];
-    return [{ title: item.title.slice(0, 160), url: url.href,
-      description: typeof item.description === 'string' ? item.description.slice(0, 400) : '' }];
+    if (url.href.length > 2048) return [];
+    return [{ title: item.title.trim().slice(0, 180), url: url.href,
+      description: typeof item.description === 'string' ? item.description.trim().slice(0, 360) : '' }];
   });
 }
 
-export async function hostedBlipReply({ text, history, mode, signal, onUpdate }) {
+export async function hostedBlipReply({ text, history = [], mode, signal, onUpdate, research = false, onSources }) {
+  if (history.some(message => message.attachments?.length)) throw new Error('Use a local model for chats with attached files.');
+  if (research && text.trim().length > 200) throw new Error('Web research is available for short questions of up to 200 characters.');
   const messages = history.filter(message => !message.attachments?.length && message.kind !== 'unavailable' &&
       ['user', 'assistant'].includes(message.role) && typeof message.text === 'string' && message.text.trim())
     .slice(-8).map(message => ({ role: message.role, content: message.text.slice(0, 950) }));
   messages.push({ role: 'user', content: text });
-  const response = await gatewayRequest('/api/chat', { messages, mode, stream: true }, signal);
+  const response = await gatewayRequest('/api/chat', { messages, mode, stream: true, ...(research ? { research: true } : {}) }, signal);
+  let hasSources = false;
+  const readSources = items => {
+    if (!research || hasSources) return;
+    const sources = safeReferences(items, 4);
+    if (!sources.length) return;
+    hasSources = true;
+    onSources?.(sources);
+  };
+  const requireSources = () => {
+    if (research && !hasSources) throw new Error('The backend returned no web sources. Check its research setup.');
+  };
   if (!response.headers.get('Content-Type')?.includes('text/event-stream')) {
     const data = await response.json();
     if (typeof data?.text !== 'string' || !data.text.trim()) throw new Error('The model returned an empty reply.');
+    readSources(data.sources);
+    requireSources();
     return data.text;
   }
   const reader = response.body?.getReader();
@@ -142,10 +163,11 @@ export async function hostedBlipReply({ text, history, mode, signal, onUpdate })
         }
         const event = JSON.parse(data);
         if (event.error) throw new Error('The model stopped streaming. Try again.');
+        if (Array.isArray(event.sources)) readSources(event.sources);
         const delta = event.choices?.[0]?.delta?.content;
         if (typeof delta !== 'string') continue;
         answer = (answer + delta).slice(0, 12_000);
-        onUpdate(answer);
+        onUpdate?.(answer);
         if (answer.length >= 12_000) {
           complete = true;
           break;
@@ -156,5 +178,6 @@ export async function hostedBlipReply({ text, history, mode, signal, onUpdate })
     await reader.cancel().catch(() => {});
   }
   if (!answer.trim() || !complete) throw new Error('The model response ended before completion.');
+  requireSources();
   return answer.trim();
 }
