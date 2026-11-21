@@ -16,8 +16,12 @@ export function renderGoogleSearch(target, { onArcadeSearch, onQuery, initialQue
       <input type="search" name="q" class="field" placeholder="Search a game or topic" aria-label="Google query" required maxlength="200">
       <button type="submit" class="button primary">Search</button>
       <button type="submit" class="button" value="google">Use Google engine</button>
+      <button type="button" class="button" data-clear disabled>Clear search</button>
     </form>
-    <div class="interaction-row"><a class="button" href="#games?option=in-page">Games you can play here</a></div>
+    <div class="interaction-row">
+      <a class="button" href="#games?option=in-page">Games you can play here</a>
+      <a class="button" data-google-link target="_blank" rel="noopener noreferrer" hidden>Open Google in new tab</a>
+    </div>
     <details>
       <summary>Optional Google Search Engine</summary>
       <label>Public Search Engine ID <input class="field" name="engine" maxlength="121" autocomplete="off" spellcheck="false"></label>
@@ -30,6 +34,8 @@ export function renderGoogleSearch(target, { onArcadeSearch, onQuery, initialQue
   const details = root.querySelector('details');
   const form = root.querySelector('form');
   const query = form.elements.q;
+  const clear = form.querySelector('[data-clear]');
+  const googleLink = root.querySelector('[data-google-link]');
   const status = root.querySelector('[role="status"]');
   const guide = root.querySelector('.web-search-google-guide');
   const results = root.querySelector('.web-search-google-results');
@@ -37,6 +43,33 @@ export function renderGoogleSearch(target, { onArcadeSearch, onQuery, initialQue
   let essayActive;
   let disposeGuide;
   try { engine.value = localStorage.getItem(storageKey) || ''; } catch {}
+
+  function updateActions() {
+    const text = query.value.trim();
+    clear.disabled = !query.value && !essayActive && !results.firstChild && !status.textContent;
+    googleLink.hidden = !text;
+    if (text) {
+      const url = new URL('https://www.google.com/search');
+      url.searchParams.set('q', text);
+      googleLink.href = url.href;
+    } else {
+      googleLink.removeAttribute('href');
+    }
+  }
+
+  query.addEventListener('input', updateActions);
+  clear.addEventListener('click', () => {
+    query.value = '';
+    disposeGuide?.();
+    disposeGuide = undefined;
+    essayActive = undefined;
+    results.replaceChildren();
+    status.textContent = '';
+    engine.removeAttribute('aria-invalid');
+    onQuery('');
+    updateActions();
+    query.focus();
+  });
 
   engine.addEventListener('input', () => {
     editedEngine = true;
@@ -54,9 +87,10 @@ export function renderGoogleSearch(target, { onArcadeSearch, onQuery, initialQue
       essayActive = essay;
     }
     if (essay) query.value = essay;
+    updateActions();
     const google = event.submitter?.value === 'google';
+    results.replaceChildren();
     if (!google) {
-      results.replaceChildren();
       status.textContent = '';
       if (essay) onQuery(essay);
       else onArcadeSearch(text);
@@ -82,6 +116,12 @@ export function renderGoogleSearch(target, { onArcadeSearch, onQuery, initialQue
     const frame = document.createElement('iframe');
     frame.title = 'Google results';
     frame.setAttribute('sandbox', 'allow-scripts');
+    frame.addEventListener('load', () => {
+      if (results.contains(frame)) status.textContent = 'The configured Google engine opens below. You can also open this search on Google.';
+    });
+    frame.addEventListener('error', () => {
+      if (results.contains(frame)) status.textContent = 'The Google engine panel did not load. Open this search on Google or try again.';
+    }, { once: true });
     frame.src = url.href;
     results.replaceChildren(frame);
     status.textContent = 'Searching with your configured Google engine…';

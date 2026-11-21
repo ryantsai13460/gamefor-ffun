@@ -1,7 +1,9 @@
-import { featuredFilm, filmCatalog } from './film-catalog.js';
-const assetVersion = new URL(import.meta.url).search;
-const { getVideoCollections } = await import(`./media.js${assetVersion}`);
 import { videoLibraryLink } from './video-topics.js';
+
+const assetVersion = new URL(import.meta.url).search;
+const [{ featuredFilm, filmCatalog }, { getVideoCollections }] = await Promise.all([
+  import(`./film-catalog.js${assetVersion}`), import(`./media.js${assetVersion}`)
+]);
 
 const number = new Intl.NumberFormat();
 

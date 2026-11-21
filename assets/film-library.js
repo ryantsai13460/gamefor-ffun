@@ -1,14 +1,38 @@
 const release = new URL(import.meta.url).search;
-const { filmCatalog, featuredFilm } = await import(`./film-catalog.js${release}`);
+const [{ filmCatalog, featuredFilm }, { filmHttps, filmPlayback, mountFilmPlayer }] = await Promise.all([
+  import(`./film-catalog.js${release}`), import(`./film-playback.js${release}`)
+]);
 
 const COLLECTIONS = [
+  { id: 'discover', title: 'Discover' },
   { id: 'all', title: 'All films' },
+  { id: 'full', title: 'Full films' },
+  { id: 'features', title: 'Feature films' },
+  { id: 'additions', title: 'Recently added' },
   { id: 'open', title: 'Open films' },
   { id: 'shorts', title: 'Animated shorts' },
-  { id: 'trailers', title: 'Studio trailers' }
+  { id: 'trailers', title: 'Studio trailers' },
+  { id: 'watchlist', title: 'Watchlist' },
+  { id: 'favorites', title: 'Favorites' },
+  { id: 'continuing', title: 'Continue watching' },
+  { id: 'recent', title: 'Recently opened' }
 ];
 const PAGE_SIZE = 16;
 const SHELF_SIZE = 4;
+const filmKey = 'ffun-film-library-v1';
+const byId = new Map(filmCatalog.map(film => [film.id, film]));
+const fullSources = new Map(filmCatalog.map(film => [film.id, filmPlayback(film)]));
+const trailerSources = new Map(filmCatalog.map(film => [film.id, filmPlayback(film, true)]));
+const genres = [...new Set(filmCatalog.flatMap(film => film.genres))].sort();
+const addedDates = new Map(filmCatalog.flatMap(film => {
+  const date = Date.parse(film.addedAt);
+  return Number.isFinite(date) ? [[film.id, date]] : [];
+}));
+const searchable = new Map(filmCatalog.map(film => [film.id, normalize([
+  film.title, film.year, film.credit, film.director, film.description, film.rating, ...film.genres
+].filter(Boolean).join(' '))]));
+let storedInMemory = { favorites: [], watchlist: [], playback: Object.create(null) };
+let memoryOnly = false;
 
 function element(tag, className = '', text = '') {
   const item = document.createElement(tag);
@@ -38,12 +62,20 @@ function sourceLink(label, url, className = 'button') {
   return item;
 }
 
+function routeLink(label, url, className = 'button') {
+  const item = element('a', className, label);
+  item.href = url;
+  return item;
+}
+
 function artFor(film, eager = false) {
   const box = element('div', 'film-art');
   const fallback = element('span', '', film.title);
   fallback.setAttribute('aria-hidden', 'true');
   box.append(fallback);
-  if (film.art) {
+  let artwork;
+  try { if (film.art) artwork = new URL(film.art, document.baseURI); } catch {}
+  if (artwork && ['https:', 'http:'].includes(artwork.protocol)) {
     const image = element('img');
     image.alt = '';
     image.decoding = 'async';
@@ -54,7 +86,6 @@ function artFor(film, eager = false) {
       image.classList.add('is-ready');
     }, {once: true});
     image.addEventListener('error', () => image.remove(), {once: true});
-    const artwork = new URL(film.art);
     if (artwork.hostname === 'assets.nfbcdn.ca' && artwork.searchParams.has('w')) {
       image.srcset = [384, 768, 1280].map(width => {
         artwork.searchParams.set('w', width);
@@ -68,12 +99,182 @@ function artFor(film, eager = false) {
   return box;
 }
 
-function viewingLabel(film, trailer) {
-  if (trailer) return 'Official trailer';
-  return film.genres.includes('Animation') ? 'Full animated short' : 'Full short film';
+function normalize(text) {
+  return String(text).toLowerCase().normalize('NFKD').replace(/\p{M}/gu, '')
+    .replace(/['’]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
-function filmPlayer(target, film, trailer) {
+function filmFormat(film) {
+  if (film.format === 'feature' || film.format === 'short') return film.format;
+  if (film.runtimeMinutes >= 40) return 'feature';
+  if (['open', 'shorts'].includes(film.collection)) return 'short';
+  return '';
+}
+
+function viewingLabel(film, trailer = false) {
+  if (trailer) return 'Official trailer';
+  if (!fullSources.get(film.id)) return 'Trailer or release listing';
+  if (filmFormat(film) === 'feature') return 'Full feature film';
+  if (filmFormat(film) === 'short') return film.genres.includes('Animation') ? 'Full animated short' : 'Full short film';
+  return 'Full film';
+}
+
+function runtime(film) {
+  return Number.isFinite(film.runtimeMinutes) && film.runtimeMinutes > 0
+    ? `${film.runtimeMinutes} min` : film.duration || '';
+}
+
+function filmIds(list) {
+  return Array.isArray(list) ? [...new Set(list.filter(id => byId.has(id)))] : [];
+}
+
+function filmState() {
+  if (memoryOnly) return storedInMemory;
+  try {
+    const raw = localStorage.getItem(filmKey);
+    if (!raw || raw.length > 250_000) return storedInMemory;
+    const parsed = JSON.parse(raw);
+    const playback = Object.create(null);
+    for (const [id, data] of Object.entries(parsed?.playback || {})) {
+      if (!byId.has(id) || !data || typeof data !== 'object') continue;
+      const openedAt = Number.isFinite(data.openedAt) && data.openedAt > 0 ? data.openedAt : 0;
+      const opens = Number.isInteger(data.opens) && data.opens > 0 ? data.opens : 0;
+      const duration = Number.isFinite(data.duration) && data.duration > 0 && data.duration <= 86400 ? data.duration : 0;
+      const seconds = duration && Number.isFinite(data.seconds) && data.seconds >= 0 && data.seconds < duration ? data.seconds : 0;
+      playback[id] = { openedAt, opens, seconds, duration };
+    }
+    return { favorites: filmIds(parsed?.favorites), watchlist: filmIds(parsed?.watchlist), playback };
+  } catch {
+    return storedInMemory;
+  }
+}
+
+function updateFilmState(update) {
+  const state = filmState();
+  update(state);
+  storedInMemory = state;
+  try { localStorage.setItem(filmKey, JSON.stringify(state)); } catch { memoryOnly = true; }
+  return state;
+}
+
+function toggleSaved(id, kind) {
+  return updateFilmState(state => {
+    const saved = state[kind];
+    state[kind] = saved.includes(id) ? saved.filter(value => value !== id) : [id, ...saved];
+  });
+}
+
+function markOpened(film) {
+  updateFilmState(state => {
+    const record = state.playback[film.id] || {};
+    state.playback[film.id] = { ...record, openedAt: Date.now(), opens: (record.opens || 0) + 1 };
+  });
+}
+
+function storeProgress(film, { seconds, duration, complete }) {
+  updateFilmState(state => {
+    const record = state.playback[film.id] || {};
+    state.playback[film.id] = { ...record, duration, seconds: !complete && seconds < duration - 2 ? seconds : 0 };
+  });
+}
+
+function openHistory(state) {
+  return Object.entries(state.playback).filter(([id, record]) => fullSources.get(id) && record.openedAt)
+    .sort(([, first], [, second]) => second.openedAt - first.openedAt);
+}
+
+export function getFilm(id) { return byId.get(id); }
+
+export function getFilmLibraryState() {
+  const state = filmState();
+  const saved = state.favorites.map(getFilm);
+  const recent = openHistory(state);
+  return {
+    saved, favorites: saved, watchlist: state.watchlist.map(getFilm), recent: recent.map(([id]) => getFilm(id)),
+    continuing: recent.filter(([, record]) => record.seconds >= 2).map(([id]) => getFilm(id)),
+    completeCount: filmCatalog.filter(film => fullSources.get(film.id)).length,
+    catalogCount: filmCatalog.length
+  };
+}
+
+function browsePath(params) {
+  const query = new URLSearchParams();
+  for (const key of ['collection', 'q', 'genre', 'sort', 'page']) {
+    const value = params?.get(key);
+    if (value) query.set(key, value);
+  }
+  return `#movies${query.size ? `?${query}` : ''}`;
+}
+
+export function filmDetailUrl(id, params) {
+  const route = browsePath(params);
+  return `${route}${route.includes('?') ? '&' : '?'}film=${encodeURIComponent(id)}`;
+}
+
+function savedButton(film, kind, onChange) {
+  const favorite = kind === 'favorites';
+  const item = button('', () => sync(toggleSaved(film.id, kind), true));
+  function sync(state, changed = false) {
+    const active = state[kind].includes(film.id);
+    item.textContent = favorite ? (active ? 'Favorited' : 'Favorite') : (active ? 'Watchlisted' : 'Watchlist');
+    item.setAttribute('aria-label', favorite
+      ? (active ? `Remove ${film.title} from favorites` : `Favorite ${film.title}`)
+      : (active ? `Remove ${film.title} from watchlist` : `Add ${film.title} to watchlist`));
+    item.setAttribute('aria-pressed', String(active));
+    if (changed) onChange?.();
+  }
+  sync(filmState());
+  return item;
+}
+
+function makePlaybackActions(film, open, inline = false) {
+  const actions = element('div', 'film-actions');
+  const playButton = inline ? button : playerButton;
+  const full = fullSources.get(film.id);
+  const trailer = trailerSources.get(film.id);
+  if (full?.embed) actions.append(playButton(filmFormat(film) === 'short' ? 'Play full short' : 'Play full film', () => open(false), 'button primary'));
+  else if (full) {
+    const watch = sourceLink('Watch Full Movie', full.external, 'button primary');
+    watch.addEventListener('click', () => markOpened(film));
+    actions.append(watch);
+  }
+  if (trailer?.embed) actions.append(playButton('Watch trailer', () => open(true)));
+  else if (trailer) actions.append(sourceLink(film.trailerLabel || 'Official trailer', trailer.external));
+  if (!full && filmHttps(film.where)) actions.append(sourceLink('Where to watch', filmHttps(film.where)));
+  return actions;
+}
+
+function filmCard(film, params, open, onSave) {
+  const article = element('article', 'film-card media-movie');
+  const link = routeLink('', filmDetailUrl(film.id, params), 'film-card-link');
+  link.setAttribute('aria-label', `Open ${film.title} film page`);
+  const info = element('div', 'film-card-info');
+  info.append(element('h3', '', film.title),
+    element('p', 'film-meta', [film.year, runtime(film), ...film.genres].filter(Boolean).join(' · ')),
+    element('p', 'film-type', viewingLabel(film)));
+  link.append(artFor(film), info);
+  const body = element('div', 'film-card-body');
+  body.append(makePlaybackActions(film, trailer => open(film, trailer)));
+  const saves = element('div', 'film-actions film-save-actions');
+  saves.append(savedButton(film, 'favorites', onSave), savedButton(film, 'watchlist', onSave));
+  body.append(saves);
+  article.append(link, body);
+  return article;
+}
+
+function createPlayback(target, film, trailer, resumeAt = 0) {
+  const destination = (trailer ? trailerSources : fullSources).get(film.id);
+  if (!destination?.embed) return () => {};
+  if (!trailer) markOpened(film);
+  return mountFilmPlayer(target, destination, {
+    title: trailer ? `${film.title} trailer` : film.title,
+    onProgress: !trailer && destination.id ? progress => storeProgress(film, progress) : undefined,
+    regional: film.regionLimited === true,
+    resumeAt
+  });
+}
+
+function openFilmDialog(target, film, trailer, afterClose) {
   const dialog = element('dialog', 'media-dialog film-player-dialog');
   dialog.setAttribute('aria-label', film.title);
   const header = element('header', 'media-dialog-header');
@@ -82,92 +283,155 @@ function filmPlayer(target, film, trailer) {
   const close = button('Close', () => dialog.close());
   close.autofocus = true;
   header.append(titles, close);
-  const frame = element('iframe');
-  const id = trailer ? film.trailer : film.fullVideo;
-  const provider = id ? 'YouTube' : 'NFB';
-  frame.title = trailer ? `${film.title} trailer` : film.title;
-  frame.src = id ? `https://www.youtube-nocookie.com/embed/${id}?playsinline=1` : film.embed;
-  frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
-  frame.allowFullscreen = true;
-  frame.referrerPolicy = 'strict-origin-when-cross-origin';
-  const viewport = element('div', 'media-player');
-  viewport.append(frame);
-  const status = element('p', 'media-player-status', `Opening the ${provider} player…`);
-  status.setAttribute('role', 'status');
-  const unconfirmed = film.regionLimited
-    ? 'NFB availability varies by location. If the film is unavailable here, check the Watch on NFB link.'
-    : `Embedded playback could not be confirmed. If the player does not start, use Watch on ${provider}.`;
-  const wait = setTimeout(() => { status.textContent = unconfirmed; }, 8500);
-  function updateStatus(message) {
-    clearTimeout(wait);
-    status.textContent = message;
-  }
-  frame.addEventListener('load', () => updateStatus(unconfirmed), {once: true});
-  frame.addEventListener('error', () => updateStatus(
-    `The ${provider} player could not be reached. Use Watch on ${provider}.`), {once: true});
-  const actions = element('div', 'media-actions');
-  const external = id ? `https://www.youtube.com/watch?v=${id}` : film.source;
-  actions.append(sourceLink(`Watch on ${provider}`, external, 'button primary'));
-  let removeFullscreenListener = () => {};
-  if (document.fullscreenEnabled && viewport.requestFullscreen) {
-    const full = button('Fullscreen', async () => {
-      try {
-        if (document.fullscreenElement === viewport) await document.exitFullscreen();
-        else await viewport.requestFullscreen();
-      } catch {
-        updateStatus('Fullscreen is unavailable in this browser.');
-      }
-    });
-    const update = () => {
-      full.textContent = document.fullscreenElement === viewport ? 'Exit fullscreen' : 'Fullscreen';
-    };
-    document.addEventListener('fullscreenchange', update);
-    removeFullscreenListener = () => document.removeEventListener('fullscreenchange', update);
-    actions.append(full);
-  }
-  actions.append(sourceLink('Source and credits', film.licenseUrl || film.source, 'film-credit'));
-  dialog.append(header, viewport, status, element('p', 'media-dialog-description', film.description), actions);
-  let removed = false;
-  const remove = () => {
-    if (removed) return;
-    removed = true;
-    clearTimeout(wait);
-    removeFullscreenListener();
-    frame.remove();
-    dialog.remove();
-  };
-  dialog.addEventListener('close', remove, {once: true});
+  const player = element('div', 'film-player-content');
+  const credit = filmHttps(film.licenseUrl || film.source);
+  dialog.append(header, player, element('p', 'media-dialog-description', film.description));
+  if (credit) dialog.append(sourceLink('Source and credits', credit, 'film-credit'));
   target.append(dialog);
   dialog.showModal();
+  const resumeAt = trailer ? 0 : filmState().playback[film.id]?.seconds || 0;
+  const release = createPlayback(player, film, trailer, resumeAt);
+  let disposed = false;
+  function remove() {
+    if (disposed) return;
+    disposed = true;
+    release();
+    dialog.remove();
+    afterClose?.();
+  }
+  dialog.addEventListener('close', remove, {once: true});
+  dialog.addEventListener('click', event => {
+    if (event.target !== dialog) return;
+    const rect = dialog.getBoundingClientRect();
+    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close();
+  });
   return () => {
     if (dialog.open) dialog.close();
     remove();
   };
 }
 
-function normalize(text) {
-  return String(text).toLowerCase().normalize('NFKD').replace(/\p{M}/gu, '')
-    .replace(/['’]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+function relatedFilms(film) {
+  return filmCatalog.filter(candidate => candidate.id !== film.id && fullSources.get(candidate.id))
+    .map(candidate => ({ candidate, score: candidate.genres.filter(genre => film.genres.includes(genre)).length }))
+    .filter(record => record.score > 0)
+    .sort((first, second) => second.score - first.score)
+    .slice(0, SHELF_SIZE)
+    .map(record => record.candidate);
 }
 
-export function renderFilms(target, { watchDialog, collection } = {}) {
+function renderFilmDetail(target, id, params) {
+  const root = element('section', 'films-page film-detail');
+  const back = routeLink('Back to Movies', browsePath(params), 'button film-back');
+  root.append(back);
+  target.replaceChildren(root);
+  const film = getFilm(id);
+  if (!film) {
+    root.append(element('h1', '', 'Film unavailable'), element('p', 'film-empty', 'This title could not be found in the film catalog.'));
+    return () => {};
+  }
+
+  const details = element('div', 'film-detail-information');
+  const copy = element('div', 'film-detail-copy');
+  const full = fullSources.get(id);
+  const trailer = trailerSources.get(id);
+  const credit = filmHttps(film.source);
+  const meta = element('dl', 'film-details-meta');
+  for (const [label, value] of [
+    ['Release', film.year], ['Genre', film.genres.join(' · ')], ['Runtime', runtime(film)], ['Rating', film.rating],
+    ['Content advisory', film.advisory], ['Director', film.director],
+    ['Playback source', full?.provider || trailer?.provider], ['Credits', film.credit]
+  ]) {
+    if (value) {
+      const item = element('div');
+      item.append(element('dt', '', label), element('dd', '', value));
+      meta.append(item);
+    }
+  }
+  copy.append(element('p', 'film-type', viewingLabel(film)), element('h1', '', film.title),
+    element('p', 'film-detail-description', film.description), meta);
+  if (film.regionLimited) copy.append(element('p', 'film-meta', 'Availability varies by region.'));
+  if (credit) copy.append(sourceLink('Source and credits', credit, 'text-action film-credit'));
+  if (film.license && film.license !== film.credit) {
+    const license = filmHttps(film.licenseUrl);
+    copy.append(license ? sourceLink(film.license, license, 'text-action film-credit') : element('p', 'film-meta', film.license));
+  }
+  details.append(artFor(film, true), copy);
+  const panel = element('section', 'film-detail-play');
+  const playerTitle = element('h2', '', 'Watch');
+  const player = element('div', 'film-player-content');
+  player.hidden = true;
+  const playerActions = makePlaybackActions(film, start, true);
+  playerActions.append(savedButton(film, 'favorites'), savedButton(film, 'watchlist'));
+  let releasePlayer;
+  let releaseRelated;
+  const resumeAt = full?.id ? filmState().playback[id]?.seconds || 0 : 0;
+  if (resumeAt >= 2) {
+    const resume = button(`Continue at ${formatTime(resumeAt)}`, () => start(false, resumeAt), 'button primary');
+    const restart = playerActions.querySelector('button.primary');
+    if (restart) {
+      restart.textContent = 'Start over';
+      restart.classList.remove('primary');
+    }
+    playerActions.prepend(resume);
+  }
+  panel.append(playerTitle, playerActions, player);
+  if (!full) panel.append(element('p', 'film-meta', 'This page lists the trailer or release source. A verified full-film source is unavailable.'));
+  const related = element('section', 'film-shelf');
+  const relatedTitles = relatedFilms(film);
+  if (relatedTitles.length) {
+    const grid = element('div', 'film-grid');
+    grid.append(...relatedTitles.map(entry => filmCard(entry, params, (selected, isTrailer) => {
+      releaseRelated?.();
+      releaseRelated = openFilmDialog(root, selected, isTrailer);
+    })));
+    related.append(element('h2', '', 'Related films'), grid);
+  }
+  root.append(details, panel);
+  if (relatedTitles.length) root.append(related);
+
+  function start(isTrailer, seconds = 0) {
+    releasePlayer?.();
+    player.hidden = false;
+    playerTitle.textContent = viewingLabel(film, isTrailer);
+    releasePlayer = createPlayback(player, film, isTrailer, seconds);
+    playerTitle.tabIndex = -1;
+    playerTitle.focus({ preventScroll: true });
+    playerTitle.scrollIntoView({ block: 'nearest' });
+  }
+
+  return () => { releasePlayer?.(); releaseRelated?.(); };
+}
+
+function formatTime(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+}
+
+export function renderFilms(target, { collection, params = new URLSearchParams(location.hash.split('?')[1]) } = {}) {
+  if (params.has('film')) return renderFilmDetail(target, params.get('film'), params);
   const root = element('section', 'films-page');
   const heading = element('header', 'film-heading');
-  heading.append(element('h1', '', 'Movies'));
+  const { completeCount, catalogCount } = getFilmLibraryState();
+  const trailerCount = catalogCount - completeCount;
+  heading.append(element('h1', '', 'Movies'), element('p', 'film-meta',
+    `${completeCount} complete films ${trailerCount ? `· ${trailerCount} trailer and release listings` : ''}`.trim()));
   const feature = element('section', 'film-feature');
   const featureCopy = element('div', 'film-feature-copy');
   featureCopy.append(element('p', 'film-feature-label', 'Featured film'),
     element('h2', '', featuredFilm.title),
-    element('p', 'film-meta', [featuredFilm.year, ...featuredFilm.genres].join(' · ')),
+    element('p', 'film-meta', [featuredFilm.year, runtime(featuredFilm), ...featuredFilm.genres].filter(Boolean).join(' · ')),
     element('p', '', featuredFilm.description));
   const featureActions = element('div', 'film-actions');
-  featureActions.append(playerButton('Play featured film', () => openFilm(featuredFilm, false), 'button primary'));
+  if (fullSources.get(featuredFilm.id)?.embed) {
+    featureActions.append(playerButton('Play featured film', () => openFilm(featuredFilm, false), 'button primary'));
+  }
+  featureActions.append(routeLink('Film details', filmDetailUrl(featuredFilm.id)));
   featureCopy.append(featureActions);
   feature.append(artFor(featuredFilm, true), featureCopy);
 
   const toolbar = element('div', 'film-toolbar');
   const filters = element('div', 'film-filters');
-  const params = new URLSearchParams(location.hash.split('?')[1]);
   const query = element('input', 'field');
   query.type = 'search';
   query.maxLength = 160;
@@ -176,17 +440,28 @@ export function renderFilms(target, { watchDialog, collection } = {}) {
   query.setAttribute('aria-label', 'Search films');
   const genre = element('select', 'field');
   genre.setAttribute('aria-label', 'Film genre');
-  const genres = [...new Set(filmCatalog.flatMap((film) => film.genres))].sort();
-  for (const name of ['All genres', ...genres]) genre.append(element('option', '', name));
-  filters.append(query, genre);
+  genre.append(new Option('All genres', ''), ...genres.map(name => new Option(name, name)));
+  genre.value = genres.includes(params.get('genre')) ? params.get('genre') : '';
+  const sort = element('select', 'field');
+  sort.setAttribute('aria-label', 'Sort films');
+  const orders = [
+    ['catalog', 'Catalog order'], ['title', 'Title A–Z'], ['latest-year', 'Newest release'],
+    ['oldest-year', 'Oldest release'], ['opened', 'Most opened on this device']
+  ];
+  if (addedDates.size) orders.splice(4, 0, ['recently-added', 'Recently added']);
+  sort.append(...orders.map(([value, name]) => new Option(name, value)));
+  sort.value = orders.some(([value]) => value === params.get('sort')) ? params.get('sort') : 'catalog';
+  filters.append(query, genre, sort);
   const tabs = element('div', 'film-tabs');
+  tabs.setAttribute('role', 'group');
   tabs.setAttribute('aria-label', 'Film collections');
   const requested = collection || params.get('collection');
-  let current = COLLECTIONS.some(({id}) => id === requested) ? requested : 'all';
-  let page = 0;
+  let current = COLLECTIONS.some(({id}) => id === requested) ? requested : 'discover';
+  let page = Math.max(0, (Number.parseInt(params.get('page'), 10) || 1) - 1);
   let closeDialog;
   const collectionButtons = new Map();
   for (const {id, title} of COLLECTIONS) {
+    if (id === 'additions' && !addedDates.size) continue;
     const item = button(title, () => chooseCollection(id));
     collectionButtons.set(id, item);
     tabs.append(item);
@@ -207,42 +482,32 @@ export function renderFilms(target, { watchDialog, collection } = {}) {
 
   function openFilm(film, trailer) {
     closeDialog?.();
-    const id = trailer ? film.trailer : film.fullVideo;
-    if (typeof watchDialog === 'function' && id) {
-      closeDialog = watchDialog(root, {
-        title: film.title,
-        subtitle: viewingLabel(film, trailer),
-        description: film.description,
-        video: {id, title: trailer ? `${film.title} trailer` : film.title},
-        external: `https://www.youtube.com/watch?v=${id}`,
-        directLabel: 'Watch on YouTube',
-        details: sourceLink(film.license || film.credit, film.licenseUrl || film.source, 'film-credit')
-      });
-      return;
-    }
-    closeDialog = filmPlayer(root, film, trailer);
+    closeDialog = openFilmDialog(root, film, trailer, () => {
+      if (root.isConnected && current === 'continuing') draw();
+    });
   }
 
-  function card(film) {
-    const article = element('article', 'film-card media-movie');
-    const body = element('div', 'film-card-body');
-    const info = element('div', 'film-card-info');
-    const meta = [film.year, film.duration, ...film.genres, film.regionLimited && 'Regional availability']
-      .filter(Boolean).join(' · ');
-    info.append(element('h3', '', film.title), element('p', 'film-meta', meta),
-      element('p', 'film-card-description', film.description));
-    const actions = element('div', 'film-actions');
-    if (film.fullVideo || film.embed) {
-      actions.append(playerButton('Play full short', () => openFilm(film, false), 'button primary'));
-    }
-    if (film.trailer) actions.append(playerButton('Watch trailer', () => openFilm(film, true)));
-    if (film.trailerLink) actions.append(sourceLink(film.trailerLabel || 'Official trailer', film.trailerLink));
-    if (film.where) actions.append(sourceLink('Where to watch', film.where));
-    const credit = sourceLink(film.director ? `${film.director} · ${film.credit}` : film.credit,
-      film.source, 'film-credit');
-    body.append(info, actions, credit);
-    article.append(artFor(film), body);
-    return article;
+  function currentParams() {
+    const selected = new URLSearchParams();
+    if (current !== 'discover') selected.set('collection', current);
+    if (query.value.trim()) selected.set('q', query.value.trim());
+    if (genre.value) selected.set('genre', genre.value);
+    if (sort.value !== 'catalog') selected.set('sort', sort.value);
+    if (page > 0) selected.set('page', String(page + 1));
+    return selected;
+  }
+
+  function updateUrl() {
+    const next = browsePath(currentParams());
+    if (location.hash !== next) history.replaceState(history.state, '', next);
+  }
+
+  function onSave() {
+    const label = document.activeElement?.getAttribute('aria-label');
+    draw();
+    updateUrl();
+    const match = [...results.querySelectorAll('button[aria-label]')].find(item => item.getAttribute('aria-label') === label);
+    (match || collectionButtons.get(current)).focus({preventScroll: true});
   }
 
   function section(name, films, collectionId) {
@@ -253,40 +518,76 @@ export function renderFilms(target, { watchDialog, collection } = {}) {
       top.append(button(`View all ${name.toLowerCase()}`, () => chooseCollection(collectionId), 'button'));
     }
     const grid = element('div', 'film-grid');
-    grid.append(...films.map(card));
+    const savedParams = currentParams();
+    grid.append(...films.map(film => filmCard(film, savedParams, openFilm, onSave)));
     shelf.append(top, grid);
     return shelf;
   }
 
   function matches(film, words) {
-    const fields = [film.title, film.year, film.credit, film.director, film.description, ...film.genres];
-    const searchable = normalize(fields.filter(Boolean).join(' '));
-    const joinedTitle = normalize(film.title).replaceAll(' ', '');
-    return words.every((word) => searchable.includes(word) || joinedTitle.includes(word)) &&
-      (genre.selectedIndex === 0 || film.genres.includes(genre.value));
+    const text = searchable.get(film.id);
+    return words.every(word => text.includes(word) || text.replaceAll(' ', '').includes(word))
+      && (!genre.value || film.genres.includes(genre.value));
+  }
+
+  function collectionFilms(id, state) {
+    if (id === 'watchlist' || id === 'favorites') return state[id].map(getFilm);
+    if (id === 'continuing' || id === 'recent') {
+      return openHistory(state).filter(([, record]) => id === 'recent' || record.seconds >= 2).map(([key]) => getFilm(key));
+    }
+    if (id === 'full') return filmCatalog.filter(film => fullSources.get(film.id));
+    if (id === 'features') return filmCatalog.filter(film => fullSources.get(film.id) && filmFormat(film) === 'feature');
+    if (id === 'additions') return filmCatalog.filter(film => fullSources.get(film.id) && addedDates.has(film.id))
+      .sort((first, second) => addedDates.get(second.id) - addedDates.get(first.id));
+    if (id === 'shorts') return filmCatalog.filter(film => filmFormat(film) === 'short' && fullSources.get(film.id) && film.genres.includes('Animation'));
+    if (id === 'open' || id === 'trailers') return filmCatalog.filter(film => film.collection === id);
+    return filmCatalog;
+  }
+
+  function sortFilms(entries, state) {
+    if (sort.value === 'title') entries.sort((first, second) => first.title.localeCompare(second.title));
+    if (sort.value === 'latest-year') entries.sort((first, second) => (second.year || 0) - (first.year || 0));
+    if (sort.value === 'oldest-year') entries.sort((first, second) => (first.year || Infinity) - (second.year || Infinity));
+    if (sort.value === 'recently-added') entries.sort((first, second) => (addedDates.get(second.id) || 0) - (addedDates.get(first.id) || 0));
+    if (sort.value === 'opened') entries.sort((first, second) => (state.playback[second.id]?.opens || 0) - (state.playback[first.id]?.opens || 0));
+    return entries;
   }
 
   function draw() {
     for (const [id, item] of collectionButtons) item.setAttribute('aria-pressed', String(id === current));
+    const state = filmState();
     const words = normalize(query.value).split(' ').filter(Boolean);
-    const filtered = filmCatalog.filter((film) =>
-      (current === 'all' || film.collection === current) && matches(film, words));
-    const shelves = current === 'all' && !words.length && genre.selectedIndex === 0;
+    const filtered = sortFilms(collectionFilms(current, state).filter(film => matches(film, words)), state);
+    const shelves = current === 'discover' && !words.length && !genre.value && sort.value === 'catalog';
     feature.hidden = !shelves;
-    status.textContent = `${filtered.length} ${filtered.length === 1 ? 'film' : 'films'}`;
     results.replaceChildren();
     const pages = Math.ceil(filtered.length / PAGE_SIZE);
     page = Math.max(0, Math.min(page, pages - 1));
+    status.textContent = filtered.length
+      ? `${filtered.length} ${filtered.length === 1 ? 'title' : 'titles'}${!shelves && pages > 1 ? ` · Showing ${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, filtered.length)}` : ''}`
+      : '0 titles';
     if (shelves) {
-      for (const {id, title} of COLLECTIONS.slice(1)) {
-        const entries = filtered.filter((film) => film.collection === id);
+      const additions = filtered.filter(film => addedDates.has(film.id) && fullSources.get(film.id))
+        .sort((first, second) => addedDates.get(second.id) - addedDates.get(first.id));
+      const active = collectionFilms('continuing', state);
+      if (active.length) results.append(section('Continue watching', active.slice(0, SHELF_SIZE), 'continuing'));
+      if (additions.length) results.append(section('Recently added', additions.slice(0, SHELF_SIZE), 'additions'));
+      const opened = openHistory(state).sort(([, first], [, second]) => second.opens - first.opens);
+      if (opened.length) results.append(section('Most opened on this device', opened.slice(0, SHELF_SIZE).map(([id]) => getFilm(id))));
+      for (const id of ['features', 'open', 'shorts', 'trailers']) {
+        const { title } = COLLECTIONS.find(value => value.id === id);
+        const entries = collectionFilms(id, state);
         if (entries.length) results.append(section(title, entries.slice(0, SHELF_SIZE), id));
       }
     } else if (filtered.length) {
       const name = words.length ? 'Search results' : COLLECTIONS.find(({id}) => id === current).title;
       results.append(section(name, filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)));
     } else {
-      results.append(element('p', 'film-empty', 'No films match your search.'));
+      const empty = {
+        favorites: 'Favorite a film to see it here.', watchlist: 'Add a film to your watchlist to see it here.',
+        continuing: 'Films with saved playback progress appear here.', recent: 'Films you open for playback appear here.'
+      };
+      results.append(element('p', 'film-empty', words.length || genre.value ? 'No films match your search.' : empty[current] || 'No films found.'));
     }
     pagination.hidden = shelves || pages <= 1;
     previous.disabled = page === 0;
@@ -298,6 +599,7 @@ export function renderFilms(target, { watchDialog, collection } = {}) {
     current = id;
     page = 0;
     draw();
+    updateUrl();
     collectionButtons.get(id).focus({preventScroll: true});
     toolbar.scrollIntoView({block: 'nearest'});
   }
@@ -305,16 +607,19 @@ export function renderFilms(target, { watchDialog, collection } = {}) {
   function changePage(direction) {
     page += direction;
     draw();
+    updateUrl();
     status.scrollIntoView({block: 'nearest'});
   }
 
   function updateFilters() {
     page = 0;
     draw();
+    updateUrl();
   }
 
   query.addEventListener('input', updateFilters);
   genre.addEventListener('change', updateFilters);
+  sort.addEventListener('change', updateFilters);
   draw();
   return () => closeDialog?.();
 }

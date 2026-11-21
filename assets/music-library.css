@@ -306,3 +306,95 @@
     padding: .6rem;
   }
 }
+
+.music-artists {
+  display: grid;
+  gap: .65rem;
+}
+
+.music-artists h2 { font-size: 1.25rem; }
+
+.music-artist-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr));
+  gap: .45rem;
+}
+
+.music-artist-list .button {
+  min-width: 0;
+  display: grid;
+  justify-items: start;
+  gap: .1rem;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+.music-artist-list .music-meta { font-size: .8rem; }
+
+.music-filter-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, .75fr) minmax(8rem, .55fr);
+  gap: .5rem;
+}
+
+.music-filter-fields select,
+.music-custom-playlists select {
+  min-width: 0;
+  width: 100%;
+  min-height: 44px;
+}
+
+.music-custom-playlists {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  padding: .7rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.music-custom-playlists select { flex: 1 1 10rem; }
+.music-custom-playlists .button { min-height: 44px; }
+
+.music-add {
+  inset-inline: .42rem auto;
+}
+
+.music-playlist-dialog {
+  width: min(30rem, calc(100% - 28px));
+}
+
+.music-playlist-dialog form {
+  display: grid;
+  gap: .7rem;
+}
+
+.music-playlist-dialog .field {
+  min-height: 44px;
+  min-width: 0;
+  width: 100%;
+}
+
+.music-playlist-dialog .music-meta:empty { display: none; }
+
+.music-related {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35rem;
+  width: 100%;
+  margin-top: .4rem;
+  padding-top: .45rem;
+  border-top: 1px solid var(--line);
+}
+
+.music-related h3 { width: 100%; font-size: .9rem; }
+
+@media (max-width: 630px) {
+  .music-filter-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .music-filter-fields input { grid-column: 1 / -1; min-width: 0; }
+}

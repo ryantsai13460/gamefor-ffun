@@ -1,0 +1,27 @@
+.discovery-form { display: flex; flex-wrap: wrap; gap: 8px; max-width: 56rem; margin-bottom: 12px; }
+.discovery-form .field { flex: 1 1 16rem; min-width: 0; }
+.discovery-filters { margin-bottom: 12px; }
+.discovery-filters [aria-pressed="true"] { border-color: var(--accent-border); color: var(--accent); background: var(--accent-wash); }
+.discovery-recent:not(:empty) { margin-bottom: 12px; }
+.discovery-status { margin: 12px 0; }
+.discovery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 175px), 1fr)); gap: 12px; }
+.discovery-card { display: grid; grid-template-rows: auto 1fr; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); }
+.discovery-card:hover { border-color: var(--accent-border); background: var(--panel-hover); }
+.discovery-art { position: relative; display: grid; place-items: center; aspect-ratio: 16 / 9; overflow: hidden; padding: 8px; background: var(--panel-deep); color: var(--muted); text-align: center; }
+.discovery-art img { position: absolute; inset: 0; height: 100%; width: 100%; object-fit: cover; opacity: 0; }
+.discovery-art img.is-ready { opacity: 1; }
+.discovery-card[data-type="movies"] .discovery-art img { object-fit: contain; }
+.discovery-card-copy { display: grid; align-content: start; gap: 4px; padding: 10px; overflow-wrap: anywhere; }
+.discovery-card-copy h3 { font-size: .95rem; line-height: 1.25; }
+.discovery-card-copy p { font-size: .8rem; }
+.discovery-kind { color: var(--accent); }
+.discovery-actions { margin-top: 16px; }
+.discovery-shelves { margin-bottom: 16px; }
+.home-media-shelves:empty { min-height: 1px; }
+@media (max-width: 550px) {
+  .discovery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .discovery-form .field { flex-basis: 100%; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .discovery-card { transition: border-color .15s, background-color .15s; }
+}

@@ -27,9 +27,9 @@ const mainCatalogCount = games.filter(game => game.collection === 'github' || ga
 const categories = [...library.categoryCounts.keys()].sort((a, b) => a.localeCompare(b));
 const altFeatured = ['2048', 'subway', 'ffun-skyline-v1', 'minecraft-classic', 'snake', 'retrobowl', 'stickman', 'drivemad', 'memory-match', 'pong'];
 const drawerMedia = matchMedia('(max-width: 860px)');
-const routes = new Set(['home', 'explore', 'games', 'categories', 'trending', 'new', 'favorites', 'recent', 'youtube', 'movies', 'music', 'browse', 'web-search', 'blip', 'play-hub', 'settings', 'credits', 'play']);
+const routes = new Set(['home', 'explore', 'discover', 'library', 'games', 'categories', 'trending', 'new', 'favorites', 'recent', 'youtube', 'movies', 'music', 'browse', 'web-search', 'blip', 'play-hub', 'settings', 'credits', 'play']);
 const routeNames = {
-  home: 'Home', explore: 'Explore', games: 'All Games', categories: 'Categories', trending: 'Trending',
+  home: 'Home', explore: 'Explore', discover: 'Search the library', library: 'My library', games: 'All Games', categories: 'Categories', trending: 'Trending',
   new: 'New Games', favorites: 'Favorites', recent: 'Recently Played',
   youtube: 'YouTube', movies: 'Movies', music: 'Music', browse: 'Proxy Gemini', 'web-search': 'Web Search', blip: 'blip.ai', 'play-hub': 'Play Hub',
   settings: 'Settings', credits: 'Credits'
@@ -355,7 +355,11 @@ function renderHome(target) {
     ['Explore', '#explore', 'layers', 'games'],
     ['Video library', '#youtube?format=all', 'video', 'video'],
     ['Cinema', '#movies', 'film', 'film'],
-    ['blip.ai chat', '#blip', 'spark', 'ai']
+    ['blip.ai chat', '#blip', 'spark', 'ai'],
+    ['Music library', '#music?view=videos', 'music', 'video'],
+    ['Search the library', '#discover', 'search', 'games'],
+    ['Web Search', '#web-search', 'search', 'ai'],
+    ['Proxy Gemini', '#browse', 'globe', 'games']
   ]) {
     const destination = link(name, href, 'explore-tile', symbol);
     destination.dataset.color = color;
@@ -366,9 +370,13 @@ function renderHome(target) {
 
   const artPicks = games.filter(game => game.art && gameAvailability(game) !== 'unverified');
   const picks = distinct([...records(altFeatured), ...artPicks]).filter(game => game !== hero);
+  const popular = queryLibrary(library, {
+    source: games.filter(game => prefs.launches[game.id] > 0), sort: 'popularity', launches: prefs.launches
+  });
   for (const [key, ...args] of [
     ['featured', 'Featured games', picks, 'All games', '#games'],
     ['recent', 'Recently played', records(prefs.recent), 'Play history', '#recent'],
+    ['popular', 'Popular on this device', popular, 'Trending games', '#trending'],
     ['new', 'New games', games.filter(game => game.isNew).sort((a, b) => Number(Boolean(b.art)) - Number(Boolean(a.art))), 'New games', '#new'],
     ['built-in', 'Built-in arcade', games.filter(game => game.local).sort((a, b) => Number(Boolean(b.art)) - Number(Boolean(a.art))), 'Built-in games', '#games?local=1']
   ]) {
@@ -385,6 +393,23 @@ function renderHome(target) {
     provider.append(element('h2', '', 'Miniplay links'), element('p', '', 'These games open on Miniplay in a new tab.'), items);
     target.append(provider);
   }
+  if (prefs.hiddenHome.includes('media')) return;
+  const media = element('div', 'home-media-shelves');
+  target.append(media);
+  function loadMedia() {
+    void import(`./discovery.js${assetVersion}`).then(({ populateHomeMedia }) => populateHomeMedia(media)).catch(() => {});
+  }
+  if (typeof IntersectionObserver !== 'function') {
+    loadMedia();
+    return;
+  }
+  const observer = new IntersectionObserver(entries => {
+    if (!entries.some(entry => entry.isIntersecting)) return;
+    observer.disconnect();
+    loadMedia();
+  }, { rootMargin: '150px' });
+  observer.observe(media);
+  return () => observer.disconnect();
 }
 
 function selectField(label, values, selected = '') {
@@ -589,6 +614,25 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   }
 
   const { form, input } = queryForm('Search the web', 'Search games, topics, or YouTube links', 'Search');
+  const clear = action('Clear web search', () => {
+    pending?.abort();
+    closeVideo?.();
+    closeVideo = undefined;
+    input.value = '';
+    setTitle('');
+    searched = showProvider = false;
+    matches = [];
+    for (const results of [gameList, webList, providerList, list]) results.replaceChildren();
+    for (const { entries, status } of libraryPanels.values()) {
+      entries.replaceChildren();
+      status.textContent = '';
+    }
+    drawAnswer('Web & YouTube', searchDescription);
+    showResults();
+    updateSuggestions();
+    input.focus();
+  });
+  form.append(clear);
   const suggestions = element('datalist');
   suggestions.id = `${target.id}-search-suggestions`;
   input.setAttribute('list', suggestions.id);
@@ -601,6 +645,7 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   } catch {}
   function updateSuggestions() {
     const query = input.value.trim();
+    clear.hidden = !query;
     const titles = [...recent, ...queryLibrary(library, { search: query }).slice(0, 9).map(game => game.title)];
     const options = [...new Set(titles)].filter(title => title.toLowerCase().includes(query.toLowerCase())).slice(0, 9);
     suggestions.replaceChildren(...options.map(title => new Option(title, title)));
@@ -608,10 +653,11 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   input.addEventListener('input', updateSuggestions);
   updateSuggestions();
   const stage = element('div', 'proxy-stage web-search-stage');
+  const searchDescription = 'Find games, wiki references, YouTube videos, songs, and films together.';
   const answer = element('section', 'web-search-answer');
   answer.setAttribute('aria-live', 'polite');
   const answerTitle = element('h2', '', 'Web & YouTube');
-  const answerText = element('p', 'muted', 'Find games, wiki references, and YouTube videos together.');
+  const answerText = element('p', 'muted', searchDescription);
   answer.append(answerTitle, answerText);
   const webPanel = element('section', 'web-search-videos');
   webPanel.hidden = true;
@@ -637,6 +683,17 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   noResults.hidden = true;
   const musicResults = link('Search Music', '#music', 'button');
   musicResults.hidden = true;
+  const libraryPanels = new Map(['Music', 'Movies'].map(name => {
+    const panel = element('section', 'web-search-videos');
+    const status = element('p', 'muted');
+    status.setAttribute('role', 'status');
+    const entries = element('ul', 'web-search-results');
+    const browse = link(`Search ${name} library`, '', 'button');
+    browse.hidden = true;
+    panel.hidden = true;
+    panel.append(element('h2', '', name), status, entries, browse);
+    return [name, { panel, status, entries, browse }];
+  }));
   const videosPanel = element('section', 'web-search-videos');
   videosPanel.hidden = true;
   const videoCount = element('p', 'muted');
@@ -658,7 +715,8 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   videosPanel.append(element('h2', '', 'YouTube'), videoTools, videoCount, list, videoPagination);
   const resultTools = element('div', 'interaction-row search-result-tools');
   resultTools.append(groups, musicResults);
-  stage.append(answer, resultTools, noResults, gamePanel, webPanel, videosPanel, providerPanel);
+  stage.append(answer, resultTools, noResults, gamePanel, webPanel, videosPanel,
+    ...[...libraryPanels.values()].map(({ panel }) => panel), providerPanel);
   renderGatewaySettings(stage, 'Connect a web search provider', () => { webProviderEnabled = gatewayConnected(); });
   searchPanel.append(form, stage);
 
@@ -689,18 +747,23 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
     webPanel.hidden = !searched || !webList.childElementCount || !['All results', 'Wiki'].includes(group);
     videosPanel.hidden = !searched || !['All results', 'YouTube'].includes(group);
     providerPanel.hidden = !searched || !showProvider || !['All results', 'Web'].includes(group);
-    groups.lastElementChild.hidden = !showProvider;
+    webGroup.hidden = !showProvider;
+    for (const [name, { panel, entries }] of libraryPanels) {
+      panel.hidden = !searched || (group !== name && (group !== 'All results' || !entries.childElementCount));
+    }
     const emptyGroup = (group === 'Games' && gamePanel.hidden) || (group === 'Wiki' && webPanel.hidden);
     noResults.hidden = !searched || !emptyGroup;
     noResults.textContent = emptyGroup ? `No ${group === 'Wiki' ? 'wiki references' : 'games'} match this search.` : '';
   }
 
-  for (const name of ['All results', 'Games', 'Wiki', 'YouTube', 'Web']) {
-    groups.append(action(name, () => {
+  function resultGroup(name) {
+    return action(name, () => {
       group = name;
       showResults();
-    }));
+    });
   }
+  const webGroup = resultGroup('Web');
+  groups.append(...['All results', 'Games', 'Wiki', 'YouTube', 'Music', 'Movies'].map(resultGroup), webGroup);
 
   function selectPanel(name) {
     for (const [label, panel] of panels) panel.hidden = label !== name;
@@ -782,21 +845,60 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
     }));
   }
 
+  async function loadLibraryResults(name, query, signal) {
+    const { status, entries, browse } = libraryPanels.get(name);
+    const isMusic = name === 'Music';
+    const catalog = isMusic ? 'music' : 'film';
+    entries.replaceChildren();
+    browse.hidden = true;
+    status.textContent = `Searching the ${catalog} catalog…`;
+    try {
+      const { searchMusic, searchFilms } = await import(`./search-catalog.js${assetVersion}`);
+      if (signal.aborted) return;
+      const found = await (isMusic ? searchMusic(query) : searchFilms(query));
+      if (signal.aborted) return;
+      const shown = found.slice(0, 6);
+      entries.replaceChildren(...shown.map(item => {
+        const href = isMusic ? hashFor('music', { view: 'videos', q: item.title, artist: item.artist })
+          : hashFor('movies', { film: item.id });
+        const metadata = isMusic ? [item.artist, item.style] : [item.viewing, item.year, ...item.genres];
+        const card = element('li');
+        card.append(link(item.title, href, 'button'), element('p', 'muted', metadata.filter(Boolean).join(' · ')));
+        if (!isMusic && item.description) card.append(element('p', 'muted', item.description));
+        return card;
+      }));
+      status.textContent = found.length
+        ? `${found.length} ${found.length === 1 ? 'match' : 'matches'}${found.length > shown.length ? ` · Showing ${shown.length}` : ''}`
+        : `No ${isMusic ? 'songs' : 'films'} in the arcade catalog match this search.`;
+      browse.href = isMusic ? hashFor('music', { view: 'videos', q: query }) : hashFor('movies', { q: query });
+      browse.hidden = found.length <= shown.length;
+    } catch {
+      if (!signal.aborted) status.textContent = `The ${catalog} catalog could not load. Try searching again.`;
+    }
+    if (!signal.aborted) showResults();
+  }
+
   async function loadProviderResults(query, signal) {
     providerList.replaceChildren();
     providerStatus.textContent = 'Searching the connected provider…';
     try {
-      const results = await searchGateway(query, AbortSignal.any([signal, AbortSignal.timeout(10000)]));
+      const found = await searchGateway(query, AbortSignal.any([signal, AbortSignal.timeout(10000)]));
       if (signal.aborted) return;
+      const unique = new Map();
+      for (const result of found) if (!unique.has(result.url)) unique.set(result.url, result);
+      const results = [...unique.values()];
       providerStatus.textContent = results.length ? '' : 'The connected provider found no results.';
       providerList.replaceChildren(...results.map(result => {
         const item = element('li');
         const description = element('p', 'muted', result.description);
-        const destination = element('p', 'search-resource-source', result.url);
+        const destination = external(result.url, result.url, 'search-resource-source');
         const actions = element('div', 'interaction-row');
         actions.append(link('Preview website', hashFor('browse', { address: result.url }), 'button'),
-          external('Open website', result.url));
-        item.append(element('strong', '', result.title), description, destination, actions);
+          external('Open website', result.url),
+          link('Ask Blip', hashFor('blip', {
+            draft: `Help me understand this search result and clarify what the source supports.\n\n${result.title}\n${result.description}\n${result.url}`.slice(0, 1500)
+          }), 'button'));
+        item.append(external(result.title, result.url, 'text-action'), description, destination, actions);
         return item;
       }));
     } catch (error) {
@@ -867,8 +969,15 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
     const video = parseYouTubeVideo(query);
     const searchQuery = query.replace(/\b(?:violion|violon)\b/gi, 'violin');
     const normalized = normalize(searchQuery.replace(/^https?:\/\/(?:www\.)?/i, ''));
-    const matchingGames = normalized.length < 3 ? [] : queryLibrary(library, { search: normalized }).slice(0, 5);
-    const exact = matchingGames.find(game => [game.id, game.title, ...(game.aliases || [])].some(label => normalize(label) === normalized));
+    function gameScore(game) {
+      const title = normalize(game.title);
+      if (title === normalized) return 3;
+      if ([game.id, ...(game.aliases || [])].some(label => normalize(label) === normalized)) return 2;
+      return title.includes(normalized) ? 1 : 0;
+    }
+    const matchingGames = normalized.length < 3 ? [] : queryLibrary(library, { search: normalized })
+      .map(game => ({ game, score: gameScore(game) })).sort((a, b) => b.score - a.score).slice(0, 5);
+    const exact = matchingGames.find(({ score }) => score >= 2)?.game;
     const official = exact && gameSearchSources[exact.id];
     const references = [official?.reference, official?.site].filter(Boolean);
     const localMatches = [...new Map([
@@ -885,16 +994,18 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
     searched = true;
     showProvider = webProviderEnabled && gatewayConnected();
     if (showProvider) void loadProviderResults(searchQuery, signal);
+    for (const name of libraryPanels.keys()) void loadLibraryResults(name, searchQuery, signal);
     musicResults.href = hashFor('music', { q: searchQuery });
     format = 'All';
-    drawGames(exact ? [exact, ...matchingGames.filter(game => game !== exact)] : matchingGames);
+    drawGames(matchingGames.map(({ game }) => game));
     drawReferences(references);
     drawVideos(localMatches, 'Arcade YouTube library.');
     if (exact && references.length) drawAnswer(exact.title, 'Explore the game, read a reference, or play a matching video here.');
     searchConnectedVideos(searchQuery, AbortSignal.any([signal, AbortSignal.timeout(6500)])).then(online => {
       if (signal.aborted || !online?.length) return;
-      const onlineIds = new Set(online.map(item => item.id));
-      matches = [...online, ...localMatches.filter(item => !onlineIds.has(item.id))];
+      const unique = new Map();
+      for (const item of [...online, ...localMatches]) if (!unique.has(item.id)) unique.set(item.id, item);
+      matches = [...unique.values()];
       videoDescription = 'Connected YouTube search and arcade library.';
       drawVideoPage();
     }).catch(() => {
@@ -961,7 +1072,7 @@ function renderSettings(target) {
   home.append(element('h2', '', 'Home sections'));
   for (const [key, title] of [
     ['destinations', 'Media shortcuts'], ['featured', 'Featured games'], ['recent', 'Recently played'],
-    ['new', 'New games'], ['built-in', 'Built-in arcade']
+    ['popular', 'Popular on this device'], ['new', 'New games'], ['built-in', 'Built-in arcade'], ['media', 'Film, music, and video picks']
   ]) {
     const choice = element('label', 'settings-option', title);
     const check = element('input');
@@ -1011,6 +1122,7 @@ function renderGame(target, id) {
   const header = element('header', 'player-heading');
   const headingCopy = element('div');
   headingCopy.append(element('p', '', `${game.category} · ${labels[availability]}`), element('h1', '', game.title));
+  if (game.description) headingCopy.append(element('p', '', game.description));
   header.append(artwork(game), headingCopy);
   target.append(header);
   const controls = element('div', 'player-actions interaction-row');
@@ -1021,6 +1133,10 @@ function renderGame(target, id) {
   const stage = element('div', 'player-stage');
   target.append(controls, status, stage);
   if (game.artCredit && prefs.artwork) target.append(element('p', 'player-note', `Artwork: ${game.artCredit}`));
+  const related = games.filter(candidate => candidate !== game && candidate.category === game.category)
+    .sort((first, second) => Number(Boolean(second.local)) - Number(Boolean(first.local)));
+  const recommendations = shelf('Related games', related, `More ${game.category} games`, hashFor('games', { category: game.category }));
+  if (recommendations) target.append(recommendations);
   let dispose = () => {};
   const scope = new AbortController();
   let revision = 0;
@@ -1181,8 +1297,9 @@ async function renderRoute(focus = true) {
   currentTarget = route.name === 'browse' ? browserTarget : element('div', `route route-${route.name}`);
   const target = currentTarget;
   content.replaceChildren(target);
-  if (['games', 'web-search'].includes(route.name)) globalQuery.value = route.params.get('q') || '';
-  globalQuery.placeholder = ['play', 'web-search'].includes(route.name) ? 'Search games, wikis, and videos…' : 'Search games…';
+  globalQuery.value = ['games', 'discover', 'web-search'].includes(route.name) ? route.params.get('q') || '' : '';
+  globalQuery.placeholder = ['home', 'discover'].includes(route.name) ? 'Search games, movies, music, and videos…'
+    : ['play', 'web-search'].includes(route.name) ? 'Search games, wikis, and videos…' : 'Search games…';
   document.title = `${route.name === 'play' ? resolveGame(route.id)?.title || 'Game' : routeNames[route.name]} · Gamefor Ffun`;
 
   document.querySelectorAll('[data-page]').forEach(item => {
@@ -1199,8 +1316,20 @@ async function renderRoute(focus = true) {
   try {
     switch (route.name) {
       case 'home':
-        renderHome(target);
+        cleanup = renderHome(target) || (() => {});
         break;
+      case 'discover':
+      case 'library': {
+        target.append(element('p', 'boot-note', 'Loading the library…'));
+        const { renderDiscovery, renderSavedLibrary } = await import(`./discovery.js${assetVersion}`);
+        if (token === version) cleanup = route.name === 'discover'
+          ? renderDiscovery(target, { params: route.params, games, showArtwork: prefs.artwork, onRouteChange(hash, query) {
+            route.hash = hash;
+            globalQuery.value = query;
+          } })
+          : renderSavedLibrary(target, { favorites: records(prefs.favorites), recent: records(prefs.recent), showArtwork: prefs.artwork });
+        break;
+      }
       case 'explore': {
         target.append(element('p', 'boot-note', 'Loading collections…'));
         const { renderExplore } = await import(`./explore.js${assetVersion}`);
@@ -1235,10 +1364,8 @@ async function renderRoute(focus = true) {
       }
       case 'movies': {
         target.append(element('p', 'boot-note', 'Loading movies…'));
-        const [{ renderFilms }, { watchDialog }] = await Promise.all([
-          import(`./film-library.js${assetVersion}`), import(`./media.js${assetVersion}`)
-        ]);
-        if (token === version) cleanup = renderFilms(target, { watchDialog, collection: route.params.get('collection') });
+        const { renderFilms } = await import(`./film-library.js${assetVersion}`);
+        if (token === version) cleanup = renderFilms(target, { params: route.params });
         break;
       }
       case 'music': {
@@ -1252,7 +1379,7 @@ async function renderRoute(focus = true) {
       case 'blip': {
         target.append(element('p', 'boot-note', 'Loading blip.ai…'));
         const { renderBlip } = await import(`./blip.js${assetVersion}`);
-        if (token === version) cleanup = renderBlip(target);
+        if (token === version) cleanup = renderBlip(target, { draft: route.params.get('draft') || '', chat: route.params.get('chat') || '' });
         break;
       }
       case 'web-search': {
@@ -1280,7 +1407,9 @@ async function renderRoute(focus = true) {
         if (!browserModule) target.append(element('p', 'boot-note', 'Loading Proxy Gemini…'));
         browserModule = await import(`./browser.js${assetVersion}`);
         if (token === version) {
-          browserModule.renderBrowser(target, route.params.get('address') || '');
+          browserModule.renderBrowser(target, route.params.get('address') || '', {
+            searchWeb: webProviderEnabled && gatewayConnected() ? searchGateway : undefined
+          });
         }
         break;
       }
@@ -1321,7 +1450,8 @@ document.getElementById('global-search').addEventListener('submit', event => {
   event.preventDefault();
   const search = globalQuery.value.trim();
   const useWebSearch = ['play', 'web-search'].includes(current?.name);
-  navigate(hashFor(useWebSearch ? 'web-search' : 'games', { q: search }));
+  const useLibrarySearch = ['home', 'discover'].includes(current?.name);
+  navigate(hashFor(useWebSearch ? 'web-search' : useLibrarySearch ? 'discover' : 'games', { q: search }));
 });
 mobileMenu.addEventListener('click', () => setDrawer(!document.body.classList.contains('drawer-open'), true));
 scrim.addEventListener('click', () => setDrawer(false, true));

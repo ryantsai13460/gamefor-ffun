@@ -295,7 +295,7 @@ test('Explore connects the new videos, collections, cinema, arcade and tools', a
   await expect(page.locator('.media-result-count')).toHaveText('600 videos');
   await page.getByRole('navigation', { name: 'Browse video topics' }).getByRole('link', { name: 'Science' }).click();
   await expect(page.getByRole('combobox', { name: 'Video topic' })).toHaveValue('Science');
-  await expect(page.locator('.media-result-count')).toHaveText('93 videos');
+  await expect(page.locator('.media-result-count')).toHaveText('110 videos');
 
   await go(page, 'Explore', 'Explore the arcade');
   await page.getByRole('link', { name: /^Cinema \d+ films and trailers$/ }).click();
