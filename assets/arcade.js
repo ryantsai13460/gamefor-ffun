@@ -2,7 +2,7 @@ import { arcadeEmbed, isMiniplayAddress } from './embedded-content.js';
 import { createSearchFullscreen } from './search-fullscreen.js';
 
 const assetVersion = new URL(import.meta.url).search;
-const [{ games }, { createLibrary, gameAvailability, normalize, queryLibrary, restorePreferences },
+const [{ games }, { createLibrary, gameAvailability, normalize, queryLibrary, restorePreferences, themeOptions },
   { gatewayConnected, renderGatewaySettings, searchGateway },
   { gameBackgroundOptions, readGameBackground, saveGameBackground, showGameBackground, prepareGameBackground }] = await Promise.all([
   import(`./catalog.js${assetVersion}`),
@@ -229,7 +229,7 @@ function setFavoriteButton(node, game, short) {
   node.setAttribute('aria-pressed', String(state));
   node.setAttribute('aria-label', state ? `Remove ${game.title} from favorites` : `Add ${game.title} to favorites`);
   node.title = node.getAttribute('aria-label');
-  if (!short) node.replaceChildren(icon('heart'), document.createTextNode(state ? 'Favorited' : 'Favorite'));
+  if (!short) node.replaceChildren(icon('heart'), document.createTextNode('Favorites'));
 }
 
 function favoriteButton(game, short = true, afterChange) {
@@ -322,6 +322,62 @@ function shelf(title, items, browseLabel, browsePath) {
   return section;
 }
 
+function homeDestinations() {
+  const nav = element('nav', 'home-destinations');
+  nav.setAttribute('aria-labelledby', 'home-destinations-title');
+  const header = element('div', 'section-heading');
+  const title = element('h2', '', 'Browse the arcade');
+  title.id = 'home-destinations-title';
+  const more = element('div', 'interaction-row');
+  more.append(link('Search the library', '#discover', 'text-action'), link('Explore', '#explore', 'text-action'));
+  header.append(title, more);
+  const primary = element('div', 'home-destination-grid');
+  const secondary = element('div', 'home-utility-grid');
+  for (const [label, destination, symbol, tone, description] of [
+    ['Games', '#games', 'gamepad', 'gold', `${games.length} games to browse`],
+    ['Movies', '#movies', 'film', 'violet', 'Full films and family favorites'],
+    ['YouTube', '#youtube?format=all', 'video', 'coral', 'Creator videos and Shorts'],
+    ['Web Search', '#web-search', 'search', 'blue', 'Games, videos, and web sources'],
+    ['blip.ai', '#blip', 'spark', 'mint'],
+    ['Music', '#music?view=videos', 'music', 'pink'],
+    ['Proxy Gemini', '#browse', 'globe', 'blue'],
+    ['My library', '#library', 'heart', 'gold']
+  ]) {
+    const item = link('', destination, description ? 'home-destination' : 'home-utility');
+    item.dataset.tone = tone;
+    const mark = element('span', 'home-destination-icon');
+    mark.append(icon(symbol));
+    const copy = element('span', 'home-destination-copy');
+    copy.append(element('strong', '', label));
+    if (description) copy.append(element('span', 'home-destination-detail', description));
+    item.append(mark, copy);
+    (description ? primary : secondary).append(item);
+  }
+  nav.append(header, primary, secondary);
+  return nav;
+}
+
+function homePlayPanel() {
+  const panel = element('section', 'home-play-panel');
+  const title = element('h2', '', 'Play here');
+  title.prepend(icon('gamepad'));
+  const picks = element('ul', 'home-play-picks');
+  for (const game of records(['clover-roll', 'picnic-pack', 'kite-breeze']).slice(0, 2)) {
+    const row = element('li');
+    const play = link('', gamePath(game), 'home-play-pick');
+    const thumb = artwork(game);
+    thumb.classList.add('home-play-pick-art');
+    const details = element('span');
+    details.append(element('strong', '', game.title), element('small', '', game.category));
+    play.append(thumb, details);
+    row.append(play);
+    picks.append(row);
+  }
+  panel.append(title, element('p', '', `${localCount} built-in games`), picks,
+    link('In-page games', '#games?option=in-page', 'button'));
+  return panel;
+}
+
 function renderHome(target) {
   const hero = featuredGame();
   if (!hero) {
@@ -332,7 +388,6 @@ function renderHome(target) {
   const banner = element('section', 'hero-feature');
   const copy = element('div', 'hero-copy');
   const kicker = element('span', 'hero-kicker', 'Featured game');
-  kicker.prepend(icon('spark'));
   const desc = hero.id === 'ffun-circuit-v1'
     ? 'Race three courses, hit every checkpoint, and beat your best time.'
     : `${hero.category} game in the arcade library.`;
@@ -342,75 +397,79 @@ function renderHome(target) {
   art.className = `hero-art${art.classList.contains('has-no-art') ? ' has-no-art' : ''}`;
   if (hero.artCredit && prefs.artwork) art.append(element('span', 'hero-credit', hero.artCredit));
   banner.append(copy, art);
-  target.append(banner);
+  const top = element('div', 'home-feature-row');
+  top.append(banner, homePlayPanel());
+  target.append(top);
+  if (!prefs.hiddenHome.includes('destinations')) target.append(homeDestinations());
 
-  const chips = element('div', 'quick-filters');
-  chips.append(link(`All ${games.length} games`, '#games', 'chip is-active', 'grid'));
+  const chips = element('nav', 'quick-filters');
+  chips.setAttribute('aria-label', 'Game categories');
   for (const category of ['Arcade', 'Racing', 'Puzzle', 'Sports', 'Platformer', 'Parkour', 'Multiplayer']) {
     if (library.categoryCounts.has(category)) chips.append(link(category, hashFor('games', { category }), 'chip'));
   }
-  chips.append(link('Categories', '#categories', 'chip', 'layers'));
+  chips.append(link('All categories', '#categories', 'chip', 'layers'));
   target.append(chips);
-
-  const destinations = element('section', 'home-destinations');
-  const destinationGrid = element('div', 'home-destination-grid');
-  for (const [name, href, symbol, color] of [
-    ['Explore', '#explore', 'layers', 'games'],
-    ['Video library', '#youtube?format=all', 'video', 'video'],
-    ['Cinema', '#movies', 'film', 'film'],
-    ['blip.ai chat', '#blip', 'spark', 'ai'],
-    ['Music library', '#music?view=videos', 'music', 'video'],
-    ['Search the library', '#discover', 'search', 'games'],
-    ['Web Search', '#web-search', 'search', 'ai'],
-    ['Proxy Gemini', '#browse', 'globe', 'games']
-  ]) {
-    const destination = link(name, href, 'explore-tile', symbol);
-    destination.dataset.color = color;
-    destinationGrid.append(destination);
-  }
-  destinations.append(element('h2', '', 'Watch, learn, and play'), destinationGrid);
-  if (!prefs.hiddenHome.includes('destinations')) target.append(destinations);
 
   const artPicks = games.filter(game => game.art && gameAvailability(game) !== 'unverified');
   const picks = distinct([...records(altFeatured), ...artPicks]).filter(game => game !== hero);
   const popular = queryLibrary(library, {
     source: games.filter(game => prefs.launches[game.id] > 0), sort: 'popularity', launches: prefs.launches
   });
-  for (const [key, ...args] of [
-    ['featured', 'Featured games', picks, 'All games', '#games'],
+  const media = element('div', 'home-media-shelves');
+  const shelves = [
     ['recent', 'Recently played', records(prefs.recent), 'Play history', '#recent'],
+    ['featured', 'Featured games', picks, 'All games', '#games'],
+    ['media'],
     ['popular', 'Popular on this device', popular, 'Trending games', '#trending'],
     ['new', 'New games', games.filter(game => game.isNew).sort((a, b) => Number(Boolean(b.local)) - Number(Boolean(a.local))
       || Number(Boolean(b.art)) - Number(Boolean(a.art))), 'New games', '#new'],
     ['built-in', 'Built-in arcade', games.filter(game => game.local).sort((a, b) => Number(Boolean(b.art)) - Number(Boolean(a.art))), 'Built-in games', '#games?local=1']
-  ]) {
+  ];
+  for (const [key, ...args] of shelves) {
     if (prefs.hiddenHome.includes(key)) continue;
+    if (key === 'media') {
+      target.append(media);
+      continue;
+    }
     const section = shelf(...args);
     if (section) target.append(section);
   }
 
   const miniplayGames = games.filter(game => isMiniplayAddress(game.embed));
   if (miniplayGames.length) {
-    const provider = element('section', 'section-block info-panel');
+    const provider = element('section', 'section-block info-panel home-provider-links');
     const items = element('div', 'interaction-row');
     for (const game of miniplayGames) items.append(external(game.title, game.url));
     provider.append(element('h2', '', 'Miniplay links'), element('p', '', 'These games open on Miniplay in a new tab.'), items);
     target.append(provider);
   }
   if (prefs.hiddenHome.includes('media')) return;
-  const media = element('div', 'home-media-shelves');
-  target.append(media);
-  function loadMedia() {
-    void import(`./discovery.js${assetVersion}`).then(({ populateHomeMedia }) => populateHomeMedia(media)).catch(() => {});
+  async function loadMedia() {
+    try {
+      const { populateHomeMedia } = await import(`./discovery.js${assetVersion}`);
+      await populateHomeMedia(media);
+    } catch {
+      // The direct media routes are available when the Home catalogs fail to load.
+    }
+    if (media.isConnected && !media.childElementCount) {
+      const fallback = element('div', 'info-panel');
+      fallback.append(element('p', 'muted', 'Media picks could not load.'));
+      const routes = element('div', 'interaction-row');
+      for (const [name, path] of [['Movies', '#movies'], ['YouTube', '#youtube'], ['Music', '#music?view=videos']]) {
+        routes.append(link(name, path, 'text-action'));
+      }
+      fallback.append(routes);
+      media.append(fallback);
+    }
   }
   if (typeof IntersectionObserver !== 'function') {
-    loadMedia();
+    void loadMedia();
     return;
   }
   const observer = new IntersectionObserver(entries => {
     if (!entries.some(entry => entry.isIntersecting)) return;
     observer.disconnect();
-    loadMedia();
+    void loadMedia();
   }, { rootMargin: '150px' });
   observer.observe(media);
   return () => observer.disconnect();
@@ -579,6 +638,41 @@ function renderCategories(target) {
   target.append(list);
 }
 
+const webSearchHistoryKey = 'ffun.web-search.history';
+const searchHistoryListeners = new Set();
+let recentWebSearches;
+const addressPrefix = /^(?:[a-z][a-z\d+.-]*:)?\/\//i;
+const domainWithPath = /^[\p{L}\d-]+(?:\.[\p{L}\d-]+)+(?::\d+)?[/?#]\S*$/iu;
+
+function isReusableWebQuery(input) {
+  if (typeof input !== 'string') return false;
+  const query = input.trim();
+  return Boolean(query && query.length <= 200 && !addressPrefix.test(query) && !domainWithPath.test(query));
+}
+
+function readWebSearchHistory() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(webSearchHistoryKey));
+    if (Array.isArray(saved)) return saved.filter(isReusableWebQuery).slice(0, 20);
+  } catch {}
+  return [];
+}
+
+function saveWebSearchHistory(history) {
+  recentWebSearches = history;
+  try {
+    if (history.length) localStorage.setItem(webSearchHistoryKey, JSON.stringify(history));
+    else localStorage.removeItem(webSearchHistoryKey);
+  } catch {}
+  for (const update of searchHistoryListeners) update();
+}
+
+window.addEventListener('storage', event => {
+  if (event.key !== webSearchHistoryKey && event.key !== null) return;
+  recentWebSearches = readWebSearchHistory();
+  for (const update of searchHistoryListeners) update();
+});
+
 function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   const { media, searchWikipedia, renderGoogleSearch, renderSearchMaps, renderAssistantPanel, gameSearchSources, openSearchResource } = modules;
   const { findCuratedVideos, openSearchVideoDialog, openShortsFeed, openYouTubeSearchVideo, parseYouTubeVideo, searchConnectedVideos } = media;
@@ -641,19 +735,40 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   suggestions.id = `${target.id}-search-suggestions`;
   input.setAttribute('list', suggestions.id);
   form.append(suggestions);
-  const historyKey = 'ffun.web-search.history';
-  let recent = [];
-  try {
-    const saved = JSON.parse(localStorage.getItem(historyKey));
-    if (Array.isArray(saved)) recent = saved.filter(item => typeof item === 'string' && item.length <= 200).slice(0, 20);
-  } catch {}
+  recentWebSearches ??= readWebSearchHistory();
+  const recentPanel = element('section', 'web-search-history');
+  const recentHeading = element('h3', '', 'Recent searches');
+  recentHeading.id = `${target.id}-recent-searches`;
+  recentPanel.setAttribute('aria-labelledby', recentHeading.id);
+  const recentActions = element('div', 'interaction-row');
+  const clearHistory = action('Clear search history', () => {
+    saveWebSearchHistory([]);
+    input.focus();
+  }, 'button');
+  recentPanel.append(recentHeading, recentActions, clearHistory);
+
   function updateSuggestions() {
     const query = input.value.trim();
     clear.hidden = !query;
-    const titles = [...recent, ...queryLibrary(library, { search: query }).slice(0, 9).map(game => game.title)];
-    const options = [...new Set(titles)].filter(title => title.toLowerCase().includes(query.toLowerCase())).slice(0, 9);
+    const normalized = query.toLowerCase();
+    const titles = query.length < 2 ? [] : [...recentWebSearches,
+      ...queryLibrary(library, { search: query }).slice(0, 9).map(game => game.title)];
+    const options = [...new Set(titles)].filter(title =>
+      title.toLowerCase() !== normalized && title.toLowerCase().includes(normalized)).slice(0, 9);
     suggestions.replaceChildren(...options.map(title => new Option(title, title)));
+    recentPanel.hidden = Boolean(query);
+    if (query) return;
+    const hasHistory = recentWebSearches.length > 0;
+    recentHeading.textContent = hasHistory ? 'Recent searches' : 'Try a search';
+    clearHistory.hidden = !hasHistory;
+    const picks = hasHistory ? recentWebSearches.slice(0, 6) : ['Territorial.io', 'MrBeast', 'Violin lessons'];
+    recentActions.replaceChildren(...picks.map(term => action(term, () => {
+      input.value = term;
+      input.focus({ preventScroll: true });
+      form.requestSubmit();
+    }, 'chip')));
   }
+  searchHistoryListeners.add(updateSuggestions);
   input.addEventListener('input', updateSuggestions);
   updateSuggestions();
   const stage = element('div', 'proxy-stage web-search-stage');
@@ -719,7 +834,7 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   videosPanel.append(element('h2', '', 'YouTube'), videoTools, videoCount, list, videoPagination);
   const resultTools = element('div', 'interaction-row search-result-tools');
   resultTools.append(groups, musicResults);
-  stage.append(answer, resultTools, noResults, gamePanel, webPanel, videosPanel,
+  stage.append(answer, recentPanel, resultTools, noResults, gamePanel, webPanel, videosPanel,
     ...[...libraryPanels.values()].map(({ panel }) => panel), providerPanel);
   renderGatewaySettings(stage, 'Connect a web search provider', () => { webProviderEnabled = gatewayConnected(); });
   searchPanel.append(form, stage);
@@ -964,9 +1079,11 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
       return;
     }
     setTitle(query);
-    recent = [query, ...recent.filter(item => item !== query)].slice(0, 20);
-    try { localStorage.setItem(historyKey, JSON.stringify(recent)); } catch {}
-    updateSuggestions();
+    if (!isReusableWebQuery(query)) updateSuggestions();
+    else {
+      const key = query.toLowerCase();
+      saveWebSearchHistory([query, ...recentWebSearches.filter(item => item.toLowerCase() !== key)].slice(0, 20));
+    }
     closeVideo?.();
     pending = new AbortController();
     const { signal } = pending;
@@ -1036,6 +1153,7 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   }
 
   return () => {
+    searchHistoryListeners.delete(updateSuggestions);
     pending?.abort();
     closeVideo?.();
     disposeMap?.();
@@ -1045,16 +1163,22 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   };
 }
 
+function applyTheme() {
+  document.body.dataset.theme = prefs.theme;
+  const background = getComputedStyle(document.body).getPropertyValue('--bg').trim();
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', background);
+}
+
 function renderSettings(target, params) {
   target.append(heading('Settings', 'Your changes are saved in this browser.'));
   const row = element('div', 'settings-grid');
   const visuals = element('section', 'info-panel');
   const privacy = element('section', 'info-panel');
   visuals.append(element('h2', '', 'Appearance'));
-  const theme = selectField('Theme', [['midnight', 'Midnight'], ['graphite', 'Graphite']], prefs.theme);
+  const theme = selectField('Theme', themeOptions, prefs.theme);
   theme.field.addEventListener('change', () => {
     prefs.theme = theme.field.value;
-    document.body.dataset.theme = prefs.theme;
+    applyTheme();
     savePreferences();
   });
   visuals.append(theme.wrapper);
@@ -1075,7 +1199,7 @@ function renderSettings(target, params) {
   const home = element('section', 'info-panel');
   home.append(element('h2', '', 'Home sections'));
   for (const [key, title] of [
-    ['destinations', 'Media shortcuts'], ['featured', 'Featured games'], ['recent', 'Recently played'],
+    ['destinations', 'Home shortcuts'], ['featured', 'Featured games'], ['recent', 'Recently played'],
     ['popular', 'Popular on this device'], ['new', 'New games'], ['built-in', 'Built-in arcade'], ['media', 'Film, music, and video picks']
   ]) {
     const choice = element('label', 'settings-option', title);
@@ -1122,11 +1246,21 @@ function gameBackgroundSettings() {
   uploadLabel.append(upload);
   const status = element('p', 'muted');
   status.setAttribute('role', 'status');
+  const colorInput = element('input');
+  colorInput.type = 'color';
+  colorInput.id = 'game-background-color';
+  const colorControl = element('div', 'game-background-color');
+  const colorLabel = element('label', '', 'Custom background color');
+  colorLabel.htmlFor = colorInput.id;
+  const colorSample = element('span', 'muted');
+  const colorRow = element('span', 'interaction-row');
+  colorRow.append(colorInput, colorSample);
+  colorControl.append(colorLabel, colorRow);
   let revision = 0;
   const remove = action('Remove saved image', () => {
     revision++;
     changeBackground({
-      preset: gameBackground.preset === 'custom' ? 'clean' : gameBackground.preset, image: ''
+      ...gameBackground, preset: gameBackground.preset === 'custom' ? 'clean' : gameBackground.preset, image: ''
     }, 'Saved image removed.');
     upload.focus();
   });
@@ -1134,6 +1268,9 @@ function gameBackgroundSettings() {
     field.value = gameBackground.preset;
     customOption.disabled = !gameBackground.image;
     remove.hidden = !gameBackground.image;
+    colorControl.hidden = gameBackground.preset !== 'color';
+    colorInput.value = gameBackground.color;
+    colorSample.textContent = gameBackground.color.toUpperCase();
     showGameBackground(preview, gameBackground);
   }
   function changeBackground(background, message) {
@@ -1145,6 +1282,14 @@ function gameBackgroundSettings() {
     revision++;
     changeBackground({ ...gameBackground, preset: field.value }, 'Game background updated.');
   });
+  colorInput.addEventListener('input', () => {
+    colorSample.textContent = colorInput.value.toUpperCase();
+    showGameBackground(preview, { ...gameBackground, color: colorInput.value });
+  });
+  colorInput.addEventListener('change', () => {
+    revision++;
+    changeBackground({ ...gameBackground, color: colorInput.value }, 'Game color saved.');
+  });
   upload.addEventListener('change', async () => {
     const [file] = upload.files;
     upload.value = '';
@@ -1153,14 +1298,14 @@ function gameBackgroundSettings() {
     status.textContent = 'Preparing your image…';
     try {
       const image = await prepareGameBackground(file);
-      if (request === revision && panel.isConnected) changeBackground({ preset: 'custom', image }, 'Your background image was saved in this browser.');
+      if (request === revision && panel.isConnected) changeBackground({ ...gameBackground, preset: 'custom', image }, 'Your background image was saved in this browser.');
     } catch (error) {
       if (request === revision && panel.isConnected) status.textContent = error.message;
     }
   });
   update();
   panel.append(title, element('p', '', 'Choose a backdrop for game pages. Your image stays in this browser.'),
-    preview, wrapper, uploadLabel, remove, status);
+    preview, wrapper, colorControl, uploadLabel, remove, status);
   return panel;
 }
 
@@ -1359,6 +1504,14 @@ function randomGame() {
   navigate(gamePath(game));
 }
 
+function updateGlobalSearchHint() {
+  const name = current?.name;
+  if (drawerMedia.matches) globalQuery.placeholder = 'Search…';
+  else if (['home', 'discover'].includes(name)) globalQuery.placeholder = 'Search library…';
+  else if (['play', 'web-search'].includes(name)) globalQuery.placeholder = 'Search games, wikis, and videos…';
+  else globalQuery.placeholder = 'Search games…';
+}
+
 async function renderRoute(focus = true) {
   const route = readRoute();
   const token = ++version;
@@ -1372,8 +1525,7 @@ async function renderRoute(focus = true) {
   const target = currentTarget;
   content.replaceChildren(target);
   globalQuery.value = ['games', 'discover', 'web-search'].includes(route.name) ? route.params.get('q') || '' : '';
-  globalQuery.placeholder = ['home', 'discover'].includes(route.name) ? 'Search games, movies, music, and videos…'
-    : ['play', 'web-search'].includes(route.name) ? 'Search games, wikis, and videos…' : 'Search games…';
+  updateGlobalSearchHint();
   document.title = `${route.name === 'play' ? resolveGame(route.id)?.title || 'Game' : routeNames[route.name]} · Gamefor Ffun`;
 
   document.querySelectorAll('[data-page]').forEach(item => {
@@ -1457,7 +1609,7 @@ async function renderRoute(focus = true) {
         break;
       }
       case 'web-search': {
-        const [media, { searchWikipedia }, { renderGoogleSearch }, { renderSearchMaps }, { renderAssistantPanel }, { renderSearchTabs },
+        const [media, { searchWikipedia }, { renderGoogleSearch }, { renderSearchMaps }, { renderAssistantPanel, releaseCpuBlipModel }, { renderSearchTabs },
           { gameSearchSources }, { openSearchResource }] = await Promise.all([
           import(`./media.js${assetVersion}`), import(`./search-answer.js${assetVersion}`), import(`./search-google.js${assetVersion}`),
           import('./search-map.js'), import(`./assistant-panel.js${assetVersion}`), import('./search-tabs.js'),
@@ -1468,12 +1620,19 @@ async function renderRoute(focus = true) {
           const modules = { media, searchWikipedia, renderGoogleSearch, renderSearchMaps, renderAssistantPanel, gameSearchSources, openSearchResource };
           let firstMode = route.params.get('mode');
           let firstQuery = route.params.get('q')?.trim();
-          cleanup = renderSearchTabs(target, (panel, tools) => {
+          const disposeSearchTabs = renderSearchTabs(target, (panel, tools) => {
             const teardown = mountSearchPanel(panel, modules, tools, firstMode, firstQuery);
             firstMode = null;
             firstQuery = null;
             return teardown;
           });
+          cleanup = () => {
+            try {
+              disposeSearchTabs();
+            } finally {
+              releaseCpuBlipModel();
+            }
+          };
         }
         break;
       }
@@ -1518,7 +1677,7 @@ async function renderRoute(focus = true) {
 
 document.querySelectorAll('[data-icon]').forEach(node => node.prepend(icon(node.dataset.icon)));
 document.body.classList.toggle('compact', prefs.compact);
-document.body.dataset.theme = prefs.theme;
+applyTheme();
 document.getElementById('random-game').addEventListener('click', randomGame);
 document.getElementById('global-search').addEventListener('submit', event => {
   event.preventDefault();
@@ -1534,7 +1693,10 @@ sidebar.addEventListener('click', event => {
   const item = event.target.closest('a');
   if (item && item.hash === location.hash && document.body.classList.contains('drawer-open')) setDrawer(false, true);
 });
-drawerMedia.addEventListener('change', () => setDrawer(false, drawerMedia.matches && sidebar.contains(document.activeElement)));
+drawerMedia.addEventListener('change', () => {
+  setDrawer(false, drawerMedia.matches && sidebar.contains(document.activeElement));
+  updateGlobalSearchHint();
+});
 document.addEventListener('keydown', event => {
   const drawerOpen = document.body.classList.contains('drawer-open');
   if (event.key === 'Escape' && drawerOpen) setDrawer(false, true);

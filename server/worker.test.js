@@ -198,6 +198,7 @@ test('Workers AI reports configured chat and uses the binding with bounded gener
   assert.equal(features.advanced, false);
   assert.equal(features.research, true);
   assert.equal(features.standardOutputTokens, 512);
+  assert.equal(features.maxStandardOutputTokens, 768);
   assert.equal(features.advancedOutputTokens, undefined);
   assert.equal(calls.length, 0);
 
@@ -218,7 +219,8 @@ test('Workers AI reports configured chat and uses the binding with bounded gener
   const [{ model, input }] = calls;
   assert.equal(model, '@cf/ibm-granite/granite-4.0-h-micro');
   assert.equal(input.stream, false);
-  assert.equal(input.max_tokens, 512);
+  assert.equal(input.max_tokens, 640);
+  assert.equal(input.temperature, .26);
   assert.match(input.messages[0].content, /practice question/);
   assert.deepEqual(input.messages.slice(1), [userMessage]);
   assert.equal(fetch.mock.callCount(), 0);
@@ -293,8 +295,8 @@ test('specialized Blip modes reach the authorized model with corresponding instr
     const response = await worker.fetch(post('/api/chat', { messages: [userMessage], mode }), settings());
     assert.equal(response.status, 200);
   }
-  assert.match(instructions[0], /runnable examples in fenced code blocks/);
-  assert.match(instructions[1], /original ideas/);
+  assert.match(instructions[0], /runnable example in a fenced code block with an expected result/);
+  assert.match(instructions[1], /specified voice, length, and form/);
   assert.match(instructions[2], /version-specific facts/);
 });
 
@@ -336,6 +338,24 @@ test('an interrupted reply stream emits a bounded gateway error', async context 
     'data: {"choices":[{"delta":{"content":"Partial"}}]}',
     'data: {"error":"The provider connection ended before the reply finished."}',
   ]);
+});
+
+test('a provider length limit stays visible in streamed and non-streamed replies', async context => {
+  context.mock.method(globalThis, 'fetch', async (_url, options) => {
+    if (JSON.parse(options.body).stream) {
+      return new Response('data: {"choices":[{"delta":{"content":"Part one"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n',
+        { headers: { 'Content-Type': 'text/event-stream' } });
+    }
+    return Response.json({ choices: [{ message: { content: 'Part one' }, finish_reason: 'length' }] });
+  });
+  const streamed = await worker.fetch(post('/api/chat', { messages: [userMessage], stream: true }), settings());
+  assert.deepEqual((await streamed.text()).trim().split('\n\n'), [
+    'data: {"choices":[{"delta":{"content":"Part one"}}]}',
+    'data: {"choices":[{"finish_reason":"length"}]}',
+    'data: [DONE]',
+  ]);
+  const direct = await worker.fetch(post('/api/chat', { messages: [userMessage] }), settings());
+  assert.deepEqual(await direct.json(), { text: 'Part one', truncated: true });
 });
 
 test('provider stream deadlines stop an incomplete reply and cancel the upstream stream', async context => {

@@ -23,8 +23,9 @@ export function renderSearchTabs(target, mountPanel) {
   const newTab = button("search-tab-new", "+", () => addTab(true));
   newTab.setAttribute("aria-label", "New search tab");
   newTab.title = "New search tab";
+  const closeActive = button("search-tab-close", "×", () => closeTab(active));
   const panels = element("div", "search-tab-panels");
-  toolbar.append(tabList, newTab);
+  toolbar.append(tabList, closeActive, newTab);
   workspace.append(toolbar, panels);
 
   const prefix = `search-tabs-${++workspaceCount}`;
@@ -33,10 +34,14 @@ export function renderSearchTabs(target, mountPanel) {
   let active;
   let disposed = false;
 
+  function updateCloseLabel() {
+    closeActive.title = active.closeLabel;
+    closeActive.setAttribute("aria-label", active.closeLabel);
+  }
+
   function setSelected(tab, selected) {
     tab.activator.setAttribute("aria-selected", String(selected));
     tab.activator.tabIndex = selected ? 0 : -1;
-    tab.close.tabIndex = selected ? 0 : -1;
     tab.item.dataset.selected = String(selected);
     tab.panel.hidden = !selected;
   }
@@ -46,6 +51,7 @@ export function renderSearchTabs(target, mountPanel) {
       if (active) setSelected(active, false);
       active = tab;
       setSelected(tab, true);
+      updateCloseLabel();
     }
     if (focus) {
       tab.activator.focus({ preventScroll: true });
@@ -109,18 +115,17 @@ export function renderSearchTabs(target, mountPanel) {
     activator.setAttribute("aria-controls", panel.id);
     activator.addEventListener("keydown", event => handleTabKey(event, tab));
     panel.setAttribute("aria-labelledby", activator.id);
-    const close = button("search-tab-close", "×", () => closeTab(tab));
-    const tab = { item, panel, activator, close, dispose: undefined };
+    const tab = { item, panel, activator, closeLabel: "", dispose: undefined };
     const setTitle = title => {
       const label = typeof title === "string" ? title.trim().replace(/\s+/g, " ").slice(0, 120) : "";
       activator.textContent = label || "New search";
       activator.title = label || `Search tab ${serial}`;
       activator.setAttribute("aria-label", label || `New search, tab ${serial}`);
-      close.title = label ? `Close ${label} tab` : `Close search tab ${serial}`;
-      close.setAttribute("aria-label", close.title);
+      tab.closeLabel = label ? `Close ${label} tab` : `Close search tab ${serial}`;
+      if (active === tab) updateCloseLabel();
     };
     setTitle("");
-    item.append(activator, close);
+    item.append(activator);
     tabList.append(item);
     panels.append(panel);
     const previous = active;

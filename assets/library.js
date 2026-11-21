@@ -2,6 +2,15 @@ import { arcadeEmbed } from './embedded-content.js';
 
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 
+export const themeOptions = [
+  ['midnight', 'Midnight'],
+  ['graphite', 'Graphite'],
+  ['ocean', 'Ocean'],
+  ['pine', 'Pine'],
+  ['violet', 'Violet'],
+  ['ember', 'Ember']
+];
+
 export function normalize(value) {
   return String(value ?? '')
     .normalize('NFKD')
@@ -75,7 +84,7 @@ export function restorePreferences(saved, byId) {
     recent: ids(saved?.recent).slice(0, 30),
     compact: saved?.compact === true,
     artwork: saved?.artwork !== false,
-    theme: saved?.theme === 'graphite' ? 'graphite' : 'midnight',
+    theme: themeOptions.some(([id]) => id === saved?.theme) ? saved.theme : 'midnight',
     hiddenHome: Array.isArray(saved?.hiddenHome) ? [...new Set(saved.hiddenHome
       .filter(id => ['destinations', 'featured', 'recent', 'popular', 'new', 'built-in', 'media'].includes(id)))] : [],
     launches

@@ -1,6 +1,7 @@
 import { createBeatBeacon, createCometCourier, createPinpointPutt } from "./bonus-arcade.js";
 import { createHarborDispatch, createTidalRescue } from "./harbor-games.js";
 import { createKiteBreeze, createPicnicPack } from "./family-games.js";
+import { createCloverRoll } from "./clover-roll.js";
 
 const storageKey = "ffun-original-games-v1";
 const directions = {
@@ -1745,6 +1746,7 @@ function playCanvas(context, createGame) {
         (event.clientY - bounds.top) * canvas.height / bounds.height);
       paint();
       syncControls();
+      requestTick();
     }, { signal });
   }
 
@@ -1752,10 +1754,11 @@ function playCanvas(context, createGame) {
     game.input(key);
     // Preserve a short directional impulse when a button is activated by keyboard
     // or tapped and released between rendered frames.
-    if (game.update && Object.hasOwn(directionNames, key)) tapInputs.set(key, .1);
-    if (!game.update) {
+    if (game.update && !game.animating && Object.hasOwn(directionNames, key)) tapInputs.set(key, .1);
+    if (!game.update || game.animating) {
       paint();
       syncControls();
+      requestTick();
     }
   }
 
@@ -1778,7 +1781,8 @@ function playCanvas(context, createGame) {
     const finished = game.done();
     toggle.textContent = !paused ? "Pause" : started ? "Resume" : "Start";
     toggle.disabled = finished;
-    padButtons.forEach(control => { control.disabled = paused || finished; });
+    const waiting = paused || finished || Boolean(game.animating?.());
+    padButtons.forEach(control => { control.disabled = waiting; });
     if (next) next.hidden = !game.canNext();
   }
 
@@ -1797,8 +1801,16 @@ function playCanvas(context, createGame) {
       elapsed -= 1 / 120;
     }
     paint();
-    if (game.done()) syncControls();
-    else frame = requestAnimationFrame(tick);
+    if (!game.done()) requestTick();
+    if (!frame) {
+      last = 0;
+      elapsed = 0;
+      syncControls();
+    }
+  }
+
+  function requestTick() {
+    if (!frame && game.update && (!game.animating || game.animating())) frame = requestAnimationFrame(tick);
   }
 
   function pause(value) {
@@ -1813,7 +1825,7 @@ function playCanvas(context, createGame) {
     syncControls();
     if (!paused && !game.done()) {
       canvas.focus({ preventScroll: true });
-      if (game.update) frame = requestAnimationFrame(tick);
+      requestTick();
     }
   }
 
@@ -1899,6 +1911,7 @@ const localGames = {
   "tidal-rescue": { title: "Tidal Rescue", run: context => playCanvas(context, createTidalRescue) },
   "picnic-pack": { title: "Picnic Pack", run: context => playCanvas(context, createPicnicPack) },
   "kite-breeze": { title: "Kite Breeze", run: context => playCanvas(context, createKiteBreeze) },
+  "clover-roll": { title: "Clover Roll", run: context => playCanvas(context, createCloverRoll) },
   ...Object.fromEntries(Object.entries(classicGames).map(([id, { title }]) => [
     id, { title, run: context => playCanvas(context, () => classicArcade(id)) }
   ])),

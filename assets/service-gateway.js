@@ -1,3 +1,5 @@
+import { recentBlipTurns } from './blip-context.js';
+
 const endpointKey = 'ffun.gateway.url';
 const maxRequestBytes = 32_768;
 const maxResponseBytes = 262_144;
@@ -189,7 +191,7 @@ export async function getGatewayCapabilities(signal) {
   }
   const available = Object.fromEntries(flags.map(flag => [flag, data[flag]]));
   if (available.chat && ['workers-ai', 'openai'].includes(data.chatProvider)) available.chatProvider = data.chatProvider;
-  for (const key of ['standardOutputTokens', 'advancedOutputTokens']) {
+  for (const key of ['standardOutputTokens', 'maxStandardOutputTokens', 'advancedOutputTokens']) {
     if (Number.isInteger(data[key]) && data[key] > 0 && data[key] <= 2400) available[key] = data[key];
   }
   const knownModes = ['quick', 'think', 'brainstorm', 'study', 'code', 'creative', 'games'];
@@ -218,25 +220,29 @@ function safeReferences(items, limit) {
   });
 }
 
-export async function hostedBlipReply({ text, history = [], mode, signal, onUpdate, research = false, onSources, depth = 'standard' }) {
-  if (history.some(message => message.attachments?.length)) throw new Error('Use a local model for chats with attached files.');
+export async function hostedBlipReply({ text, history = [], mode, signal, onUpdate, onFinish, research = false, onSources, depth = 'standard' }) {
+  const previous = Array.isArray(history) ? history : [];
+  if (previous.some(message => message?.attachments?.length)) throw new Error('Use a local model for chats with attached files.');
   const content = typeof text === 'string' ? text.trim() : '';
   if (!content) throw new Error('Enter a message to send to the model.');
   if (content.length > maxChatChars) throw new Error('The message is too long for the connected model.');
   if (research && content.length > 200) throw new Error('Web research is available for short questions of up to 200 characters.');
-  const messages = history.filter(message => !message.attachments?.length && message.kind !== 'unavailable' &&
-      ['user', 'assistant'].includes(message.role) && typeof message.text === 'string' && message.text.trim())
-    .slice(-8).map(message => ({ role: message.role, content: message.text.trim().slice(0, 950) }));
+  const context = previous.slice(-32).filter(message => message?.kind !== 'unavailable' &&
+      ['user', 'assistant'].includes(message?.role) && typeof message.text === 'string' && message.text.trim())
+    .map(message => ({ role: message.role, content: message.text.trim() }));
+  const turns = recentBlipTurns(context, {
+    maxChars: Math.min(9_000, maxChatChars - content.length), maxMessages: 14, maxMessageChars: 2_100,
+  });
+  const messages = turns.flat();
   messages.push({ role: 'user', content });
   const request = {
     messages, mode, stream: true,
     ...(research ? { research: true } : {}),
     ...(depth === 'advanced' ? { depth: 'advanced' } : {})
   };
-  let chars = messages.reduce((total, message) => total + message.content.length, 0);
-  while (chars > maxChatChars || encoder.encode(JSON.stringify(request)).byteLength > maxRequestBytes) {
-    if (messages.length === 1) throw new Error('The message is too large for the connected model.');
-    chars -= messages.shift().content.length;
+  while (encoder.encode(JSON.stringify(request)).byteLength > maxRequestBytes) {
+    if (!turns.length) throw new Error('The message is too large for the connected model.');
+    messages.splice(0, turns.shift().length);
   }
   const response = await gatewayRequest('/api/chat', request, signal, depth === 'advanced' ? 95_000 : 65_000);
   let hasSources = false;
@@ -255,6 +261,7 @@ export async function hostedBlipReply({ text, history = [], mode, signal, onUpda
     if (typeof data?.text !== 'string' || !data.text.trim()) throw new Error('The model returned an empty reply.');
     readSources(data.sources);
     requireSources();
+    onFinish?.(data.truncated === true || data.text.trim().length > maxChatChars);
     return data.text.trim().slice(0, maxChatChars);
   }
   const reader = response.body?.getReader();
@@ -265,6 +272,7 @@ export async function hostedBlipReply({ text, history = [], mode, signal, onUpda
   let size = 0;
   let answer = '';
   let complete = false;
+  let truncated = false;
 
   function consumeLine(line) {
     if (line.endsWith('\r')) line = line.slice(0, -1);
@@ -287,11 +295,16 @@ export async function hostedBlipReply({ text, history = [], mode, signal, onUpda
       throw new Error(typeof event.error === 'string' ? event.error.slice(0, 180) : 'The model stopped streaming. Try again.');
     }
     if (Array.isArray(event?.sources)) readSources(event.sources);
-    const delta = event?.choices?.[0]?.delta?.content;
+    const choice = event?.choices?.[0];
+    truncated ||= choice?.finish_reason === 'length';
+    const delta = choice?.delta?.content;
     if (typeof delta !== 'string') return;
     answer = (answer + delta).slice(0, maxChatChars);
     onUpdate?.(answer);
-    if (answer.length >= maxChatChars) complete = true;
+    if (answer.length === maxChatChars) {
+      complete = true;
+      truncated = true;
+    }
   }
 
   try {
@@ -321,5 +334,6 @@ export async function hostedBlipReply({ text, history = [], mode, signal, onUpda
   if (!complete) throw new Error('The model response ended before completion.');
   if (!answer.trim()) throw new Error('The model returned an empty reply.');
   requireSources();
+  onFinish?.(truncated);
   return answer.trim();
 }

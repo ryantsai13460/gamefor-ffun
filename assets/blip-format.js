@@ -15,7 +15,7 @@ function safeLink(text, href) {
   }
 }
 
-function appendInline(target, text, sources) {
+function appendInline(target, text, { sources, allowLinks }) {
   const tokens = /\x60([^\x60\n]+)\x60|\*\*([^*\n]+)\*\*|\*([^*\n]+)\*|\\\((.+?)\\\)|(?<!\\)\$(?![\s$])([^$\n]+?)(?<!\s)\$(?![\p{L}\p{N}$])|\[([^\]\n]+)\]\(([^\s)]+)\)|\[([1-9]\d?)\]/gu;
   let start = 0;
   for (const match of text.matchAll(tokens)) {
@@ -28,7 +28,7 @@ function appendInline(target, text, sources) {
     } else if (parenMath || dollarMath) {
       node = renderBlipMath(parenMath || dollarMath);
     } else if (linkText) {
-      node = safeLink(linkText, href);
+      node = allowLinks ? safeLink(linkText, href) : linkText;
     } else if (citation && sources[Number(citation) - 1]) {
       node = safeLink(raw, sources[Number(citation) - 1].url);
       node?.setAttribute('aria-label', 'Source ' + citation);
@@ -44,7 +44,7 @@ function tableCells(line) {
   return cells.map(cell => cell.trim().replace(/\\\|/g, '|'));
 }
 
-function appendTable(target, lines, start, sources) {
+function appendTable(target, lines, start, inlineOptions) {
   if (!lines[start].includes('|') || !lines[start + 1]?.includes('|')) return start;
   const labels = tableCells(lines[start]);
   const rules = tableCells(lines[start + 1]);
@@ -59,7 +59,7 @@ function appendTable(target, lines, start, sources) {
     const cell = document.createElement('th');
     cell.scope = 'col';
     cell.style.textAlign = alignments[index];
-    appendInline(cell, label, sources);
+    appendInline(cell, label, inlineOptions);
     header.append(cell);
   }
   let end = start + 2;
@@ -69,7 +69,7 @@ function appendTable(target, lines, start, sources) {
     for (const [index, alignment] of alignments.entries()) {
       const cell = row.insertCell();
       cell.style.textAlign = alignment;
-      appendInline(cell, values[index] || '', sources);
+      appendInline(cell, values[index] || '', inlineOptions);
     }
   }
   const frame = document.createElement('div');
@@ -140,7 +140,8 @@ function appendCode(target, text) {
   target.append(block);
 }
 
-export function formatBlipReply(target, text, sources = []) {
+export function formatBlipReply(target, text, sources = [], { allowLinks = true } = {}) {
+  const inlineOptions = { sources, allowLinks };
   const sections = text.split(/^\s*```[^\n]*\n|^\s*```\s*$/m);
   for (const [index, section] of sections.entries()) {
     if (index % 2) {
@@ -157,7 +158,7 @@ export function formatBlipReply(target, text, sources = []) {
         list = undefined;
         continue;
       }
-      const tableEnd = appendTable(target, lines, cursor, sources);
+      const tableEnd = appendTable(target, lines, cursor, inlineOptions);
       if (tableEnd > cursor) {
         cursor = tableEnd;
         list = undefined;
@@ -171,7 +172,7 @@ export function formatBlipReply(target, text, sources = []) {
           target.append(list);
         }
         const item = document.createElement('li');
-        appendInline(item, bullet[3], sources);
+        appendInline(item, bullet[3], inlineOptions);
         list.append(item);
         continue;
       }
@@ -179,7 +180,7 @@ export function formatBlipReply(target, text, sources = []) {
       if (!line.trim()) continue;
       const heading = line.match(/^#{1,6}\s+(.*)/);
       const block = document.createElement(heading ? 'h4' : 'p');
-      appendInline(block, heading ? heading[1] : line, sources);
+      appendInline(block, heading ? heading[1] : line, inlineOptions);
       target.append(block);
     }
   }

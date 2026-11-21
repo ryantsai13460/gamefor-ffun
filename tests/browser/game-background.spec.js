@@ -48,3 +48,28 @@ test('a custom image stays local, persists and can be removed', async ({ page })
   await page.goto('/#play/2048');
   await expect(header).toHaveAttribute('data-game-background', 'clean');
 });
+
+test('the site theme and custom game color persist independently', async ({ page }) => {
+  await page.goto('/#settings?panel=background');
+  const theme = page.getByRole('combobox', { name: 'Theme', exact: true });
+  const gameBackground = page.getByRole('combobox', { name: 'Game background' });
+  await expect(theme.getByRole('option')).toHaveCount(6);
+  await theme.selectOption('pine');
+  await expect(page.locator('body')).toHaveAttribute('data-theme', 'pine');
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#101d19');
+
+  for (const preset of ['ocean', 'pine', 'orchid', 'amber']) {
+    await gameBackground.selectOption(preset);
+    await expect(page.locator('.game-background-preview')).toHaveAttribute('data-game-background', preset);
+  }
+  await gameBackground.selectOption('color');
+  const color = page.getByLabel('Custom background color', { exact: true });
+  await color.fill('#d08330');
+  await expect(page.getByText('Game color saved.', { exact: true })).toBeVisible();
+  await page.goto('/#play/2048');
+  await page.reload();
+  await expect(page.locator('body')).toHaveAttribute('data-theme', 'pine');
+  const background = page.locator('.player-heading');
+  await expect(background).toHaveAttribute('data-game-background', 'color');
+  expect(await background.evaluate(node => node.style.getPropertyValue('--game-backdrop-color'))).toBe('#d08330');
+});

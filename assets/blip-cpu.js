@@ -1,8 +1,12 @@
+import { blipGenerationMode } from './blip-generation.js';
+
 const weights = 'https://huggingface.co/bartowski/SmolLM2-360M-Instruct-GGUF/resolve/7be6f65f1db715fe5dc5a4634c0d459b4eed42ec/SmolLM2-360M-Instruct-Q4_K_M.gguf';
 const weightSize = 270_590_880;
 const weightHash = '2fa3f013dcdd7b99f9b237717fa0b12d75bbb89984cc1274be1471a465bac9c2';
 const cacheName = 'ffun-blip-cpu-model-v2';
 const shaHeader = 'x-blip-sha256';
+const contextTokens = 4_096;
+const replyTimeout = 150_000;
 let current;
 
 function supported() {
@@ -89,7 +93,7 @@ export function prepareCpuBlipModel(signal, onProgress) {
       onProgress?.(.96, 'Loading the CPU model');
       const wasm = new URL('./vendor/wllama-2.3.7/wllama.wasm', import.meta.url);
       state.engine = new Wllama({ 'single-thread/wllama.wasm': wasm.href }, { suppressNativeLog: true });
-      await state.engine.loadModel([model], { n_threads: 1, n_ctx: 4_096, n_batch: 128 });
+      await state.engine.loadModel([model], { n_threads: 1, n_ctx: contextTokens, n_batch: 128 });
       lifetime.throwIfAborted();
       state.ready = true;
       onProgress?.(1, 'CPU AI ready');
@@ -110,28 +114,53 @@ export function releaseCpuBlipModel() {
   void state.initialization.catch(() => {}).then(() => state.queue).then(() => closeEngine(state));
 }
 
-export function runCpuBlipPrompt(messages, mode, signal, onUpdate) {
+async function cpuPrompt(engine, messages, maxInputTokens, signal) {
+  const context = [...messages];
+  const start = context[0]?.role === 'system' ? 1 : 0;
+  while (true) {
+    signal.throwIfAborted();
+    const prompt = await engine.formatChat(context, true);
+    const tokens = await engine.tokenize(prompt, true);
+    if (tokens.length <= maxInputTokens) return prompt;
+    if (context.length <= start + 1) throw new RangeError('This prompt exceeds the CPU AI context window.');
+    const removesPair = context[start + 1]?.role === 'assistant' && context.length > start + 2;
+    context.splice(start, removesPair ? 2 : 1);
+  }
+}
+
+export function runCpuBlipPrompt(messages, mode, signal, onUpdate, onFinish) {
   signal?.throwIfAborted();
   const state = current;
   if (!state?.ready) return Promise.resolve('');
-  const abortSignal = signal ? AbortSignal.any([state.controller.signal, signal]) : state.controller.signal;
+  const lifetime = signal ? AbortSignal.any([state.controller.signal, signal]) : state.controller.signal;
   const answer = state.queue.then(async () => {
+    lifetime.throwIfAborted();
+    const profile = blipGenerationMode(mode);
+    const deadline = AbortSignal.timeout(replyTimeout);
+    const abortSignal = AbortSignal.any([lifetime, deadline]);
+    // Reserve the generated tokens and room for an implicit start token.
+    const prompt = await cpuPrompt(state.engine, messages, contextTokens - profile.cpuTokens - 4, abortSignal);
     abortSignal.throwIfAborted();
-    const result = await state.engine.createChatCompletion(messages, {
+    let outputTokens = 0;
+    const result = await state.engine.createCompletion(prompt, {
       stream: false,
       useCache: true,
-      nPredict: mode === 'quick' ? 120 : 220,
+      nPredict: profile.cpuTokens,
       sampling: {
-        temp: ['brainstorm', 'creative'].includes(mode) ? .72 : .3,
+        temp: profile.temperature,
+        top_p: .9,
         penalty_last_n: 64,
         penalty_repeat: 1.1
       },
       abortSignal,
-      onNewToken: onUpdate ? (_token, _piece, value) => {
-        if (!abortSignal.aborted) onUpdate(value.trimStart());
-      } : undefined
+      onNewToken(_token, _piece, value) {
+        if (abortSignal.aborted) return;
+        outputTokens++;
+        onUpdate?.(value.trimStart());
+      }
     });
-    abortSignal.throwIfAborted();
+    lifetime.throwIfAborted();
+    onFinish?.(deadline.aborted || outputTokens >= profile.cpuTokens);
     return typeof result === 'string' ? result.trim() : '';
   });
   state.queue = answer.catch(() => {});

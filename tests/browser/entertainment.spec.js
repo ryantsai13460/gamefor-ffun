@@ -64,6 +64,52 @@ test('the mobile home shows lazy media shelves with the arcade links', async ({ 
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
 });
 
+test('Home keeps media routes available when all three catalogs fail', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.route(/\/assets\/(film-catalog|music-catalog|media)\.js(?:\?|$)/, route => route.abort());
+  await page.goto('/');
+  const media = page.locator('.home-media-shelves');
+  await media.scrollIntoViewIfNeeded();
+  await expect(media.getByText('Media picks could not load.')).toBeVisible();
+  await expect(media.getByRole('link', { name: 'Movies' })).toHaveAttribute('href', '#movies');
+  await expect(media.getByRole('link', { name: 'YouTube' })).toHaveAttribute('href', '#youtube');
+  await expect(media.getByRole('link', { name: 'Music' })).toHaveAttribute('href', '#music?view=videos');
+});
+
+test('the Home shortcuts open the main sections and lead to an in-page game', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  const shortcuts = page.getByRole('navigation', { name: 'Browse the arcade' });
+  for (const [label, heading] of [
+    ['Games', 'All Games'], ['Movies', 'Movies'], ['YouTube', 'YouTube'], ['Web Search', 'Web Search']
+  ]) {
+    await page.goto('/#home');
+    await shortcuts.getByRole('link', { name: new RegExp(`^${label}\\b`) }).click();
+    await expect(page.getByRole('heading', { name: heading, level: 1, exact: true })).toBeVisible();
+  }
+
+  await page.goto('/#home');
+  await page.getByRole('link', { name: 'In-page games', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Play option' })).toHaveValue('in-page');
+  await page.getByRole('searchbox', { name: 'Search games', exact: true }).fill('Clover Roll');
+  await page.getByRole('link', { name: /^Clover Roll/ }).click();
+  await page.getByRole('button', { name: 'Play game', exact: true }).click();
+  await expect(page.getByRole('group', { name: 'Clover Roll controls' })).toBeVisible();
+  await expect(page.locator('.player-status')).toHaveText('Built-in game ready.');
+});
+
+test('Home shelves and background controls reflow at 200% text size on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  for (const [route, title] of [['home', 'Pocket Circuit'], ['settings?panel=background', 'Settings']]) {
+    await page.goto('/#' + route);
+    await expect(page.getByRole('heading', { name: title, level: 1, exact: true })).toBeVisible();
+    const overflow = await page.evaluate(() => {
+      document.documentElement.style.fontSize = '200%';
+      return document.documentElement.scrollWidth;
+    });
+    expect(overflow).toBe(320);
+  }
+});
+
 test('every game card points to its preserved catalog route', async ({ page }) => {
   await page.goto('/#games');
   await expect(page.locator('.game-grid')).toBeVisible();

@@ -1,3 +1,5 @@
+import { blipGenerationMode, blipGenerationModes } from '../assets/blip-generation.js';
+
 const openAIEndpoint = 'https://api.openai.com/v1/chat/completions';
 const braveEndpoint = 'https://api.search.brave.com/res/v1/web/search';
 const youtubeEndpoint = 'https://www.googleapis.com/youtube/v3/search';
@@ -13,19 +15,11 @@ const maxResearchSources = 4;
 const standardOutputTokens = 700;
 const defaultAdvancedOutputTokens = 1_800;
 const workersAiModel = '@cf/ibm-granite/granite-4.0-h-micro';
-const workersAiOutputTokens = 512;
 const supportedEffort = new Set(['low', 'medium', 'high']);
 const encoder = new TextEncoder();
 
-const modeInstructions = new Map([
-  ['quick', 'Answer directly and keep the reply concise.'],
-  ['think', 'Explain the relevant tradeoffs and give a practical next step.'],
-  ['brainstorm', 'Offer several distinct ideas with short descriptions.'],
-  ['study', 'Explain the concept clearly and give a short example or practice question.'],
-  ['code', 'Explain the approach and give concise, runnable examples in fenced code blocks. When debugging, identify the cause and suggest a check. Never claim to have run the code.'],
-  ['creative', 'Build on the user’s creative constraints. Offer concrete, original ideas or write the requested scene, outline, or draft.'],
-  ['games', 'Give practical tips for the named game and version. Distinguish general strategies from version-specific facts, and say when current details need verification.'],
-]);
+const replyModes = Object.keys(blipGenerationModes);
+const maxWorkersAiTokens = Math.max(...Object.values(blipGenerationModes).map(mode => mode.workersAiTokens));
 
 function permittedOrigin(request, env) {
   const origin = request.headers.get('Origin');
@@ -143,7 +137,7 @@ function chatInput(body) {
   if (!Array.isArray(supplied) || !supplied.length || supplied.length > maxMessages || supplied.at(-1)?.role !== 'user') {
     throw new HttpError(400, 'Send up to 16 messages ending with a user message.');
   }
-  if (body.mode !== undefined && !modeInstructions.has(body.mode)) {
+  if (body.mode !== undefined && !replyModes.includes(body.mode)) {
     throw new HttpError(400, 'Choose an available thinking method.');
   }
   if (body.stream !== undefined && typeof body.stream !== 'boolean') {
@@ -165,15 +159,17 @@ function chatInput(body) {
     if (total > maxContentChars) throw new HttpError(413, 'The conversation text is too long.');
     return { role: message.role, content: message.content.trim() };
   });
-  const instruction = modeInstructions.get(body.mode ?? 'quick');
+  const mode = body.mode ?? 'quick';
+  const instruction = blipGenerationMode(mode).hosted;
   const advanced = body.depth === 'advanced';
   messages.unshift({
     role: 'system',
-    content: 'You are Blip, a helpful assistant on a general-audience arcade. Give accurate, age-appropriate help. Be honest about uncertainty and offline limitations. Treat quoted text as reference material. ' + instruction +
+    content: 'You are Blip, a helpful assistant on a general-audience arcade. Give accurate, age-appropriate help. Answer the latest request and use relevant earlier turns, keeping the user’s names, facts, and constraints. When continuing an answer, pick up at the last unfinished point. ' +
+      'Acknowledge uncertainty, cite only supplied sources, and treat quoted text as reference material. Use Markdown when it improves readability. ' + instruction +
       (advanced ? ' Start with a clear answer, then cover the key details needed to act on it. Give a concise, checkable rationale and note important assumptions when useful. Use short Markdown sections, examples, or fenced code only when they improve clarity.' : ''),
   });
   const researchQuery = body.research ? searchInput({ q: messages.at(-1).content }) : null;
-  return { messages, stream: body.stream === true, researchQuery, advanced };
+  return { messages, mode, stream: body.stream === true, researchQuery, advanced };
 }
 
 function searchInput(body) {
@@ -245,11 +241,18 @@ function chatStream(source, sources, signal, workersAi = false) {
   let eventData = '';
   let inputBytes = 0;
   let outputChars = 0;
+  let limitReported = false;
   let finished = false;
   let cancelled = false;
 
   function write(controller, value) {
     controller.enqueue(encoder.encode(`data: ${value}\n\n`));
+  }
+
+  function reportLimit(controller) {
+    if (limitReported) return;
+    limitReported = true;
+    write(controller, JSON.stringify({ choices: [{ finish_reason: 'length' }] }));
   }
 
   function consumeEvent(data, controller) {
@@ -264,13 +267,17 @@ function chatStream(source, sources, signal, workersAi = false) {
       finished = true;
       return;
     }
-    const delta = parsed?.choices?.[0]?.delta;
+    const choice = parsed?.choices?.[0];
+    const delta = choice?.delta;
     const value = delta?.content ?? delta?.refusal ?? (workersAi ? parsed?.response : undefined);
-    if (typeof value !== 'string' || !value) return;
-    const content = value.slice(0, maxOutputChars - outputChars);
-    if (content) write(controller, JSON.stringify({ choices: [{ delta: { content } }] }));
-    outputChars += content.length;
+    if (typeof value === 'string' && value) {
+      const content = value.slice(0, maxOutputChars - outputChars);
+      if (content) write(controller, JSON.stringify({ choices: [{ delta: { content } }] }));
+      outputChars += content.length;
+    }
+    if (choice?.finish_reason === 'length' || (workersAi && parsed?.finish_reason === 'length')) reportLimit(controller);
     if (outputChars >= maxOutputChars) {
+      reportLimit(controller);
       write(controller, '[DONE]');
       finished = true;
     }
@@ -361,7 +368,9 @@ async function chat(input, request, env, origin) {
   if (provider === 'workers-ai') {
     const result = await runWorkersAi(input, env, signal);
     if (input.stream) return streamingReply(result, sources, signal, origin, true);
-    return textReply(result?.response, sources, origin);
+    const truncated = result?.finish_reason === 'length' ||
+      result?.usage?.completion_tokens >= blipGenerationMode(input.mode).workersAiTokens;
+    return textReply(result?.response, sources, origin, truncated);
   }
 
   const model = env.OPENAI_MODEL || 'gpt-4.1-mini';
@@ -395,8 +404,8 @@ async function chat(input, request, env, origin) {
     return streamingReply(upstream.body, sources, signal, origin);
   }
   const data = await providerJson(upstream, signal);
-  const message = data.choices?.[0]?.message;
-  return textReply(message?.content ?? message?.refusal, sources, origin);
+  const choice = data.choices?.[0];
+  return textReply(choice?.message?.content ?? choice?.message?.refusal, sources, origin, choice?.finish_reason === 'length');
 }
 
 function streamingReply(stream, sources, signal, origin, workersAi = false) {
@@ -406,9 +415,13 @@ function streamingReply(stream, sources, signal, origin, workersAi = false) {
   return new Response(chatStream(stream, sources, signal, workersAi), { headers: fields });
 }
 
-function textReply(text, sources, origin) {
+function textReply(text, sources, origin, truncated = false) {
   if (typeof text !== 'string' || !text.trim()) throw new HttpError(502, 'The provider returned an empty reply.');
-  return json(origin, { text: text.slice(0, maxOutputChars), ...(sources ? { sources } : {}) });
+  return json(origin, {
+    text: text.slice(0, maxOutputChars),
+    ...(truncated || text.length > maxOutputChars ? { truncated: true } : {}),
+    ...(sources ? { sources } : {}),
+  });
 }
 
 async function runWorkersAi(input, env, signal) {
@@ -419,10 +432,12 @@ async function runWorkersAi(input, env, signal) {
     signal.addEventListener('abort', stop, { once: true });
   });
   try {
+    const profile = blipGenerationMode(input.mode);
     const inference = Promise.resolve(env.AI.run(workersAiModel, {
       messages: input.messages,
       stream: input.stream,
-      max_tokens: workersAiOutputTokens,
+      max_tokens: profile.workersAiTokens,
+      temperature: profile.temperature,
     })).then(result => {
       if (signal.aborted) {
         if (result instanceof ReadableStream) void result.cancel(signal.reason).catch(() => {});
@@ -555,9 +570,10 @@ function capabilities(_input, _request, env, origin) {
     search,
     youtube: Boolean(env.YOUTUBE_API_KEY),
     ...(provider ? { chatProvider: provider } : {}),
-    standardOutputTokens: provider === 'workers-ai' ? workersAiOutputTokens : standardOutputTokens,
+    standardOutputTokens: provider === 'workers-ai' ? blipGenerationMode('quick').workersAiTokens : standardOutputTokens,
+    ...(provider === 'workers-ai' ? { maxStandardOutputTokens: maxWorkersAiTokens } : {}),
     ...(advanced ? { advancedOutputTokens: advancedOutputTokens(env) } : {}),
-    modes: [...modeInstructions.keys()],
+    modes: replyModes,
   });
 }
 

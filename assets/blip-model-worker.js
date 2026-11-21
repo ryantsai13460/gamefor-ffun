@@ -1,4 +1,5 @@
 import { MLCEngine } from './vendor/webllm-0.2.89/index.js';
+import { blipGenerationMode } from './blip-generation.js';
 
 const modelId = 'SmolLM2-360M-Instruct-q4f32_1-MLC';
 const model = {
@@ -34,22 +35,29 @@ self.addEventListener('message', async ({ data: { action, id, input } }) => {
     } else if (action === 'generate') {
       generating = id;
       try {
+        const profile = blipGenerationMode(input.mode);
         const chunks = await engine.chat.completions.create({
           model: modelId,
           messages: input.messages,
-          max_tokens: input.mode === 'quick' ? 180 : 320,
-          temperature: ['brainstorm', 'creative'].includes(input.mode) ? .8 : .4,
+          max_tokens: profile.webGpuTokens,
+          temperature: profile.temperature,
           stream: true
         });
         let answer = '';
+        let truncated = false;
         for await (const chunk of chunks) {
-          const delta = chunk.choices[0]?.delta?.content;
+          const choice = chunk.choices[0];
+          truncated ||= choice?.finish_reason === 'length';
+          const delta = choice?.delta?.content;
           if (typeof delta !== 'string' || !delta) continue;
           answer = (answer + delta).slice(0, 12_000);
           self.postMessage({ id, kind: 'delta', answer });
-          if (answer.length >= 12_000) break;
+          if (answer.length === 12_000) {
+            truncated = true;
+            break;
+          }
         }
-        self.postMessage({ id, kind: 'result', answer: answer.trim() });
+        self.postMessage({ id, kind: 'result', answer: answer.trim(), truncated });
       } finally {
         generating = undefined;
       }

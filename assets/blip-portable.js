@@ -50,13 +50,14 @@ function createRunner(worker) {
     } else if (data.kind === 'delta') {
       callback.onUpdate?.(data.answer);
     } else if (data.kind === 'result') {
+      callback.onFinish?.(data.truncated === true);
       callback.finish(undefined, data.answer);
     } else if (data.kind === 'error') {
       callback.finish(new Error(data.message));
     }
   });
 
-  function request(action, input, signal, { onProgress, onUpdate } = {}) {
+  function request(action, input, signal, { onProgress, onUpdate, onFinish } = {}) {
     signal?.throwIfAborted();
     if (closed) return Promise.reject(new Error('The portable model is closed.'));
     const id = ++latest;
@@ -78,7 +79,7 @@ function createRunner(worker) {
         else if (error) reject(error);
         else resolve(value);
       };
-      requests.set(id, { finish, onProgress, onUpdate });
+      requests.set(id, { finish, onProgress, onUpdate, onFinish });
       signal?.addEventListener('abort', stop, { once: true });
       try {
         worker.postMessage({ action, id, input });
@@ -130,7 +131,7 @@ export function releasePortableBlipModel() {
   runner = undefined;
 }
 
-export function runPortableBlipPrompt(messages, mode, signal, onUpdate) {
+export function runPortableBlipPrompt(messages, mode, signal, onUpdate, onFinish) {
   signal?.throwIfAborted();
   if (!runner?.ready) return Promise.resolve('');
   const current = runner;
@@ -141,6 +142,7 @@ export function runPortableBlipPrompt(messages, mode, signal, onUpdate) {
     try {
       return await current.request('generate', { messages, mode }, requestSignal, {
         onUpdate(value) { if (!requestSignal.aborted) onUpdate?.(value); },
+        onFinish(value) { if (!requestSignal.aborted) onFinish?.(value); },
       });
     } catch (error) {
       if (deadline.aborted) current.close(error);

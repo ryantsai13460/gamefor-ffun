@@ -1,22 +1,28 @@
 const storageKey = 'ffun-game-background-v1';
 const maximumFileBytes = 8 * 1024 * 1024;
 const maximumImageLength = 460_000;
-const plain = { preset: 'clean', image: '' };
+const plain = { preset: 'clean', image: '', color: '#296e92' };
 
 export const gameBackgroundOptions = [
   ['clean', 'Clean'],
   ['grid', 'Arcade grid'],
   ['race', 'Pocket Circuit gameplay'],
+  ['ocean', 'Ocean blue'],
+  ['pine', 'Pine green'],
+  ['orchid', 'Orchid purple'],
+  ['amber', 'Amber'],
+  ['color', 'Custom color'],
   ['custom', 'My image']
 ];
 
 export function readGameBackground() {
   try {
-    const { preset, image } = JSON.parse(localStorage.getItem(storageKey));
+    const { preset, image, color } = JSON.parse(localStorage.getItem(storageKey));
     const savedImage = typeof image === 'string' && image.length <= maximumImageLength &&
       /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(image) ? image : '';
     if (gameBackgroundOptions.some(([id]) => id === preset) && (preset !== 'custom' || savedImage)) {
-      return { preset, image: savedImage };
+      const savedColor = typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : plain.color;
+      return { preset, image: savedImage, color: savedColor };
     }
   } catch {}
   return { ...plain };
@@ -33,6 +39,11 @@ export function saveGameBackground(background) {
 
 export function showGameBackground(target, background) {
   target.dataset.gameBackground = background.preset;
+  if (background.preset === 'color') {
+    target.style.setProperty('--game-backdrop-color', background.color);
+  } else {
+    target.style.removeProperty('--game-backdrop-color');
+  }
   if (background.preset === 'custom' && background.image) {
     target.style.setProperty('--game-background-image', 'url("' + background.image + '")');
   } else {
