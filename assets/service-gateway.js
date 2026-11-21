@@ -1,4 +1,9 @@
 const endpointKey = 'ffun.gateway.url';
+const maxRequestBytes = 32_768;
+const maxResponseBytes = 262_144;
+const maxStreamBytes = 2_097_152;
+const maxChatChars = 12_000;
+const encoder = new TextEncoder();
 let connection;
 
 function endpoint() {
@@ -12,7 +17,7 @@ export function gatewayConnected() {
 function configuredUrl(value) {
   try {
     const url = new URL(value);
-    const local = url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname);
+    const local = url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
     if ((url.protocol !== 'https:' && !local) || url.username || url.password || url.search || url.hash) return '';
     return url.href.replace(/\/$/, '');
   } catch {
@@ -43,23 +48,20 @@ export function renderGatewaySettings(target, label = 'Connect an authorized bac
     event.preventDefault();
     const url = configuredUrl(field.value.trim());
     const value = code.value.trim();
-    if (!url || !value) {
+    if (!url || !/^[!-~]{1,256}$/.test(value)) {
       status.textContent = 'Enter a valid HTTPS backend URL and its access code.';
       return;
     }
-    try {
-      localStorage.setItem(endpointKey, url);
-    } catch {
-      status.textContent = 'Browser storage blocked this setting.';
-      return;
-    }
+    try { localStorage.setItem(endpointKey, url); } catch {}
     field.value = url;
-    connection = { url, accessCode: value };
+    connection?.controller.abort(new DOMException('The backend connection changed.', 'AbortError'));
+    connection = { url, accessCode: value, controller: new AbortController() };
     code.value = '';
     status.textContent = 'Backend configured for this tab. A request will check the connection.';
     onChange?.();
   });
   form.querySelector('[data-disconnect]').addEventListener('click', () => {
+    connection?.controller.abort(new DOMException('The backend was disconnected.', 'AbortError'));
     connection = undefined;
     code.value = '';
     status.textContent = 'Backend disconnected in this tab.';
@@ -96,24 +98,60 @@ export function renderGatewaySettings(target, label = 'Connect an authorized bac
 
 export async function searchGatewayVideos(q, signal) {
   const response = await gatewayRequest('/api/youtube', { q }, signal);
-  const data = await response.json();
+  const data = await gatewayJson(response);
   if (!Array.isArray(data?.items)) throw new Error('The backend returned an invalid video list.');
-  return data.items;
+  return data.items.slice(0, 12);
 }
 
-async function gatewayRequest(path, body, signal) {
+async function gatewayJson(response) {
+  if (!response.body || Number(response.headers.get('Content-Length')) > maxResponseBytes) {
+    void response.body?.cancel().catch(() => {});
+    throw new Error('The backend returned an invalid response.');
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  let size = 0;
+  let content = '';
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxResponseBytes) throw new Error('The backend returned an oversized response.');
+      content += decoder.decode(value, { stream: true });
+    }
+    return JSON.parse(content + decoder.decode());
+  } catch (error) {
+    void reader.cancel().catch(() => {});
+    if (error instanceof SyntaxError || error instanceof TypeError) throw new Error('The backend returned an invalid response.');
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function gatewayRequest(path, body, signal, timeout = 12_000) {
   if (!connection) throw new Error('Connect an authorized backend first.');
-  const { url, accessCode } = connection;
-  const response = await fetch(url + path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessCode}` },
-    body: JSON.stringify(body),
-    credentials: 'omit',
-    redirect: 'error',
-    signal
-  });
+  const { url, accessCode, controller } = connection;
+  const requestSignal = AbortSignal.any([controller.signal, AbortSignal.timeout(timeout), ...(signal ? [signal] : [])]);
+  let response;
+  try {
+    response = await fetch(url + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessCode}` },
+      body: JSON.stringify(body),
+      credentials: 'omit',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer',
+      signal: requestSignal
+    });
+  } catch {
+    requestSignal.throwIfAborted();
+    throw new Error('The backend could not be reached. Check the URL and allowed website origin.');
+  }
   if (!response.ok) {
-    const body = await response.json().catch(() => null);
+    const body = await gatewayJson(response).catch(() => null);
+    requestSignal.throwIfAborted();
     const error = new Error(typeof body?.error === 'string' ? body.error.slice(0, 180) : 'The backend did not return a result.');
     error.status = response.status;
     throw error;
@@ -129,7 +167,7 @@ export async function getGatewayCapabilities(signal) {
     if (error.status === 404) return null;
     throw error;
   }
-  const data = await response.json();
+  const data = await gatewayJson(response);
   const flags = ['chat', 'advanced', 'research', 'search', 'youtube'];
   if (!flags.every(flag => typeof data?.[flag] === 'boolean')) {
     throw new Error('The backend returned invalid capability information.');
@@ -143,7 +181,7 @@ export async function getGatewayCapabilities(signal) {
 
 export async function searchGateway(q, signal) {
   const response = await gatewayRequest('/api/search', { q }, signal);
-  const data = await response.json();
+  const data = await gatewayJson(response);
   if (!Array.isArray(data?.results)) throw new Error('The backend returned invalid search results.');
   return safeReferences(data.results, 10);
 }
@@ -164,16 +202,25 @@ function safeReferences(items, limit) {
 
 export async function hostedBlipReply({ text, history = [], mode, signal, onUpdate, research = false, onSources, depth = 'standard' }) {
   if (history.some(message => message.attachments?.length)) throw new Error('Use a local model for chats with attached files.');
-  if (research && text.trim().length > 200) throw new Error('Web research is available for short questions of up to 200 characters.');
+  const content = typeof text === 'string' ? text.trim() : '';
+  if (!content) throw new Error('Enter a message to send to the model.');
+  if (content.length > maxChatChars) throw new Error('The message is too long for the connected model.');
+  if (research && content.length > 200) throw new Error('Web research is available for short questions of up to 200 characters.');
   const messages = history.filter(message => !message.attachments?.length && message.kind !== 'unavailable' &&
       ['user', 'assistant'].includes(message.role) && typeof message.text === 'string' && message.text.trim())
-    .slice(-8).map(message => ({ role: message.role, content: message.text.slice(0, 950) }));
-  messages.push({ role: 'user', content: text });
-  const response = await gatewayRequest('/api/chat', {
+    .slice(-8).map(message => ({ role: message.role, content: message.text.trim().slice(0, 950) }));
+  messages.push({ role: 'user', content });
+  const request = {
     messages, mode, stream: true,
     ...(research ? { research: true } : {}),
     ...(depth === 'advanced' ? { depth: 'advanced' } : {})
-  }, signal);
+  };
+  let chars = messages.reduce((total, message) => total + message.content.length, 0);
+  while (chars > maxChatChars || encoder.encode(JSON.stringify(request)).byteLength > maxRequestBytes) {
+    if (messages.length === 1) throw new Error('The message is too large for the connected model.');
+    chars -= messages.shift().content.length;
+  }
+  const response = await gatewayRequest('/api/chat', request, signal, depth === 'advanced' ? 95_000 : 65_000);
   let hasSources = false;
   const readSources = items => {
     if (!research || hasSources) return;
@@ -185,51 +232,76 @@ export async function hostedBlipReply({ text, history = [], mode, signal, onUpda
   const requireSources = () => {
     if (research && !hasSources) throw new Error('The backend returned no web sources. Check its research setup.');
   };
-  if (!response.headers.get('Content-Type')?.includes('text/event-stream')) {
-    const data = await response.json();
+  if (response.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase() !== 'text/event-stream') {
+    const data = await gatewayJson(response);
     if (typeof data?.text !== 'string' || !data.text.trim()) throw new Error('The model returned an empty reply.');
     readSources(data.sources);
     requireSources();
-    return data.text;
+    return data.text.trim().slice(0, maxChatChars);
   }
   const reader = response.body?.getReader();
   if (!reader) throw new Error('The model reply stream was empty.');
-  const decoder = new TextDecoder();
+  const decoder = new TextDecoder('utf-8', { fatal: true });
   let buffer = '';
+  let eventData = '';
+  let size = 0;
   let answer = '';
   let complete = false;
+
+  function consumeLine(line) {
+    if (line.endsWith('\r')) line = line.slice(0, -1);
+    if (line.startsWith('data:')) {
+      if (eventData.length + line.length > 64_000) throw new Error('The model returned an oversized stream event.');
+      eventData += line.slice(5).trimStart() + '\n';
+      return;
+    }
+    if (line || !eventData) return;
+    const data = eventData.trim();
+    eventData = '';
+    if (!data) return;
+    if (data === '[DONE]') {
+      complete = true;
+      return;
+    }
+    let event;
+    try { event = JSON.parse(data); } catch { throw new Error('The model returned an invalid stream event.'); }
+    if (event?.error) {
+      throw new Error(typeof event.error === 'string' ? event.error.slice(0, 180) : 'The model stopped streaming. Try again.');
+    }
+    if (Array.isArray(event?.sources)) readSources(event.sources);
+    const delta = event?.choices?.[0]?.delta?.content;
+    if (typeof delta !== 'string') return;
+    answer = (answer + delta).slice(0, maxChatChars);
+    onUpdate?.(answer);
+    if (answer.length >= maxChatChars) complete = true;
+  }
+
   try {
     while (!complete) {
       const { value, done } = await reader.read();
-      if (done) break;
+      if (done) {
+        buffer += decoder.decode();
+        consumeLine(buffer);
+        consumeLine('');
+        break;
+      }
+      size += value.byteLength;
+      if (size > maxStreamBytes) throw new Error('The model returned an oversized stream.');
       buffer += decoder.decode(value, { stream: true });
-      if (buffer.length > 64_000) throw new Error('The model returned an oversized stream event.');
       const lines = buffer.split('\n');
       buffer = lines.pop();
+      if (buffer.length > 64_000) throw new Error('The model returned an oversized stream event.');
       for (const line of lines) {
-        if (!line.startsWith('data:')) continue;
-        const data = line.slice(5).trim();
-        if (data === '[DONE]') {
-          complete = true;
-          break;
-        }
-        const event = JSON.parse(data);
-        if (event.error) throw new Error('The model stopped streaming. Try again.');
-        if (Array.isArray(event.sources)) readSources(event.sources);
-        const delta = event.choices?.[0]?.delta?.content;
-        if (typeof delta !== 'string') continue;
-        answer = (answer + delta).slice(0, 12_000);
-        onUpdate?.(answer);
-        if (answer.length >= 12_000) {
-          complete = true;
-          break;
-        }
+        consumeLine(line);
+        if (complete) break;
       }
     }
   } finally {
-    await reader.cancel().catch(() => {});
+    void reader.cancel().catch(() => {});
+    reader.releaseLock();
   }
-  if (!answer.trim() || !complete) throw new Error('The model response ended before completion.');
+  if (!complete) throw new Error('The model response ended before completion.');
+  if (!answer.trim()) throw new Error('The model returned an empty reply.');
   requireSources();
   return answer.trim();
 }

@@ -4,11 +4,11 @@ GitHub Pages serves the arcade. This separate Cloudflare Worker can connect blip
 
 ## Costs and access
 
-Set up a provider account and check its pricing before creating or deploying a key. OpenAI API usage is billed by model and tokens. A ChatGPT subscription does not include API credits. Brave Search API pricing, included credits, and quotas depend on the account plan. Cloudflare Workers has a Free plan with its own request and CPU limits. Provider charges can apply even on the Workers Free plan. [OpenAI API pricing](https://platform.openai.com/pricing/) · [Brave Search API plans](https://brave.com/search/api/) · [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/)
+Set up a provider account and check its pricing before creating or deploying a key. OpenAI API usage is billed by model and tokens. A ChatGPT subscription does not include API credits. Brave Search API pricing, included credits, and quotas depend on the account plan. Use the Cloudflare Workers Free plan for the optional gateway within its published allowance of 100,000 requests per day and 10 ms of CPU time per HTTP request. Time spent waiting for provider responses does not use CPU time. Provider charges can apply even on the Workers Free plan. [OpenAI API pricing](https://platform.openai.com/pricing/) · [Brave Search API plans](https://brave.com/search/api/) · [Workers platform limits](https://developers.cloudflare.com/workers/platform/limits/)
 
 Give the gateway a random access code of at least 24 characters and share it only with the people authorized to use the provider accounts. The Worker requires this code in its Authorization header. CORS restricts browser access to the exact origins listed in `ALLOWED_ORIGINS`. On GitHub Pages, projects under the same account share an origin.
 
-The default Worker configuration limits its endpoints together to six requests per minute per IP and 15 requests per minute across the site at each Cloudflare location. These are per-location rate limits. Set provider project permissions and monitor usage separately to control costs. Chat accepts up to 16 messages and 12,000 characters of conversation text per request. Standard replies are capped at 700 completion tokens. The optional advanced replies default to 1,800 and can cost more. YouTube documents one unit per `search.list` call in the Search Queries bucket, with 100 daily calls by default. Check your project quota and restrict the server key to YouTube Data API v3. [Cloudflare rate-limit behavior](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) · [YouTube search quota](https://developers.google.com/youtube/data/reference/rest/v3/search/list)
+The default Worker configuration uses approximate limits for requests that use providers. Each Cloudflare location applies six requests per minute per IP and 15 per minute across the site. The authenticated capabilities check reports configuration without consuming either rate limit or provider quota. Set provider project permissions and monitor usage separately to control costs. Chat accepts up to 16 messages and 12,000 characters of conversation text in a JSON body of up to 32 KiB. Replies are capped at 12,000 characters. Standard replies have a 700 completion token budget. The optional advanced replies default to 1,800 and can cost more. YouTube documents one unit per `search.list` call in the Search Queries bucket, with 100 daily calls by default. Check your project quota and restrict the server key to YouTube Data API v3. [Cloudflare rate-limit behavior](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) · [YouTube search quota](https://developers.google.com/youtube/data/reference/rest/v3/search/list)
 
 ## Advanced replies
 
@@ -33,6 +33,8 @@ npx wrangler@4 dev
 ```
 
 Set the arcade connection to the Worker origin printed by Wrangler. Include the local arcade origin in `.dev.vars` if you serve it on a different port.
+
+Run `npx wrangler@4 deploy --dry-run --outdir .wrangler/build` to check the package before deployment. Keep generated bundles and secret files out of Git.
 
 ## Deploy when ready
 

@@ -158,7 +158,10 @@ test('authenticated capabilities describe configured routes without contacting a
   const provider = context.mock.method(globalThis, 'fetch', async () => {
     throw new Error('Unexpected provider call');
   });
-  const env = settings({ BRAVE_SEARCH_API_KEY: '', OPENAI_ADVANCED_MAX_TOKENS: '2400' });
+  let rateLimitCalls = 0;
+  const limiter = { async limit() { rateLimitCalls++; return { success: false }; } };
+  const env = settings({ BRAVE_SEARCH_API_KEY: '', OPENAI_ADVANCED_MAX_TOKENS: '2400',
+    CLIENT_RATE_LIMITER: limiter, SITE_RATE_LIMITER: limiter });
   const denied = await worker.fetch(post('/api/capabilities', {}, { Authorization: 'Bearer wrong' }), env);
   assert.equal(denied.status, 401);
   const direct = await worker.fetch(post('/api/capabilities', {}), env);
@@ -166,12 +169,15 @@ test('authenticated capabilities describe configured routes without contacting a
     chat: true, advanced: true, research: false, search: false, youtube: true,
     standardOutputTokens: 700, advancedOutputTokens: 2400,
   });
+  const unconfigured = await worker.fetch(post('/api/capabilities', {}), { ...env, SITE_RATE_LIMITER: undefined });
+  assert.equal(unconfigured.status, 503);
+  assert.equal(rateLimitCalls, 0);
   assert.equal(provider.mock.callCount(), 0);
 });
 
 test('chat streaming reconstructs split provider events and emits text deltas and a completion marker', async context => {
   const providerFrames = [
-    'data: {"id":"private","choices":[{"delta":',
+    ': heartbeat\n\ndata: {"id":"private",\r\ndata: "choices":[{"delta":',
     '{"content":"Start"}}]}\r\n\r\ndata: {"choices":[{"delta":{"content":" slowly."}}]}\n\n',
     'data: [DONE]\n\n',
   ];
@@ -207,6 +213,42 @@ test('an interrupted reply stream emits a bounded gateway error', async context 
     'data: {"choices":[{"delta":{"content":"Partial"}}]}',
     'data: {"error":"The provider connection ended before the reply finished."}',
   ]);
+});
+
+test('provider stream deadlines stop an incomplete reply and cancel the upstream stream', async context => {
+  const deadline = new AbortController();
+  const originalTimeout = AbortSignal.timeout;
+  context.mock.method(AbortSignal, 'timeout', milliseconds =>
+    milliseconds === 45_000 ? deadline.signal : originalTimeout(milliseconds));
+  let cancelled = false;
+  context.mock.method(globalThis, 'fetch', async () => new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"Partial"}}]}\n\n'));
+    },
+    cancel() { cancelled = true; },
+  }), { headers: { 'Content-Type': 'text/event-stream' } }));
+  const response = await worker.fetch(post('/api/chat', { messages: [userMessage], stream: true }), settings());
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  assert.match(decoder.decode((await reader.read()).value), /Partial/);
+  deadline.abort(new DOMException('Upstream deadline', 'TimeoutError'));
+  assert.deepEqual(JSON.parse(decoder.decode((await reader.read()).value).trim().slice(6)),
+    { error: 'The provider took too long to reply.' });
+  assert.equal((await reader.read()).done, true);
+  assert.equal(cancelled, true);
+});
+
+test('malformed stream events and oversized provider JSON fail without forwarding private upstream data', async context => {
+  context.mock.method(globalThis, 'fetch', async (_url, options) => {
+    if (options.method === 'POST') return new Response('data: not-json-secret\n\ndata: [DONE]\n\n',
+      { headers: { 'Content-Type': 'text/event-stream' } });
+    return Response.json({ metadata: 'private-data'.repeat(32_768) });
+  });
+  const chat = await worker.fetch(post('/api/chat', { messages: [userMessage], stream: true }), settings());
+  assert.equal((await chat.text()).trim(), 'data: {"error":"The provider connection was interrupted."}');
+  const search = await worker.fetch(post('/api/search', { q: 'arcade' }), settings());
+  assert.equal(search.status, 502);
+  assert.deepEqual(await search.json(), { error: 'The provider returned an invalid response.' });
 });
 
 test('Brave search sends a bounded strict search and returns normalized HTTPS results', async context => {

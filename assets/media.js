@@ -145,11 +145,12 @@ function persist(key, value) {
 }
 
 function sanitizeVideo(video) {
-  if (!video || !VIDEO_ID.test(video.id || '') || typeof video.title !== 'string') return null;
+  if (!video || typeof video.id !== 'string' || !VIDEO_ID.test(video.id) ||
+      typeof video.title !== 'string' || !video.title.trim()) return null;
   return {
     id: video.id,
-    title: video.title.slice(0, 250),
-    creator: typeof video.creator === 'string' ? video.creator.slice(0, 160) : '',
+    title: video.title.trim().slice(0, 250),
+    creator: typeof video.creator === 'string' ? video.creator.trim().slice(0, 160) : '',
     short: video.short === true,
     embeddable: video.embeddable !== false,
     tags: [],
@@ -216,9 +217,9 @@ function loadIframeApi() {
 }
 
 function playEmbedded(stage, status, video, isOpen, hasDirectLink, autoplay = false, onPlaying) {
+  const fallback = hasDirectLink ? ' Open the video on YouTube to check playback.' : '';
   if (video.embeddable === false) {
-    status.textContent = 'The creator has disabled embedded playback.' +
-      (hasDirectLink ? ' Watch this video on YouTube.' : '');
+    status.textContent = 'The uploader has disabled embedded playback.' + fallback;
     return () => {};
   }
   const frame = node('iframe');
@@ -233,39 +234,55 @@ function playEmbedded(stage, status, video, isOpen, hasDirectLink, autoplay = fa
   status.textContent = 'Connecting to YouTube…';
   stage.replaceChildren(frame);
   let player;
+  let errorReported = false;
+  let disposed = false;
+  const active = () => !disposed && isOpen() && frame.isConnected;
+  const failure = (explanation) => {
+    if (!active()) return;
+    clearTimeout(timer);
+    errorReported = true;
+    status.textContent = explanation + fallback;
+  };
   const timer = setTimeout(() => {
-    status.textContent = 'Embedded playback could not be confirmed.' +
-      (hasDirectLink ? ' Open the video on YouTube if the player does not start.' : '');
+    if (active()) status.textContent = 'Embedded YouTube playback could not be confirmed.' + fallback;
   }, 8500);
+  frame.addEventListener('error', () => failure('The YouTube player could not be reached.'), {once: true});
   loadIframeApi().then((api) => {
-    if (!api || !isOpen() || !frame.isConnected) return;
+    if (!api || !active()) return;
     player = new api.Player(frame, {
       events: {
         onReady: (event) => {
-          if (!isOpen()) return;
+          if (!active()) return;
           clearTimeout(timer);
-          status.textContent = 'YouTube player ready.';
+          if (!errorReported) status.textContent = 'YouTube player ready.';
           if (autoplay) {
             event?.target?.mute();
             event?.target?.playVideo();
           }
         },
         onStateChange: event => {
-          if (isOpen() && event.data === 1) onPlaying?.();
-        },
-        onError: () => {
-          if (!isOpen()) return;
+          if (!active() || event.data !== 1) return;
           clearTimeout(timer);
-          status.textContent = 'YouTube could not play this video here.' +
-            (hasDirectLink ? ' Open it on YouTube for details.' : '');
+          errorReported = false;
+          status.textContent = 'Playing on YouTube.';
+          onPlaying?.();
+        },
+        onError: ({data}) => {
+          if (data === 101 || data === 150) failure('The uploader has disabled embedded playback.');
+          else if (data === 100) failure('This video is private or has been removed.');
+          else failure('YouTube could not play this video here.');
         }
       }
     });
-  }).catch(() => {});
+  }).catch(() => failure('The YouTube player could not be initialized.'));
   return () => {
+    disposed = true;
     clearTimeout(timer);
-    player?.destroy();
-    frame.remove();
+    try {
+      player?.destroy();
+    } finally {
+      frame.remove();
+    }
   };
 }
 
@@ -282,8 +299,9 @@ export function watchDialog(target, {title, subtitle, description, video, extern
   const status = node('p', '', 'media-player-status');
   status.setAttribute('role', 'status');
   const controls = node('div', '', 'media-actions');
+  let removeFullscreenListener = () => {};
   if (external) controls.append(link(directLabel, external, 'button primary'));
-  if (video && video.embeddable !== false && document.fullscreenEnabled) {
+  if (video && video.embeddable !== false && document.fullscreenEnabled && stage.requestFullscreen) {
     const full = button('Fullscreen', async () => {
       try {
         if (document.fullscreenElement === stage) await document.exitFullscreen();
@@ -296,7 +314,7 @@ export function watchDialog(target, {title, subtitle, description, video, extern
       full.textContent = document.fullscreenElement === stage ? 'Exit fullscreen' : 'Fullscreen';
     };
     document.addEventListener('fullscreenchange', update);
-    dialog.addEventListener('close', () => document.removeEventListener('fullscreenchange', update), {once: true});
+    removeFullscreenListener = () => document.removeEventListener('fullscreenchange', update);
     controls.append(full);
   }
   if (details) controls.append(details);
@@ -312,6 +330,7 @@ export function watchDialog(target, {title, subtitle, description, video, extern
   const remove = () => {
     if (removed) return;
     removed = true;
+    removeFullscreenListener();
     release();
     dialog.remove();
   };
@@ -461,8 +480,7 @@ function search(label) {
   return input;
 }
 
-function matches(value, ...fields) {
-  const terms = videoWords(value);
+function matches(terms, ...fields) {
   if (!terms.length) return true;
   const searchable = videoWords(fields.join(' ')).join(' ');
   return terms.every(term => searchable.includes(term));
@@ -654,6 +672,7 @@ function creatorImport(state, changed) {
   const submit = node('button', 'Import creators', 'button primary');
   submit.type = 'submit';
   let controller;
+  let active = true;
   const stop = button('Stop import', () => controller?.abort());
   stop.disabled = true;
   const report = node('p', '', 'media-meta');
@@ -686,7 +705,9 @@ function creatorImport(state, changed) {
       const file = importFile.files[0];
       if (!file) return;
       if (file.size > 12_000_000) throw new Error('This library is larger than 12 MB.');
-      const incoming = validChannels(JSON.parse(await file.text()).channels);
+      const contents = await file.text();
+      if (!active) return;
+      const incoming = validChannels(JSON.parse(contents)?.channels);
       if (!incoming.length) throw new Error('This file contains no valid creator catalogs.');
       incoming.forEach(merge);
       const saved = storage();
@@ -694,7 +715,7 @@ function creatorImport(state, changed) {
       report.textContent = `${incoming.length} creator catalogs loaded.${saved ? '' : ' Browser storage is unavailable.'}`;
       changed();
     } catch (error) {
-      report.textContent = error instanceof SyntaxError ? 'This is not a valid JSON library.' : error.message;
+      if (active) report.textContent = error instanceof SyntaxError ? 'This is not a valid JSON library.' : error.message;
     } finally {
       importFile.value = '';
     }
@@ -747,7 +768,10 @@ function creatorImport(state, changed) {
   actions.append(submit, stop, exportButton, restoreButton);
   form.append(handleLabel, keyLabel, actions, importFile, report);
   section.append(summary, node('p', 'Import public uploads from YouTube using a key restricted to your site. The key is used for this session only.', 'media-meta'), form);
-  return {section, stop: () => controller?.abort()};
+  return {section, stop: () => {
+    active = false;
+    controller?.abort();
+  }};
 }
 
 async function identifyVideo(video, signal) {
@@ -805,6 +829,7 @@ function youtubePage(target, params) {
   addressForm.append(address, play);
   const externalSearch = link('Search on YouTube', 'https://www.youtube.com/', 'button');
   let view = videoFormats.get(params.get('format')) || 'Shorts';
+  let lastLocalView = view;
   let page = 0;
   let visiblePages = 1;
   let currentResults = [];
@@ -830,7 +855,7 @@ function youtubePage(target, params) {
     const choice = button(tab, () => {
       onlineRequest?.abort();
       notice.textContent = '';
-      view = tab;
+      view = lastLocalView = tab;
       page = 0;
       visiblePages = 1;
       draw();
@@ -880,7 +905,7 @@ function youtubePage(target, params) {
   featureCopy.append(node('p', 'Featured video', 'youtube-feature-label'),
     node('h2', featured.title), node('p', featured.creator, 'media-meta'),
     button('Play featured video', () => showVideo(featured), 'button primary'));
-  const featureArt = image(`https://i.ytimg.com/vi/${featured.id}/hqdefault.jpg`, featured.title);
+  const featureArt = image(featured.thumbnail || `https://i.ytimg.com/vi/${featured.id}/hqdefault.jpg`, featured.title);
   featureArt.querySelector('img').loading = 'eager';
   feature.append(featureCopy, featureArt);
   const tools = node('div', '', 'youtube-library-tools');
@@ -918,7 +943,11 @@ function youtubePage(target, params) {
   function showVideo(video) {
     closeDialog?.();
     rememberVideo(video);
-    if (view === 'Recently opened') draw();
+    if (view === 'Recently opened') {
+      const launchId = grid.contains(document.activeElement) ? document.activeElement.dataset.videoId : null;
+      draw();
+      if (launchId) grid.querySelector(`[data-video-id="${launchId}"]`)?.focus({preventScroll: true});
+    }
     closeDialog = watchDialog(root, {
       title: video.title,
       subtitle: video.creator,
@@ -939,6 +968,8 @@ function youtubePage(target, params) {
   function card(video) {
     const item = node('article', '', 'media-card media-video');
     const watch = button('', () => showVideo(video), 'media-card-launch');
+    watch.dataset.videoId = video.id;
+    watch.setAttribute('aria-haspopup', 'dialog');
     watch.setAttribute('aria-label', `Watch ${video.title}`);
     const art = image(video.thumbnail || `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`, video.title);
     const info = node('span', '', 'media-card-body');
@@ -974,6 +1005,7 @@ function youtubePage(target, params) {
       else topicLink.removeAttribute('aria-current');
     }
     category.disabled = creator.disabled = view === 'Connected search';
+    const terms = videoWords(input.value);
     const library = allVideos();
     let videos;
     if (view === 'Favorites') videos = state.favorites.map((id) => library.get(id)).filter(Boolean);
@@ -984,7 +1016,7 @@ function youtubePage(target, params) {
     else videos = [...library.values()].filter(video => Boolean(video.short) === (view === 'Shorts'));
     const results = view === 'Connected search' ? videos : videos.filter((video) =>
       (category.selectedIndex === 0 || video.tags.includes(category.value)) &&
-      (creator.selectedIndex === 0 || video.creator === creator.value) && matches(input.value, video.title, video.creator, ...video.tags));
+      (creator.selectedIndex === 0 || video.creator === creator.value) && matches(terms, video.title, video.creator, ...video.tags));
     currentResults = results;
     currentShorts = view === 'Shorts' ? results : [];
     scrollShorts.hidden = view !== 'Shorts';
@@ -1064,7 +1096,13 @@ function youtubePage(target, params) {
     }
   }
 
-  const changeFilters = () => {
+  const changeFilters = (event) => {
+    if (event.currentTarget === input) {
+      onlineRequest?.abort();
+      onlineResults = [];
+      if (view === 'Connected search') view = lastLocalView;
+      notice.textContent = '';
+    }
     page = 0;
     visiblePages = 1;
     draw();

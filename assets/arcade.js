@@ -17,6 +17,10 @@ const globalQuery = document.getElementById('global-query');
 const mobileMenu = document.getElementById('mobile-menu');
 const sidebar = document.getElementById('sidebar');
 const scrim = document.getElementById('drawer-scrim');
+const drawerClose = document.getElementById('drawer-close');
+const workspace = document.querySelector('.workspace');
+const skipLink = document.querySelector('.skip-link');
+const confirmDialog = document.getElementById('confirm-dialog');
 const announce = text => { document.getElementById('announcement').textContent = text; };
 const localCount = games.filter(game => game.local).length;
 const mainCatalogCount = games.filter(game => game.collection === 'github' || game.collection === 'base44-library').length;
@@ -170,10 +174,21 @@ function setDrawer(open, restoreFocus = false) {
   const active = open && drawerMedia.matches;
   document.body.classList.toggle('drawer-open', active);
   scrim.hidden = !active;
+  workspace.inert = active;
+  skipLink.inert = active;
+  sidebar.inert = drawerMedia.matches && !active;
   mobileMenu.setAttribute('aria-expanded', String(active));
-  mobileMenu.setAttribute('aria-label', active ? 'Close navigation' : 'Open navigation');
-  if (active) (sidebar.querySelector('[aria-current="page"]') || sidebar.querySelector('.brand')).focus();
-  else if (restoreFocus) mobileMenu.focus();
+  if (active) {
+    sidebar.setAttribute('role', 'dialog');
+    sidebar.setAttribute('aria-modal', 'true');
+    sidebar.setAttribute('aria-label', 'Site navigation');
+    (sidebar.querySelector('[aria-current="page"]') || drawerClose).focus();
+  } else {
+    sidebar.removeAttribute('role');
+    sidebar.removeAttribute('aria-modal');
+    sidebar.removeAttribute('aria-label');
+    if (restoreFocus) mobileMenu.focus();
+  }
 }
 
 function resolveGame(id) {
@@ -413,7 +428,7 @@ function renderLibrary(target, route) {
   }
   target.append(title);
 
-  if (source.length === 0) {
+  function libraryEmptyState() {
     const details = {
       favorites: ['No favorites yet', 'Use the heart on a game card to save it here.'],
       recent: ['No play history yet', 'Start a built-in game or visit its official game page.'],
@@ -422,7 +437,10 @@ function renderLibrary(target, route) {
     };
     const blank = empty(...(details[name] || ['No games here yet', 'Browse the full arcade library.']));
     blank.append(link('Browse games', '#games', 'button primary'));
-    target.append(blank);
+    return blank;
+  }
+  if (source.length === 0) {
+    target.append(libraryEmptyState());
     return fullscreen?.dispose;
   }
 
@@ -435,7 +453,8 @@ function renderLibrary(target, route) {
   search.placeholder = 'Find a title…';
   inputLabel.append(search);
   const category = selectField('Category', [['', 'All categories'], ...categories.map(value => [value, value])], params.get('category') || '');
-  const availability = selectField('Play option', [['', 'Any option'], ...Object.entries(labels)], isLocal ? 'local' : params.get('option') || '');
+  const availability = selectField('Play option', [['', 'Any option'], ['in-page', 'Playable here'], ...Object.entries(labels)],
+    isLocal ? 'local' : params.get('option') || '');
   const hasLaunches = Object.values(prefs.launches).some(count => count > 0);
   const sort = selectField('Sort by', [
     ['', name === 'favorites' ? 'Recently saved' : name === 'new' ? 'Newest added' : name === 'recent' ? 'Recently opened' : 'Catalog order'],
@@ -459,6 +478,11 @@ function renderLibrary(target, route) {
   let pageCount = 1;
   function draw() {
     if (name === 'favorites') source = records(prefs.favorites);
+    if (!source.length) {
+      controls.hidden = results.hidden = pagination.hidden = true;
+      listing.replaceChildren(libraryEmptyState());
+      return listing.querySelector('a');
+    }
     const filtered = queryLibrary(library, {
       source, search: search.value, category: category.field.value,
       availability: availability.field.value, sort: sort.field.value, launches: prefs.launches
@@ -468,10 +492,7 @@ function renderLibrary(target, route) {
     const start = (page - 1) * pageSize;
     const end = Math.min(start + pageSize, filtered.length);
     results.textContent = filtered.length ? `${start + 1}–${end} of ${filtered.length} games` : '0 games found';
-    const onFavorite = name === 'favorites' ? () => {
-      draw();
-      search.focus({ preventScroll: true });
-    } : undefined;
+    const onFavorite = name === 'favorites' ? () => draw().focus({ preventScroll: true }) : undefined;
     listing.replaceChildren(filtered.length
       ? grid(filtered.slice(start, end), '', onFavorite)
       : empty('No matching games', 'Try a shorter search or reset the category and play option.'));
@@ -479,6 +500,7 @@ function renderLibrary(target, route) {
     next.disabled = page >= pageCount;
     pagination.hidden = pageCount < 2;
     pageOutput.textContent = `Page ${page} of ${pageCount}`;
+    return search;
   }
 
   function changePage(delta) {
@@ -690,6 +712,7 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
     if (name === 'Google' && !googleReady) {
       disposeGoogle = renderGoogleSearch(googlePanel, {
         onQuery: setTitle,
+        initialQuery: mode === 'google' ? initialQuery : '',
         onArcadeSearch(query) {
           input.value = query;
           selectPanel('Web & YouTube');
@@ -891,7 +914,7 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
     showResults();
   });
 
-  if (initialQuery) {
+  if (initialQuery && mode !== 'google') {
     selectPanel('Web & YouTube');
     input.value = initialQuery.slice(0, input.maxLength);
     form.requestSubmit();
@@ -951,11 +974,10 @@ function renderSettings(target) {
     choice.prepend(check);
     home.append(choice);
   }
-  const dialog = document.getElementById('confirm-dialog');
   privacy.append(element('h2', '', 'Play history'), element('p', '', 'Clear favorites, recently played games, and local launch totals.'),
     action('Clear saved games', () => {
-      dialog.returnValue = '';
-      dialog.showModal();
+      confirmDialog.returnValue = '';
+      confirmDialog.showModal();
     }));
   row.append(visuals, home, privacy);
   target.append(row);
@@ -1028,21 +1050,31 @@ function renderGame(target, id) {
   }
 
   const restart = action('Restart', () => start(false), 'button', 'restart');
-  const fullscreen = action('Fullscreen', async () => {
+  async function toggleFullscreen() {
     try {
       if (document.fullscreenElement === stage) await document.exitFullscreen();
       else await stage.requestFullscreen();
     } catch {
       status.textContent = 'Fullscreen is unavailable in this browser context.';
     }
-  }, 'button', 'fullscreen');
+  }
+  const fullscreen = action('Fullscreen', toggleFullscreen, 'button', 'fullscreen');
+  const exitFullscreen = action('Exit fullscreen', toggleFullscreen, 'button player-fullscreen-exit', 'fullscreen');
   const canFullscreen = Boolean(document.fullscreenEnabled && stage.requestFullscreen);
   restart.disabled = true;
   fullscreen.disabled = true;
   controls.append(restart);
   if (canFullscreen) controls.append(fullscreen);
   document.addEventListener('fullscreenchange', () => {
-    fullscreen.replaceChildren(icon('fullscreen'), document.createTextNode(document.fullscreenElement === stage ? 'Exit fullscreen' : 'Fullscreen'));
+    if (document.fullscreenElement === stage) {
+      stage.append(exitFullscreen);
+      const gameFocus = stage.querySelector('.local-game__canvas') || stage.querySelector('.local-game, iframe');
+      (gameFocus || exitFullscreen).focus({ preventScroll: true });
+    } else if (exitFullscreen.isConnected) {
+      const restoreFocus = document.activeElement === exitFullscreen;
+      exitFullscreen.remove();
+      if (restoreFocus) fullscreen.focus({ preventScroll: true });
+    }
   }, { signal: scope.signal });
 
   showStart('Ready to play', game.local ? 'Start the built-in game to activate its controls.' : 'Open the publisher’s embedded player.');
@@ -1059,18 +1091,21 @@ function renderGame(target, id) {
     stage.replaceChildren();
     restart.disabled = true;
     fullscreen.disabled = true;
+    stage.setAttribute('aria-busy', 'true');
     status.textContent = 'Opening game…';
     if (game.local === true) {
       try {
         const { mountLocalGame } = await import(`./local-games.js${assetVersion}`);
         if (token !== revision) return;
         dispose = mountLocalGame(game.id, stage);
+        stage.removeAttribute('aria-busy');
         status.textContent = 'Built-in game ready.';
         restart.disabled = false;
         fullscreen.disabled = !canFullscreen;
         if (record) launch(game);
       } catch {
         if (token !== revision) return;
+        stage.removeAttribute('aria-busy');
         status.textContent = 'This game could not start.';
         showStart('Game could not load', 'Try opening the game again.');
       }
@@ -1088,6 +1123,7 @@ function renderGame(target, id) {
     }, 10000);
     function showFrameError(message) {
       dispose();
+      stage.removeAttribute('aria-busy');
       status.textContent = message;
       showStart('Game could not load', publisherUrl ? 'Try again or use the official game source.' : 'Try opening the game again.');
     }
@@ -1102,6 +1138,7 @@ function renderGame(target, id) {
         showFrameError('The built-in game file did not load.');
         return;
       }
+      stage.removeAttribute('aria-busy');
       status.textContent = game.local ? 'Built-in game ready.' : 'Publisher player requested. If the game does not appear, open the game source directly.';
       restart.disabled = false;
       fullscreen.disabled = !canFullscreen;
@@ -1135,6 +1172,7 @@ function randomGame() {
 async function renderRoute(focus = true) {
   const route = readRoute();
   const token = ++version;
+  if (confirmDialog.open) confirmDialog.close('cancel');
   if (current?.name === 'browse' && browserModule) browserModule.suspendBrowser?.(currentTarget);
   cleanup();
   cleanup = () => {};
@@ -1198,7 +1236,7 @@ async function renderRoute(focus = true) {
       case 'movies': {
         target.append(element('p', 'boot-note', 'Loading movies…'));
         const [{ renderFilms }, { watchDialog }] = await Promise.all([
-          import('./film-library.js'), import(`./media.js${assetVersion}`)
+          import(`./film-library.js${assetVersion}`), import(`./media.js${assetVersion}`)
         ]);
         if (token === version) cleanup = renderFilms(target, { watchDialog, collection: route.params.get('collection') });
         break;
@@ -1279,7 +1317,6 @@ document.querySelectorAll('[data-icon]').forEach(node => node.prepend(icon(node.
 document.body.classList.toggle('compact', prefs.compact);
 document.body.dataset.theme = prefs.theme;
 document.getElementById('random-game').addEventListener('click', randomGame);
-document.getElementById('random-game').setAttribute('aria-label', 'Random Game');
 document.getElementById('global-search').addEventListener('submit', event => {
   event.preventDefault();
   const search = globalQuery.value.trim();
@@ -1288,16 +1325,17 @@ document.getElementById('global-search').addEventListener('submit', event => {
 });
 mobileMenu.addEventListener('click', () => setDrawer(!document.body.classList.contains('drawer-open'), true));
 scrim.addEventListener('click', () => setDrawer(false, true));
+drawerClose.addEventListener('click', () => setDrawer(false, true));
 sidebar.addEventListener('click', event => {
   const item = event.target.closest('a');
   if (item && item.hash === location.hash && document.body.classList.contains('drawer-open')) setDrawer(false, true);
 });
-drawerMedia.addEventListener('change', () => setDrawer(false));
+drawerMedia.addEventListener('change', () => setDrawer(false, drawerMedia.matches && sidebar.contains(document.activeElement)));
 document.addEventListener('keydown', event => {
   const drawerOpen = document.body.classList.contains('drawer-open');
   if (event.key === 'Escape' && drawerOpen) setDrawer(false, true);
   if (event.key === 'Tab' && drawerOpen) {
-    const links = [...sidebar.querySelectorAll('a')];
+    const links = [...sidebar.querySelectorAll('a, button')];
     if (event.shiftKey && document.activeElement === links[0]) {
       event.preventDefault();
       links.at(-1).focus();
@@ -1313,11 +1351,11 @@ document.addEventListener('keydown', event => {
     globalQuery.select();
   }
 });
-document.querySelector('.skip-link').addEventListener('click', event => {
+skipLink.addEventListener('click', event => {
   event.preventDefault();
   content.focus();
 });
-document.getElementById('confirm-dialog').addEventListener('close', event => {
+confirmDialog.addEventListener('close', event => {
   if (event.currentTarget.returnValue !== 'clear') return;
   prefs = { ...prefs, favorites: [], recent: [], launches: Object.create(null) };
   savePreferences();

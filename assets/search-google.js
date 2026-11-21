@@ -6,7 +6,7 @@ function validEngineId(value) {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{5,80}(?::[A-Za-z0-9_-]{1,40})?$/.test(value);
 }
 
-export function renderGoogleSearch(target, { onArcadeSearch, onQuery }) {
+export function renderGoogleSearch(target, { onArcadeSearch, onQuery, initialQuery = '' }) {
   const root = document.createElement('section');
   root.className = 'web-search-google';
   root.innerHTML = `
@@ -17,6 +17,7 @@ export function renderGoogleSearch(target, { onArcadeSearch, onQuery }) {
       <button type="submit" class="button primary">Search</button>
       <button type="submit" class="button" value="google">Use Google engine</button>
     </form>
+    <div class="interaction-row"><a class="button" href="#games?option=in-page">Games you can play here</a></div>
     <details>
       <summary>Optional Google Search Engine</summary>
       <label>Public Search Engine ID <input class="field" name="engine" maxlength="121" autocomplete="off" spellcheck="false"></label>
@@ -87,6 +88,10 @@ export function renderGoogleSearch(target, { onArcadeSearch, onQuery }) {
   });
 
   target.append(root);
+  if (initialQuery) {
+    query.value = initialQuery.slice(0, query.maxLength);
+    queueMicrotask(() => { if (root.isConnected) form.requestSubmit(); });
+  }
   return () => {
     disposeGuide?.();
     root.remove();

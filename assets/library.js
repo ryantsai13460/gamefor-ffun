@@ -31,10 +31,11 @@ export function createLibrary(games) {
 export function queryLibrary(library, settings) {
   const { source = library.games, search = '', category = '', availability = '', sort = '', launches = {} } = settings;
   const terms = normalize(search).split(' ').filter(Boolean);
+  const playOptions = availability === 'in-page' ? ['local', 'embed'] : availability ? [availability] : [];
   const matches = source.filter(game => {
     const index = library.searchTerms.get(game.id);
     return (!category || game.category === category) &&
-      (!availability || gameAvailability(game) === availability) &&
+      (!playOptions.length || playOptions.includes(gameAvailability(game))) &&
       terms.every(term => index.includes(term));
   });
   switch (sort) {

@@ -1,5 +1,7 @@
 # Gamefor Ffun upgrade
 
+This page records the earlier `dev/platform-upgrade` work. The current release audit has the latest catalog counts, deployment checks, and third-party playback limitations. [Current verification](qa.md)
+
 ## Implementation plan
 
 1. Preserve the published site while developing on `dev/platform-upgrade`.

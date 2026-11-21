@@ -268,6 +268,7 @@
   color: var(--text, #f5f6f8);
   background: var(--panel, #171b22);
   overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .media-dialog::backdrop {
@@ -287,6 +288,15 @@
   font-size: clamp(1.15rem, 3vw, 1.6rem);
   line-height: 1.2;
   overflow-wrap: anywhere;
+}
+
+.media-dialog-header > div {
+  min-inline-size: 0;
+}
+
+.media-dialog-header > .button {
+  flex: none;
+  min-block-size: 44px;
 }
 
 .media-dialog-header p {
@@ -310,6 +320,8 @@
 .media-player:fullscreen {
   display: grid;
   place-items: center;
+  width: 100%;
+  height: 100%;
   border-radius: 0;
 }
 
