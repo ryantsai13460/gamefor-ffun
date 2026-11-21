@@ -1,6 +1,9 @@
-import { games } from "./catalog.js";
-import { mountLocalGame } from "./local-games.js";
 import { arcadeEmbed, browserApps, isMiniplayAddress } from "./embedded-content.js";
+
+const assetVersion = new URL(import.meta.url).search;
+const [{ games }, { mountLocalGame }] = await Promise.all([
+  import(`./catalog.js${assetVersion}`), import(`./local-games.js${assetVersion}`)
+]);
 
 const legacyViewer = "https://proxy-arcade-play.base44.app/browse";
 const home = { kind: "home", title: "Start page", address: "" };
@@ -27,7 +30,9 @@ const addressLimit = 2048;
 const savedLimits = { favorites: 40, history: 30 };
 const closedTabLimit = 8;
 const closedEntryLimit = 24;
+const youtubeApiUrl = "https://www.youtube.com/iframe_api";
 let viewerCount = 0;
+let youtubeApi;
 const builtInGames = games.filter(game => game.local);
 const embeddedGames = games.filter(arcadeEmbed);
 const gameEmbeds = new Map(
@@ -183,6 +188,37 @@ function external(url, label, className) {
   return link;
 }
 
+function loadYouTubeApi() {
+  if (window.YT?.Player) return Promise.resolve(window.YT);
+  if (youtubeApi) return youtubeApi;
+  youtubeApi = new Promise(resolve => {
+    const existing = document.querySelector(`script[src="${youtubeApiUrl}"]`);
+    const script = existing || element("script");
+    const onError = () => finish(null);
+    function finish(api) {
+      clearInterval(poll);
+      clearTimeout(timeout);
+      script.removeEventListener("error", onError);
+      if (!api && !existing) script.remove();
+      resolve(api);
+    }
+    const poll = setInterval(() => {
+      if (window.YT?.Player) finish(window.YT);
+    }, 125);
+    const timeout = setTimeout(() => finish(null), 6500);
+    script.addEventListener("error", onError, { once: true });
+    if (!existing) {
+      script.src = youtubeApiUrl;
+      script.async = true;
+      document.head.append(script);
+    }
+  }).then(api => {
+    if (!api) youtubeApi = undefined;
+    return api;
+  });
+  return youtubeApi;
+}
+
 function createBrowser() {
   const shell = element("section", "proxy-viewer");
   const heading = element("div", "proxy-heading");
@@ -198,10 +234,12 @@ function createBrowser() {
 
   const toolbar = element("div", "proxy-toolbar");
   const navigation = element("div", "proxy-navigation");
-  const stage = element("div", "proxy-stage");
   const viewerId = ++viewerCount;
-  stage.id = `proxy-tab-content-${viewerId}`;
-  stage.setAttribute("role", "tabpanel");
+  const panels = element("div", "proxy-panels");
+  const addressError = element("p", "proxy-address-error");
+  addressError.id = `proxy-address-error-${viewerId}`;
+  addressError.setAttribute("role", "alert");
+  addressError.hidden = true;
   const status = element("p", "proxy-status");
   status.setAttribute("role", "status");
   const statusRow = element("div", "proxy-status-row");
@@ -216,11 +254,20 @@ function createBrowser() {
   const closedTabs = recoverClosedTabs(window.location.href);
 
   let counter = 0;
-  const createTab = (entries = [home], index = 0) => ({ id: ++counter, entries, index });
+  function createTab(entries = [home], index = 0) {
+    const id = ++counter;
+    const panel = element("div", "proxy-tab-panel");
+    panel.id = `proxy-tab-content-${viewerId}-${id}`;
+    panel.setAttribute("role", "tabpanel");
+    panel.setAttribute("aria-labelledby", `proxy-tab-${viewerId}-${id}`);
+    panel.tabIndex = 0;
+    panel.hidden = true;
+    panels.append(panel);
+    return { id, entries, index, panel, preview: null, draft: undefined };
+  }
   let active = createTab();
   const items = [active];
   let present = false;
-  let releaseFrame;
   const current = () => active.entries[active.index];
 
   function storeBrowsing(message = "") {
@@ -306,7 +353,7 @@ function createBrowser() {
           const remove = control(`Remove ${value}`, "×", () => {
             browsing[kind] = browsing[kind].filter(item => item !== value);
             storeBrowsing(favorites ? "Favorite removed." : "History entry removed.");
-            if (favorites && current().kind === "home") showPage();
+            if (favorites && current().kind === "home") showPage(true);
             else syncFavorite();
             drawSaved();
             close.focus();
@@ -346,7 +393,7 @@ function createBrowser() {
       select.id = `proxy-tab-${viewerId}-${tab.id}`;
       select.setAttribute("role", "tab");
       select.setAttribute("aria-selected", String(tab === active));
-      select.setAttribute("aria-controls", stage.id);
+      select.setAttribute("aria-controls", tab.panel.id);
       select.setAttribute("aria-keyshortcuts", "Delete");
       select.tabIndex = tab === active ? 0 : -1;
       select.addEventListener("keydown", event => {
@@ -371,7 +418,6 @@ function createBrowser() {
     });
     tabs.replaceChildren(...entries);
     const tabButton = tabs.querySelector(`[id="proxy-tab-${viewerId}-${active.id}"]`);
-    stage.setAttribute("aria-labelledby", tabButton.id);
     if (focus) {
       tabButton.focus({ preventScroll: true });
       tabButton.closest(".proxy-tab").scrollIntoView?.({ block: "nearest", inline: "nearest" });
@@ -397,6 +443,8 @@ function createBrowser() {
       saveClosedTabs();
     }
     items.splice(index, 1);
+    unloadTab(tab);
+    tab.panel.remove();
     if (!items.length) items.push(createTab());
     if (active === tab) {
       active = items[Math.min(index, items.length - 1)];
@@ -431,11 +479,12 @@ function createBrowser() {
   }
 
   function visit(page) {
+    active.draft = undefined;
     if (page.kind !== current().kind || page.address !== current().address) {
       active.entries.splice(active.index + 1, Infinity, page);
       active.index++;
     }
-    showPage();
+    showPage(true);
     renderTabs();
   }
 
@@ -443,7 +492,8 @@ function createBrowser() {
     const index = active.index + offset;
     if (!active.entries[index]) return;
     active.index = index;
-    showPage();
+    active.draft = undefined;
+    showPage(true);
     renderTabs();
   }
 
@@ -453,10 +503,24 @@ function createBrowser() {
       recordVisit(page);
       visit(page);
     } else {
-      address.setAttribute("aria-invalid", "true");
-      status.textContent = "Enter a public HTTPS address or a search term.";
-      address.focus();
+      showAddressError(value);
     }
+  }
+
+  function clearAddressError() {
+    address.removeAttribute("aria-invalid");
+    address.removeAttribute("aria-describedby");
+    addressError.hidden = true;
+  }
+
+  function showAddressError(value) {
+    active.draft = typeof value === "string" ? value.slice(0, addressLimit) : "";
+    address.value = active.draft;
+    address.setAttribute("aria-invalid", "true");
+    address.setAttribute("aria-describedby", addressError.id);
+    addressError.textContent = "Enter a public HTTPS address or a search term.";
+    addressError.hidden = false;
+    address.focus();
   }
 
   function landing() {
@@ -487,7 +551,11 @@ function createBrowser() {
     }
     apps.append(element("h2", "", "Apps"), appLinks);
     const playable = element("section", "proxy-playable");
-    playable.append(element("h2", "", "Play inside the arcade"));
+    const playableHeading = element("div", "proxy-playable-heading");
+    const playableGames = element("a", "text-action", "Games you can play here");
+    playableGames.href = "#games?option=in-page";
+    playableHeading.append(element("h2", "", "Play inside the arcade"), playableGames);
+    playable.append(playableHeading);
     for (const [label, entries, destination] of [
       ["Built-in games", builtInGames, game => `arcade:${game.id}`],
       ["Official game players", embeddedGames, arcadeEmbed]
@@ -557,12 +625,16 @@ function createBrowser() {
     return content;
   }
 
-  function mountFrame(page) {
+  function mountFrame(tab, page) {
+    const stage = tab.panel;
+    const preview = tab.preview;
     const frame = element("iframe", "proxy-frame");
     const local = page.kind === "local";
     const youtube = page.kind === "youtube";
     const controller = new window.AbortController();
     const listenerOptions = { signal: controller.signal, once: true };
+    let player;
+    let frameResponded = false;
     frame.title = youtube ? "YouTube video player" : page.title;
     frame.referrerPolicy = "strict-origin-when-cross-origin";
     frame.allowFullscreen = true;
@@ -579,97 +651,169 @@ function createBrowser() {
       frame.referrerPolicy = "no-referrer";
       frame.setAttribute("sandbox", "allow-scripts");
     }
-    progress.hidden = false;
-    status.textContent = `Opening ${page.title}…`;
+    preview.frame = frame;
+    preview.message = `Opening ${page.title}…`;
+    preview.busy = true;
+    preview.source = local ? "" : page.url;
     stage.setAttribute("aria-busy", "true");
-    source.href = page.url;
-    source.hidden = local;
-    const finish = message => {
+    const update = () => {
+      if (tab === active) syncPreview();
+    };
+    const stopPlayer = () => {
+      try { player?.destroy(); } catch {}
+      player = undefined;
+    };
+    const finish = (message, dismissible = false) => {
       clearTimeout(timer);
-      progress.hidden = true;
+      preview.busy = false;
+      preview.message = message;
+      preview.dismissible = dismissible;
       stage.removeAttribute("aria-busy");
-      status.textContent = message;
+      update();
     };
     const fail = (heading, message) => {
       controller.abort();
-      source.hidden = false;
-      finish("");
+      stopPlayer();
+      preview.source = page.url;
+      preview.frame = null;
       const panel = element("div", "proxy-direct");
       panel.append(element("h2", "", heading), element("p", "", message));
       stage.replaceChildren(panel);
-      syncFullscreen();
+      finish(heading);
     };
-    const timer = setTimeout(() => fail("Preview timed out", "Try Refresh to start again, or open the original in a new tab."), 10000);
+    const unverified = "Preview unverified. If it stays blank, the site may block embedding. Open the original in a new tab.";
+    const timer = setTimeout(() => {
+      if (frameResponded && youtube) finish("YouTube playback could not be verified. Open the video on YouTube if it does not play here.", true);
+      else fail("Preview timed out", "Try Refresh to start again, or open the original in a new tab.");
+    }, 10000);
     frame.addEventListener("load", () => {
+      frameResponded = true;
       if (local) {
         const ready = Boolean(frame.contentDocument?.getElementById("star"));
         if (ready) finish("The game is ready.");
         else fail("The local game could not load", "Try Refresh, or open the game in a new tab.");
-      } else {
-        finish("If the preview is blank, the site may block embedding. Go back or open it in a new tab.");
-      }
+      } else if (!youtube) finish(unverified, true);
     }, listenerOptions);
     frame.addEventListener("error", () => {
       fail("Preview unavailable", "Try Refresh, or open the original in a new tab.");
     }, listenerOptions);
-    frame.src = page.embed || page.url;
+    const url = new URL(page.embed || page.url);
+    if (youtube) {
+      url.searchParams.set("enablejsapi", "1");
+      url.searchParams.set("playsinline", "1");
+      url.searchParams.set("origin", window.location.origin);
+    }
+    frame.src = url.href;
     stage.append(frame);
+    if (youtube) loadYouTubeApi().then(api => {
+      if (!api || controller.signal.aborted || !frame.isConnected) return;
+      player = new api.Player(frame, {
+        events: {
+          onReady: () => {
+            if (!controller.signal.aborted) finish("YouTube player ready. Use the player’s Play control.", true);
+          },
+          onError: () => {
+            if (!controller.signal.aborted) fail("YouTube playback unavailable", "Open the original video on YouTube for details.");
+          },
+          onStateChange: event => {
+            if (event.data === 1 && !controller.signal.aborted) finish("The video is playing in YouTube.", true);
+          }
+        }
+      });
+    }).catch(() => {});
     return () => {
       controller.abort();
       clearTimeout(timer);
+      stopPlayer();
       frame.remove();
     };
   }
 
   function syncFullscreen() {
     const fullscreen = document.fullscreenElement === windowPanel;
-    const player = stage.querySelector("iframe, .local-game");
+    const player = active.panel.querySelector("iframe, .local-game");
     const label = fullscreen ? "Exit fullscreen" : "Fullscreen";
     expand.setAttribute("aria-label", label);
     expand.title = label;
-    expand.disabled = !fullscreen && (!player || !document.fullscreenEnabled || !windowPanel.requestFullscreen);
+    expand.disabled = !fullscreen && (!player || active.preview?.busy || !document.fullscreenEnabled || !windowPanel.requestFullscreen);
   }
 
-  function showPage() {
-    releaseFrame?.();
-    releaseFrame = undefined;
-    stage.replaceChildren();
-    stage.removeAttribute("aria-busy");
-    progress.hidden = true;
-    source.hidden = true;
-    source.removeAttribute("href");
-    status.textContent = "";
+  function syncPreview() {
+    const preview = active.preview;
+    status.textContent = preview?.message || "";
+    progress.hidden = !preview?.busy;
+    source.hidden = !preview?.source;
+    dismissPreview.hidden = !preview?.dismissible;
+    if (preview?.source) source.href = preview.source;
+    else source.removeAttribute("href");
+    syncFullscreen();
+  }
+
+  function unloadTab(tab) {
+    tab.preview?.release?.();
+    tab.preview = null;
+    tab.panel.replaceChildren();
+    tab.panel.removeAttribute("aria-busy");
+  }
+
+  function hidePreview() {
+    const tab = active;
     const page = current();
-    address.value = page.address;
-    address.removeAttribute("aria-invalid");
+    unloadTab(tab);
+    tab.preview = { source: page.url };
+    const panel = element("div", "proxy-direct");
+    panel.append(element("h2", "", "Preview hidden"), element("p", "", "Open the original in a new tab or use Refresh to try the preview again."));
+    tab.panel.append(panel);
+    syncPreview();
+    source.focus();
+  }
+
+  function showPage(reset = false) {
+    for (const tab of items) {
+      const selected = tab === active;
+      tab.panel.hidden = !selected;
+      tab.panel.classList.toggle("proxy-stage", selected);
+      tab.preview?.frame?.classList.toggle("proxy-frame", selected);
+    }
+    const stage = active.panel;
+    const page = current();
+    address.value = active.draft ?? page.address;
+    clearAddressError();
     back.disabled = active.index === 0;
     forward.disabled = active.index === active.entries.length - 1;
     refresh.disabled = page.kind !== "local" && page.kind !== "built-in" && !page.embed;
     homeButton.disabled = page.kind === "home";
     syncFavorite();
 
-    if (page.kind === "home") {
-      stage.append(landing());
-    } else if (page.kind === "built-in") {
-      try {
-        releaseFrame = mountLocalGame(page.id, stage);
-      } catch {
-        const panel = element("div", "proxy-direct");
-        panel.append(element("h2", "", "The game did not start"), element("p", "", "Try Refresh to start the game again."));
-        stage.replaceChildren(panel);
+    if (reset || !active.preview) {
+      unloadTab(active);
+      const preview = active.preview = {};
+      if (page.kind === "home") {
+        stage.append(landing());
+      } else if (page.kind === "built-in") {
+        try {
+          preview.release = mountLocalGame(page.id, stage);
+        } catch {
+          const panel = element("div", "proxy-direct");
+          panel.append(element("h2", "", "The game did not start"), element("p", "", "Try Refresh to start the game again."));
+          stage.replaceChildren(panel);
+        }
+      } else if (page.kind === "local" || page.embed) {
+        preview.release = mountFrame(active, page);
+      } else {
+        stage.append(directPage(page));
       }
-    } else if (page.kind === "local" || page.embed) {
-      releaseFrame = mountFrame(page);
-    } else {
-      stage.append(directPage(page));
     }
-    syncFullscreen();
+    syncPreview();
   }
 
   const add = control("New tab", "+", addTab);
   const back = control("Back", "‹", () => navigate(-1));
   const forward = control("Forward", "›", () => navigate(1));
-  const refresh = control("Refresh", "↻", showPage);
+  const refresh = control("Refresh", "↻", () => {
+    active.draft = undefined;
+    showPage(true);
+  });
   const homeButton = control("Home", "⌂", () => visit(home));
   const saveFavorite = control("Save current page to favorites", "☆", toggleFavorite);
   saveFavorite.classList.add("proxy-save-favorite");
@@ -692,7 +836,10 @@ function createBrowser() {
   address.autocomplete = "off";
   address.spellcheck = false;
   address.setAttribute("aria-label", "Address or search query");
-  address.addEventListener("input", () => address.removeAttribute("aria-invalid"));
+  address.addEventListener("input", () => {
+    active.draft = address.value;
+    clearAddressError();
+  });
   const go = element("button", "button proxy-action", "Go");
   go.type = "submit";
   form.addEventListener("submit", event => {
@@ -713,10 +860,13 @@ function createBrowser() {
   savedTools.append(duplicate, reopen, favorites, history);
   const panelActions = element("div", "proxy-panel-actions");
   panelActions.append(saveFavorite, expand);
+  const dismissPreview = control("Hide preview", "Hide preview", hidePreview);
+  dismissPreview.className = "button proxy-preview-dismiss";
+  dismissPreview.hidden = true;
   tabsRow.append(tabs, add, savedTools);
   toolbar.append(navigation, form, panelActions);
-  statusRow.append(status, source);
-  windowPanel.append(tabsRow, toolbar, statusRow, progress, stage);
+  statusRow.append(status, source, dismissPreview);
+  windowPanel.append(tabsRow, toolbar, addressError, statusRow, progress, panels);
   const legacy = element("details", "proxy-legacy");
   legacy.append(element("summary", "", "Legacy Base44 viewer"),
     external(legacyViewer, "Open Base44 in new tab", "proxy-source"));
@@ -725,16 +875,20 @@ function createBrowser() {
   return {
     shell,
     show(initialAddress) {
-      if (!present) {
+      const firstShow = !present;
+      present = true;
+      const destination = initialAddress ? resolveBrowserAddress(initialAddress, window.location.href) : null;
+      if (destination && (destination.address !== current().address || destination.kind !== current().kind)) {
+        recordVisit(destination);
+        visit(destination);
+      } else if (firstShow) {
         renderTabs();
         showPage();
       }
-      present = true;
-      if (initialAddress) submit(initialAddress);
+      if (initialAddress && !destination) showAddressError(initialAddress);
     },
     suspend() {
-      releaseFrame?.();
-      releaseFrame = undefined;
+      for (const tab of items) unloadTab(tab);
       windowPanel.querySelector("dialog[open]")?.close();
       present = false;
     },

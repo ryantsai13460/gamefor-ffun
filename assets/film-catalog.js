@@ -40,7 +40,8 @@ export const filmCatalog = [
     "license": "Blender Open Movie credits",
     "source": "https://studio.blender.org/projects/charge/",
     "fullVideo": "UXqq0ZvbOnk",
-    "trailerLink": "https://studio.blender.org/projects/charge/?asset=6233"
+    "trailerLink": "https://studio.blender.org/projects/charge/?asset=6233",
+    "trailerLabel": "Official teaser"
   },
   {
     "id": "sintel",
@@ -147,7 +148,7 @@ export const filmCatalog = [
     "license": "Blender Open Movie credits",
     "source": "https://studio.blender.org/projects/caminandes-3/",
     "fullVideo": "SkVqJ1SGeL0",
-    "trailer": "6U1bsPCLLEg"
+    "trailerLink": "https://studio.blender.org/projects/caminandes-3/?asset=2428"
   },
   {
     "id": "caminandes-2",
@@ -286,6 +287,7 @@ export const filmCatalog = [
     "duration": "9 min",
     "source": "https://www.nfb.ca/film/big_snit/",
     "embed": "https://www.nfb.ca/film/big_snit/embed/player/",
+    "regionLimited": true,
     "license": "Official NFB stream"
   },
   {
@@ -361,6 +363,7 @@ export const filmCatalog = [
     "duration": "7 min",
     "source": "https://www.nfb.ca/film/special_delivery/",
     "embed": "https://www.nfb.ca/film/special_delivery/embed/player/",
+    "regionLimited": true,
     "license": "Official NFB stream"
   },
   {
@@ -376,6 +379,7 @@ export const filmCatalog = [
     "duration": "8 min",
     "source": "https://www.nfb.ca/film/neighbours_voisins/",
     "embed": "https://www.nfb.ca/film/neighbours_voisins/embed/player/",
+    "regionLimited": true,
     "license": "Official NFB stream"
   },
   {
@@ -391,6 +395,7 @@ export const filmCatalog = [
     "duration": "10 min",
     "source": "https://www.nfb.ca/film/the_street/",
     "embed": "https://www.nfb.ca/film/the_street/embed/player/",
+    "regionLimited": true,
     "license": "Official NFB stream"
   },
   {
@@ -456,9 +461,9 @@ export const filmCatalog = [
     "collection": "shorts",
     "genres": ["Animation", "Comedy", "Family"],
     "description": "The Pikmin spy on Captain Olimar and jump to conclusions about a suspicious kitchen task.",
-    "art": "https://i.ytimg.com/vi/HEbPAXTYhcg/hqdefault.jpg",
+    "art": "https://play.nintendo.com/images/pikmin-juicer-video-1x1.a25bebd1.67f98f7b58b63e27.jpg",
     "credit": "Nintendo",
-    "source": "https://www.nintendo.com/en-gb/Games/Characters-hub/Pikmin-Hub/Pikmin-Garden-2549411.html",
+    "source": "https://play.nintendo.com/media/videos/pikmin-3-deluxe-the-night-juicer/",
     "fullVideo": "HEbPAXTYhcg",
     "license": "Official creator upload"
   },
@@ -469,7 +474,7 @@ export const filmCatalog = [
     "collection": "shorts",
     "genres": ["Animation", "Adventure", "Family"],
     "description": "Tiny Pikmin work together after a treasure hunt gets one of their own stuck in a bottle.",
-    "art": "https://i.ytimg.com/vi/ANpP2PebOW0/hqdefault.jpg",
+    "art": "https://play.nintendo.com/images/pikmin-treasures_video_1x1.a25bebd1.67f98f7b58b63e27.jpg",
     "credit": "Nintendo",
     "source": "https://play.nintendo.com/media/videos/pikmin-short-movies-treasure-in-a-bottle/",
     "fullVideo": "ANpP2PebOW0",
@@ -482,7 +487,7 @@ export const filmCatalog = [
     "collection": "shorts",
     "genres": ["Animation", "Comedy", "Adventure"],
     "description": "A construction site gives the Pikmin new things to explore and plenty of reasons to work as a team.",
-    "art": "https://i.ytimg.com/vi/233Z0WhDrak/hqdefault.jpg",
+    "art": "https://play.nintendo.com/images/pikmin-occhazard-1x1.a25bebd1.67f98f7b58b63e27.jpg",
     "credit": "Nintendo",
     "source": "https://play.nintendo.com/media/videos/pikmin-short-movies-occupational-hazards/",
     "fullVideo": "233Z0WhDrak",
@@ -495,10 +500,11 @@ export const filmCatalog = [
     "collection": "shorts",
     "genres": ["Animation", "Romance"],
     "description": "A shy boy’s heart takes off on its own after he spots his crush.",
-    "art": "https://i.ytimg.com/vi/2REkk9SCRn0/hqdefault.jpg",
+    "art": "https://i.vimeocdn.com/video/647553370-554cc5a66178a86599102dad188b386ddc5dfbb32a62916a66cb13aa1ed797df-d_295x166?region=us",
     "credit": "Beth David and Esteban Bravo",
-    "source": "https://www.youtube.com/watch?v=2REkk9SCRn0",
+    "source": "https://vimeo.com/227690432",
     "fullVideo": "2REkk9SCRn0",
+    "trailerLink": "https://vimeo.com/227692718",
     "license": "Official creator upload"
   },
   {
@@ -521,7 +527,7 @@ export const filmCatalog = [
     "collection": "trailers",
     "genres": ["Animation", "Adventure", "Family"],
     "description": "Mario and Luigi enter the Mushroom Kingdom, where a new group of allies helps them face Bowser.",
-    "art": "https://images.contentstack.io/v3/assets/blt13adb7e2033fcee5/blt308a891af962ff36/692d2053bddc8853151ffe00/TheSuperMarioBrosMovie_keyart_mobile_3840x2160.jpg?width=2560",
+    "art": "https://images.contentstack.io/v3/assets/blt13adb7e2033fcee5/blt135b764d67ec50f8/692d204b4d9d867d41ffe24e/TheSuperMarioBrosMovie_keyart_desktop_2000x3000.jpg?width=600",
     "credit": "Illumination and Nintendo",
     "source": "https://www.universalpicturesathome.com/movies/the-super-mario-bros-movie",
     "trailer": "TnGl01FkMMo",

@@ -91,8 +91,10 @@
   min-height: 44px;
   padding: .45rem .8rem;
   border-radius: .45rem;
-  touch-action: none;
+  touch-action: manipulation;
 }
+
+.local-game__pad .local-game__button { touch-action: none; }
 
 .local-game__button--primary {
   background: var(--game-accent);
@@ -106,7 +108,7 @@
 }
 
 .local-game__button:hover:not(:disabled),
-.local-game__tile:hover:not(:disabled) {
+.local-game__tile:hover:not(:disabled, [aria-disabled="true"]) {
   border-color: var(--game-accent);
 }
 
@@ -137,6 +139,8 @@
 .local-game__tile:disabled {
   opacity: 1;
 }
+
+.local-game :is(.local-game__tile, .local-game__reaction)[aria-disabled="true"] { cursor: default; }
 
 .local-game__tile[aria-pressed="true"],
 .local-game__tile.is-matched {

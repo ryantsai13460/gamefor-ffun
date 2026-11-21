@@ -1,30 +1,31 @@
-# Verification
+# Arcade release verification
 
-The previous GitHub entry page contained duplicate document markup and ended inside an unclosed script. The truncated script prevented two built-in games from registering. Catalog additions were spread across scripts, and existing source and player links had inconsistent verification. The upgrade consolidates navigation and catalog data and restores the local engines, including the historically published Memory Match game.
+## Audit findings
 
-## Passed
+Gamefor Ffun uses plain HTML, CSS, and JavaScript with optional provider services behind a Cloudflare Worker. The two legacy entry files were blank. The mobile drawer allowed focus into the covered page, and navigating back from Settings could leave the clear-saved-games dialog open. Fullscreen hid the game player’s exit control and could leave keyboard focus outside the game. Removing the last favorite produced a search error message.
 
-The suite includes 16 Node tests, 13 gateway tests, and 36 Chromium browser tests. Separate checks exercised game rules, media imports, and real CPU model inference, streaming, and cancellation.
+Proxy Gemini lost game state on tab switches, made a stale preview request on some deep links, and could erase an address error when an earlier frame finished. The film player treated an iframe load event as confirmed playback, even when NFB delivered a region notice. The media library could keep old service results after editing its search. Some local games lost keyboard focus or ignored quick taps on their controls.
 
-| Area | Checks |
+The update preserves the 558-entry catalog, game IDs, native site routes, and existing content. Legacy links now preserve their query and game route. The drawer contains focus, the confirmation closes on navigation, the game player keeps an exit button and keyboard control, and Proxy Gemini keeps a tab's page when switching. Media routes distinguish a usable player from an unconfirmed embed and offer the official destination.
+
+## Checks passed
+
+The release suite includes 16 Node tests, 15 gateway tests, and 39 Chromium tests. Independent checks covered the local game inputs, the full paginated catalog, authorized and blocked frames, mobile layout, and gateway setup in a local Worker runtime.
+
+| Area | Coverage |
 | --- | --- |
-| Catalog integrity | 558 unique IDs and normalized titles, including 548 reconciled from the two main libraries. Checked category and availability counts, stable aliases, local asset paths, and HTTPS source links. |
-| Game availability | 20 built-in entries, 2 publisher-provided embed routes, 534 external source links, and 2 entries with unverified play links. Browser tests verify the arcade opens documented app and game embeds and keeps Miniplay out of Proxy Gemini. |
-| Library | All navigation routes, title and punctuation search, categories, sort, pagination, favorites persistence, recently played, trending from device launch totals, and random game. |
-| Player | All 20 built-in games launch in Chromium. Checked fullscreen, restart, keyboard interaction, standalone click-to-score, and puzzle progression. Targeted tests covered the Harbor Dispatch delivery sequence and Tidal Rescue fuel and crew rules. |
-| Viewer and Play Hub | Checked tabs, duplicate and reopen actions, history, refresh, native fullscreen, in-page navigation, a browser-enforced frame restriction, saved device checks, and JSON report export. Preview responses were controlled in the browser tests. |
-| Media | Verified 600 additions across two batches through official YouTube oEmbed metadata and public creator indexes. Tests check 1,253 unique entries, ten populated topics, and 48 cinema listings. |
-| Music | Browser tests cover 550 chart songs, 69 creator lyric videos, channel filtering, covers without photos, the 7clouds Housewife and Dracula embeds, and a title-and-artist lyric video search. Metadata verifies title, uploader, and creator attribution. Full footage could not be reviewed in the test environment. |
-| Shorts and Web Search | Browser tests cover Shorts navigation, tab state, 116 violin results, contextual AI follow-ups, essay typo handling, writing resources, model-generated and built-in essay guidance, sandboxed Google results, native fullscreen, and the Territorial.io preview. Generated answers were tested with model fixtures. |
-| blip.ai | Chromium tests cover saved context, cancellation, local replies, attached PDF text, exported transcripts, pinned chats, copied code, persisted hosted research sources, and starting an on-device model and retrying a failed turn. Model setup also tests an explicitly chosen CPU fallback. Gateway fixtures check Advanced replies. |
-| Layout and accessibility | Chromium at 1440px, 768px, and 390px. Checked horizontal overflow, mobile drawer dismissal and keyboard focus, and image placeholders with third-party images blocked. |
+| Catalog | All 558 game cards across 24 pages, including the 548 recovered entries. Preserved the 551 titles in the earlier workspace ZIP and all later originals. Checked IDs, categories, titles, aliases, and availability. |
+| Artwork and sources | 555 matched images and three title-card fallbacks. Added eight gameplay screenshots and twelve publisher or distributor images. Verified missing-image treatment, 536 URL responses, and 78 source pages by title. |
+| Library | Featured games, search with varied queries, category and play filters, sorting by name/category/local launches, pagination and Back state, favorites, recently played, new games, and Random Game. |
+| Player | All 20 built-in entries started and restarted in Chromium. Exercised keyboard and pointer input, six 390px touch cases, missing Canvas recovery, timer cleanup, and fullscreen entry, exit, and keyboard focus. Traced publisher embed URLs and direct links for the two documented Fancade players. |
+| Navigation | All 19 sidebar destinations and layouts from 320px through 1440px. Checked menu keyboard focus, Close and Escape, responsive artwork, modal dismissal, legacy URLs, preferences, and application errors. |
+| Proxy Gemini and Web Search | Preview and fallback links, browser-enforced frame restrictions, address errors, tabs and state, Back/Forward/Refresh/Home, fullscreen, Google’s sandboxed result frame, AI Help, and essay results. **Games you can play here** lists 20 local games and two approved embeds from Google and Proxy Gemini. |
+| YouTube and movies | Search and filtering, 1,253 videos, Shorts pagination and player cleanup, correct trailer and full-film destinations for 48 films, provider fallback, and mobile playback controls. Official movie YouTube metadata was checked separately. |
+| Blip and gateway | Saved chats, model setup and retry, local attachments, hosted SSE and queries with fixture responses, consent and access-code checks, disabled browser storage, Unicode budgets, timeouts, and streaming failures. Wrangler dry-run and local HTTP checks passed. |
 
-## Limits
+## Verification limits
 
-The project brief referenced a 548-entry ZIP. The available attachment was the text brief, so the 548 entries were reconciled from GitHub and Base44. The supplied archive would be needed for an item-by-item comparison.
-
-External gameplay and streaming depend on the publisher, device, region, and network. The test browser received certificate or connection errors when opening Miniplay, the YouTube Shorts player, and the Sintel trailer. Their playable streams and complete external game sessions remain unverified. The application keeps the official links available. Third-party image requests also failed in that test browser, so the layout and failure treatment were verified with local artwork and placeholders.
-
-YouTube creator imports and connected search were exercised with test responses. A live user API key or configured search service is required to test those integrations against the production providers.
-
-The portable blip.ai model loaded its pinned weights and compiled in isolated Chromium using software WebGPU. Generation exceeded the test timeout on that software adapter. Local replies and file processing ran in Chromium, and simulated model tests covered cancellation, context, and attachment privacy.
+- The user upload is a written brief. Catalog reconciliation uses the GitHub and Base44 records and the earlier upgrade archive available in the workspace.
+- HTTP responses verify link reachability. The catalog has 20 built-in games, two documented embed routes, 534 external game-page entries, and two entries awaiting a verified play URL. The external game sessions remain unverified.
+- The browser enforced the blocked-frame test policy. YouTube, Blender, and NFB browser playback checks in this environment encountered TLS trust errors and used controlled provider responses to test the application. Four NFB URLs served regional notices during the official link audit.
+- Hosted provider integrations were tested with fixtures and an authorized local gateway. Live hosted credentials, account quotas, and billing require the operator’s own provider configuration.

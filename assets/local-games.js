@@ -12,6 +12,7 @@ const arrowControls = [
   ["←", "left"], ["↑", "up"], ["↓", "down"], ["→", "right"]
 ];
 const directionNames = { left: "Left", right: "Right", up: "Up", down: "Down" };
+const gridOffsets = { left: [0, -1], right: [0, 1], up: [-1, 0], down: [1, 0] };
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -40,37 +41,71 @@ function preferDirection(event, spaceIsUp = false) {
   return directions[event.key.toLowerCase()];
 }
 
-function ticTacToe({ surface, status }) {
+function enableGridNavigation(root, board, tiles, columns, signal) {
+  let focusIndex = 0;
+  tiles.forEach((tile, index) => { tile.tabIndex = index ? -1 : 0; });
+  board.addEventListener("focusin", event => {
+    const index = tiles.indexOf(event.target);
+    if (index < 0 || index === focusIndex) return;
+    tiles[focusIndex].tabIndex = -1;
+    tiles[index].tabIndex = 0;
+    focusIndex = index;
+  }, { signal });
+  root.addEventListener("keydown", event => {
+    if (event.target !== root && !board.contains(event.target)) return;
+    const direction = preferDirection(event);
+    if (!Object.hasOwn(gridOffsets, direction)) return;
+    event.preventDefault();
+    if (event.target === root) {
+      tiles[focusIndex].focus({ preventScroll: true });
+      return;
+    }
+    const [vertical, horizontal] = gridOffsets[direction];
+    const row = Math.floor(focusIndex / columns) + vertical;
+    const column = focusIndex % columns + horizontal;
+    if (row >= 0 && column >= 0 && column < columns) {
+      tiles[row * columns + column]?.focus({ preventScroll: true });
+    }
+  }, { signal });
+}
+
+function ticTacToe({ root, surface, status, signal }) {
   const board = makeBoard(surface, 3);
   const cells = Array(9).fill("");
   let turn = "X";
+  let finished = false;
   const wins = [
     [0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6],
     [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]
   ];
 
   status.textContent = "X goes first.";
-  cells.forEach((_, slot) => {
+  const tiles = cells.map((_, slot) => {
     const location = "Row " + (Math.floor(slot / 3) + 1) + ", column " + (slot % 3 + 1);
     const cell = button("", () => {
+      if (finished || cells[slot]) return;
       cells[slot] = turn;
       cell.textContent = turn;
       cell.setAttribute("aria-label", location + ": " + turn);
-      cell.disabled = true;
+      cell.setAttribute("aria-disabled", "true");
 
       if (wins.some(line => line.every(index => cells[index] === turn))) {
         status.textContent = turn + " wins!";
-        board.querySelectorAll("button").forEach(node => { node.disabled = true; });
+        finished = true;
       } else if (cells.every(Boolean)) {
         status.textContent = "It's a draw!";
+        finished = true;
       } else {
         turn = turn === "X" ? "O" : "X";
         status.textContent = turn + "'s turn.";
       }
+      if (finished) tiles.forEach(tile => { tile.setAttribute("aria-disabled", "true"); });
     }, "local-game__tile");
     cell.setAttribute("aria-label", location + ": empty");
-    board.append(cell);
+    return cell;
   });
+  board.append(...tiles);
+  enableGridNavigation(root, board, tiles, 3, signal);
 }
 
 function game2048({ root, surface, controls, status, signal }) {
@@ -145,12 +180,14 @@ function game2048({ root, surface, controls, status, signal }) {
 
 function reactionGame({ surface, status }) {
   let start = 0;
+  let complete = false;
   const target = button("Wait for green…", () => {
-    if (target.disabled) return;
+    if (complete) return;
+    complete = true;
     clearTimeout(timer);
     const elapsed = start ? Math.round(performance.now() - start) + " ms" : "Too early!";
     target.textContent = elapsed;
-    target.disabled = true;
+    target.setAttribute("aria-disabled", "true");
     status.textContent = elapsed + " Select Restart to try again.";
   }, "local-game__reaction");
   surface.append(target);
@@ -188,13 +225,13 @@ function switchboard({ surface, status }) {
   draw();
 }
 
-function pixelLogic({ surface, status }) {
+function pixelLogic({ root, surface, status, signal }) {
   const board = makeBoard(surface, 5);
   const pattern = ["00100", "01110", "11111", "01110", "10101"];
   const puzzle = pattern.join("");
   const filled = Array(25).fill(false);
 
-  filled.forEach((_, index) => {
+  const tiles = filled.map((_, index) => {
     const row = Math.floor(index / 5);
     const column = index % 5;
     const tile = button("", () => {
@@ -206,8 +243,10 @@ function pixelLogic({ surface, status }) {
     }, "local-game__tile");
     tile.setAttribute("aria-label", "Row " + (row + 1) + ", column " + (column + 1));
     tile.setAttribute("aria-pressed", "false");
-    board.append(tile);
+    return tile;
   });
+  board.append(...tiles);
+  enableGridNavigation(root, board, tiles, 5, signal);
 
   const clue = element("details", "local-game__clue");
   const summary = element("summary", "", "Show clues");
@@ -219,7 +258,7 @@ function pixelLogic({ surface, status }) {
   status.textContent = "Fill in the picture using the clues.";
 }
 
-function memoryMatch({ surface, status }) {
+function memoryMatch({ root, surface, status, signal }) {
   const board = makeBoard(surface, 4);
   const values = [1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8];
   for (let slot = values.length - 1; slot > 0; slot--) {
@@ -237,7 +276,7 @@ function memoryMatch({ surface, status }) {
       const found = matched.has(slot);
       const faceUp = flipped.includes(slot);
       tile.textContent = found || faceUp ? values[slot] : "?";
-      tile.disabled = found || faceUp || flipped.length === 2;
+      tile.setAttribute("aria-disabled", String(found || faceUp || flipped.length === 2));
       tile.classList.toggle("is-matched", found);
       const face = found ? "matched " + values[slot] : faceUp ? values[slot] : "face down";
       tile.setAttribute("aria-label", "Card " + (slot + 1) + ": " + face);
@@ -248,6 +287,7 @@ function memoryMatch({ surface, status }) {
   }
 
   function flip(slot) {
+    if (matched.has(slot) || flipped.includes(slot) || flipped.length === 2) return;
     flipped.push(slot);
     if (flipped.length === 2) {
       const [first, second] = flipped;
@@ -266,6 +306,7 @@ function memoryMatch({ surface, status }) {
   }
 
   board.append(...tiles);
+  enableGridNavigation(root, board, tiles, 4, signal);
   draw();
   return () => clearTimeout(timer);
 }
@@ -378,7 +419,7 @@ const trailBoards = [
   { target: 12, values: [7, 1, 2, 4, 3, 6, 7, 6, 6, 5, 9, 2, 4, 6, 8, 4] }
 ];
 
-function sumTrail({ surface, controls, status, signal }) {
+function sumTrail({ root, surface, controls, status, signal }) {
   const size = 4;
   const roundSize = 4;
   const summary = element("p", "local-game__puzzle-meta");
@@ -389,20 +430,22 @@ function sumTrail({ surface, controls, status, signal }) {
   const path = [];
   let round = 0;
   let solved = false;
-  let focusIndex = 0;
   const tiles = trailBoards[round].values.map((_, index) => {
     const tile = button("", () => choose(index), "local-game__tile local-game__trail-cell");
     tile.dataset.trailCell = index;
-    tile.tabIndex = index === 0 ? 0 : -1;
     return tile;
   });
   board.append(...tiles);
 
-  const undo = button("Undo", () => {
+  const undo = button("Undo", event => {
     path.pop();
     draw();
+    if (undo.disabled && !event.detail) root.focus({ preventScroll: true });
   });
-  const reset = button("Clear trail", resetTrail);
+  const reset = button("Clear trail", event => {
+    resetTrail();
+    if (!event.detail) root.focus({ preventScroll: true });
+  });
   const next = button("Next puzzle", () => {
     round = (round + 1) % trailBoards.length;
     resetTrail();
@@ -469,26 +512,7 @@ function sumTrail({ surface, controls, status, signal }) {
     next.textContent = round === trailBoards.length - 1 ? "Play again" : "Next puzzle";
   }
 
-  board.addEventListener("focusin", event => {
-    const index = tiles.indexOf(event.target);
-    if (index < 0 || index === focusIndex) return;
-    tiles[focusIndex].tabIndex = -1;
-    tiles[index].tabIndex = 0;
-    focusIndex = index;
-  }, { signal });
-
-  board.addEventListener("keydown", event => {
-    const direction = preferDirection(event);
-    if (!direction) return;
-    event.preventDefault();
-    const offsets = { left: [0, -1], right: [0, 1], up: [-1, 0], down: [1, 0] };
-    const [vertical, horizontal] = offsets[direction];
-    const nextRow = row(focusIndex) + vertical;
-    const nextColumn = column(focusIndex) + horizontal;
-    if (nextRow >= 0 && nextRow < size && nextColumn >= 0 && nextColumn < size) {
-      tiles[nextRow * size + nextColumn].focus({ preventScroll: true });
-    }
-  }, { signal });
+  enableGridNavigation(root, board, tiles, size, signal);
   draw();
 }
 
@@ -1652,15 +1676,13 @@ function playCanvas(context, createGame) {
   surface.append(canvas);
 
   const c = canvas.getContext("2d");
-  if (!c) {
-    status.textContent = "This browser could not start the game canvas.";
-    return;
-  }
+  if (!c) throw new Error("This browser could not start the game canvas.");
 
   if (!game.announceHud) status.setAttribute("aria-live", "off");
   const help = element("p", "local-game__help", game.instructions + " Press P to pause.");
   root.append(help);
-  const held = new Set();
+  const heldInputs = new Map();
+  const tapInputs = new Map();
   let paused = true;
   let started = false;
   let frame = 0;
@@ -1697,19 +1719,19 @@ function playCanvas(context, createGame) {
     });
     control.setAttribute("aria-label", label.length === 1 ? directionNames[key] : label);
     control.addEventListener("pointerdown", event => {
-      if (paused || game.done()) return;
+      if (paused || game.done() || event.button !== 0) return;
       event.preventDefault();
-      control.setPointerCapture(event.pointerId);
       canvas.focus({ preventScroll: true });
-      held.add(key);
+      control.setPointerCapture?.(event.pointerId);
+      heldInputs.set("pointer:" + event.pointerId, key);
       respond(key);
     }, { signal });
-    for (const eventType of ["pointerup", "pointercancel", "lostpointercapture"]) {
-      control.addEventListener(eventType, () => held.delete(key), { signal });
-    }
+    control.addEventListener("lostpointercapture", releasePointer, { signal });
     pad.append(control);
     padButtons.push(control);
   });
+  window.addEventListener("pointerup", releasePointer, { signal });
+  window.addEventListener("pointercancel", releasePointer, { signal });
   controls.append(pad);
   if (game.point) {
     canvas.classList.add("local-game__canvas--interactive");
@@ -1726,6 +1748,9 @@ function playCanvas(context, createGame) {
 
   function respond(key) {
     game.input(key);
+    // Preserve a short directional impulse when a button is activated by keyboard
+    // or tapped and released between rendered frames.
+    if (game.update && Object.hasOwn(directionNames, key)) tapInputs.set(key, .1);
     if (!game.update) {
       paint();
       syncControls();
@@ -1760,6 +1785,12 @@ function playCanvas(context, createGame) {
     elapsed += last ? Math.min((now - last) / 1000, .075) : 0;
     last = now;
     while (elapsed >= 1 / 120 && !game.done()) {
+      const held = new Set(heldInputs.values());
+      for (const [key, remaining] of tapInputs) {
+        held.add(key);
+        if (remaining <= 1 / 120) tapInputs.delete(key);
+        else tapInputs.set(key, remaining - 1 / 120);
+      }
       game.update(1 / 120, held);
       elapsed -= 1 / 120;
     }
@@ -1771,7 +1802,7 @@ function playCanvas(context, createGame) {
   function pause(value) {
     paused = value;
     if (!paused) started = true;
-    held.clear();
+    clearInputs();
     cancelAnimationFrame(frame);
     frame = 0;
     last = 0;
@@ -1792,6 +1823,15 @@ function playCanvas(context, createGame) {
     return preferDirection(event, game.title === "Skyline Sprint");
   }
 
+  function clearInputs() {
+    heldInputs.clear();
+    tapInputs.clear();
+  }
+
+  function releasePointer(event) {
+    heldInputs.delete("pointer:" + event.pointerId);
+  }
+
   root.addEventListener("keydown", event => {
     if (event.key.toLowerCase() === "p" && !event.repeat && !event.altKey && !event.ctrlKey && !event.metaKey) {
       if (game.done()) return;
@@ -1803,13 +1843,13 @@ function playCanvas(context, createGame) {
     if (!direction || paused || game.done()) return;
     event.preventDefault();
     if (!event.repeat) respond(direction);
-    held.add(direction);
+    heldInputs.set("key:" + (event.code || event.key), direction);
   }, { signal });
   root.addEventListener("keyup", event => {
-    held.delete(inputFor(event));
+    heldInputs.delete("key:" + (event.code || event.key));
   }, { signal });
   root.addEventListener("focusout", event => {
-    if (!root.contains(event.relatedTarget)) held.clear();
+    if (!root.contains(event.relatedTarget)) clearInputs();
   }, { signal });
   window.addEventListener("blur", () => {
     if (!paused) pause(true);
@@ -1830,12 +1870,12 @@ const localGames = {
   ttt: {
     title: "Three in a Row",
     run: ticTacToe,
-    help: "Take turns with another player. Get three marks in a row to win."
+    help: "Take turns with another player. Get three marks in a row to win. Use the arrow keys and Enter, or tap a square."
   },
   reaction: { title: "Reaction Test", run: reactionGame, help: "Click as soon as the target turns green." },
   switches: { title: "Switchboard", run: switchboard, help: "Each switch toggles itself and its two neighbors." },
-  pixel: { title: "Pixel Logic", run: pixelLogic },
-  "memory-match": { title: "Memory Match", run: memoryMatch, help: "Flip cards to find all eight matching pairs." },
+  pixel: { title: "Pixel Logic", run: pixelLogic, help: "Use the arrow keys and Enter, or tap a square." },
+  "memory-match": { title: "Memory Match", run: memoryMatch, help: "Use the arrow keys and Enter, or tap cards to find all eight pairs." },
   "pattern-pulse": {
     title: "Pattern Pulse",
     run: patternPulse,
@@ -1881,7 +1921,14 @@ export function mountLocalGame(id, stage) {
   if (game.help) root.append(element("p", "local-game__help", game.help));
   stage.append(root);
 
-  const clean = game.run({ root, status, surface, controls, signal: events.signal });
+  let clean;
+  try {
+    clean = game.run({ root, status, surface, controls, signal: events.signal });
+  } catch (error) {
+    events.abort();
+    root.remove();
+    throw error;
+  }
   root.focus({ preventScroll: true });
   return () => {
     events.abort();

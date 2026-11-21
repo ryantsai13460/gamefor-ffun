@@ -185,6 +185,16 @@
   border-color: #ff8b86;
 }
 
+.proxy-address-error {
+  margin: 0;
+  padding: .55rem .85rem;
+  color: #ffc3bf;
+  background: #331e2a;
+  border-bottom: 1px solid var(--line, #303441);
+  font-size: .875rem;
+  line-height: 1.45;
+}
+
 .proxy-action {
   display: inline-flex;
   align-items: center;
@@ -210,6 +220,10 @@
 .proxy-stage {
   min-height: 16rem;
   background: var(--panel-deep, #121217);
+}
+
+.proxy-stage:focus-visible {
+  outline-offset: -3px;
 }
 
 .proxy-start,
@@ -288,6 +302,14 @@
   margin-top: 1.5rem;
   padding-top: 1.25rem;
   border-top: 1px solid var(--line-soft, #26262e);
+}
+
+.proxy-playable-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .35rem 1rem;
 }
 
 .proxy-playable-group {
@@ -409,6 +431,10 @@
 
 .proxy-source:hover {
   text-decoration: underline;
+}
+
+.proxy-preview-dismiss {
+  flex: none;
 }
 
 .proxy-legacy {
@@ -540,6 +566,13 @@
   flex-direction: column;
   border: 0;
   border-radius: 0;
+}
+
+.proxy-window:fullscreen .proxy-panels {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .proxy-window:fullscreen .proxy-stage {

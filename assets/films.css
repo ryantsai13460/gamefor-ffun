@@ -183,6 +183,10 @@
   opacity: 1;
 }
 
+.film-art img.is-portrait {
+  object-fit: contain;
+}
+
 .film-card-body {
   display: flex;
   flex: 1;

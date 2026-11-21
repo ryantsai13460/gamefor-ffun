@@ -61,7 +61,9 @@ test('navigation, catalog pagination, filtering, favorites, play history and set
   await expect(local).toBeVisible();
   await page.getByRole('button', { name: 'Fullscreen', exact: true }).click();
   await expect.poll(() => page.evaluate(() => document.fullscreenElement?.className)).toContain('player-stage');
-  await page.evaluate(() => document.exitFullscreen());
+  await expect(local).toBeFocused();
+  await page.locator('.player-stage:fullscreen').getByRole('button', { name: 'Exit fullscreen', exact: true }).click();
+  await expect(page.locator('.player-stage:fullscreen')).toHaveCount(0);
   await page.getByRole('link', { name: 'Back to browsing' }).click();
   await expect(find).toHaveValue('2048');
   await expect(page.getByRole('combobox', { name: 'Play option' })).toHaveValue('local');
@@ -133,6 +135,10 @@ test('standalone game and Proxy Gemini tabs, history and website previews', asyn
   const frame = page.frameLocator('.proxy-stage iframe');
   await frame.locator('#star').click();
   await expect(frame.locator('#score')).toContainText('1');
+  await page.getByRole('button', { name: 'New tab', exact: true }).click();
+  await page.getByRole('tab', { name: 'Catch the Star', exact: true }).click();
+  await expect(frame.locator('#score')).toContainText('1');
+  await page.getByRole('button', { name: 'Close Start page tab', exact: true }).click();
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(frame.locator('#score')).toContainText('0');
   await page.getByRole('button', { name: 'Back', exact: true }).click();
@@ -374,14 +380,20 @@ test('the new original puzzles play inside the arcade', async ({ page }) => {
 
 test('layout and mobile menu fit desktop, tablet and phone widths', async ({ page }, info) => {
   await page.unroute('https://**/*');
-  for (const width of [1440, 768, 390]) {
+  for (const width of [1440, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('heading', { name: 'Pocket Circuit', level: 1 })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     await recordScreenshot(page, info, `home-${width}`);
-    if (width === 390) {
+    if (width <= 390) {
       await expect(page.getByRole('navigation', { name: 'Arcade navigation' })).not.toBeVisible();
+      await page.getByRole('button', { name: 'Open navigation' }).click();
+      const drawer = page.getByRole('dialog', { name: 'Site navigation' });
+      await expect(drawer).toHaveAttribute('aria-modal', 'true');
+      await expect(page.locator('.workspace[inert]')).toHaveCount(1);
+      await drawer.getByRole('button', { name: 'Close navigation', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Open navigation' })).toBeFocused();
       await page.getByRole('button', { name: 'Open navigation' }).click();
       await go(page, 'All Games');
       await expect(page.getByRole('button', { name: 'Open navigation' })).toHaveAttribute('aria-expanded', 'false');
@@ -402,6 +414,26 @@ test('layout and mobile menu fit desktop, tablet and phone widths', async ({ pag
       }
     }
   }
+});
+
+test('legacy links retain their routes and leaving settings dismisses its confirmation', async ({ page }) => {
+  await page.goto('/pro.html?from=bookmark#play/2048');
+  await expect(page.getByRole('heading', { name: '2048', level: 1 })).toBeVisible();
+  await expect(page).toHaveURL(/\/\?from=bookmark#play\/2048$/);
+  await page.getByRole('button', { name: 'Add 2048 to favorites' }).click();
+  await page.goto('/index.html.index.html#games?q=snake');
+  await expect(page.getByLabel('Search games', { exact: true })).toHaveValue('snake');
+  await expect(page).toHaveURL(/\/#games\?q=snake$/);
+  await go(page, 'Settings');
+  await page.getByRole('button', { name: 'Clear saved games' }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('heading', { name: 'All Games', level: 1 })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await go(page, 'Favorites');
+  await page.getByRole('button', { name: 'Remove 2048 from favorites' }).click();
+  await expect(page.getByRole('heading', { name: 'No favorites yet' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Browse games', exact: true })).toBeFocused();
 });
 
 test('Web Search shows a sourced answer and opens matching YouTube videos in the same tab', async ({ page }) => {
@@ -581,11 +613,9 @@ test('Google essay searches show an answer, videos and writing tools together', 
       })
     } });
   });
-  await page.goto('/#web-search?mode=google');
+  await page.goto('/#web-search?mode=google&q=how+to+wrie+an+essay');
   const query = page.getByRole('searchbox', { name: 'Google query' });
   const search = page.getByRole('button', { name: 'Search', exact: true });
-  await query.fill('how to wrie an essay');
-  await search.click();
   await expect(query).toHaveValue('how to write an essay');
   await expect(page.getByRole('heading', { name: 'Essay writing guide', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Built-in essay guide', exact: true })).toBeVisible();
@@ -604,7 +634,18 @@ test('Google essay searches show an answer, videos and writing tools together', 
   await expect(page.getByRole('heading', { name: 'On-device AI answer', exact: true })).toBeVisible();
   await expect(page.getByText('Start with a thesis about music.', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Purdue OWL', exact: true })).toBeVisible();
-  await expect(page).toHaveURL(/#web-search\?mode=google$/);
+  await expect(page).toHaveURL(/#web-search\?mode=google&q=how\+to\+wrie\+an\+essay$/);
+});
+
+test('Google and Proxy Gemini link to built-in and publisher-authorized in-page games', async ({ page }) => {
+  for (const route of ['web-search?mode=google', 'browse']) {
+    await page.goto('/#' + route);
+    await page.getByRole('link', { name: 'Games you can play here', exact: true }).click();
+    await expect(page.getByRole('combobox', { name: 'Play option' })).toHaveValue('in-page');
+    await expect(page.locator('.library-results')).toHaveText('1–22 of 22 games');
+    await expect(page.locator('.game-card')).toHaveCount(22);
+    await expect(page.locator('.game-card').getByText('External', { exact: true })).toHaveCount(0);
+  }
 });
 
 test('searching Territorial.io from Google shows its preview, wiki and videos without leaving', async ({ page }) => {

@@ -10,7 +10,7 @@
         color: white;
         font-family: Arial, sans-serif;
         text-align: center;
-        padding: 30px;
+        padding: clamp(12px, 6vw, 30px);
       }
 
       button {
@@ -21,15 +21,18 @@
         font-size: 45px;
         cursor: pointer;
         margin-top: 30px;
+        touch-action: manipulation;
       }
+
+      button:focus-visible { outline: 2px solid white; outline-offset: 4px; }
     </style>
   </head>
   <body>
     <h1>⭐ Catch the Star!</h1>
-    <p>Click the star to earn points!</p>
-    <h2 id="score">Score: 0</h2>
+    <p>Click, tap, or press the star button to earn points!</p>
+    <h2 id="score" role="status">Score: 0</h2>
 
-    <button id="star">⭐</button>
+    <button id="star" type="button" aria-label="Catch the star">⭐</button>
 
     <script>
       let score = 0;
