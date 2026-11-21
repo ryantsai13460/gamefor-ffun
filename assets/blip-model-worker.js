@@ -34,15 +34,22 @@ self.addEventListener('message', async ({ data: { action, id, input } }) => {
     } else if (action === 'generate') {
       generating = id;
       try {
-        const response = await engine.chat.completions.create({
+        const chunks = await engine.chat.completions.create({
           model: modelId,
           messages: input.messages,
           max_tokens: input.mode === 'quick' ? 180 : 320,
-          temperature: input.mode === 'brainstorm' ? .8 : .4,
-          stream: false
+          temperature: ['brainstorm', 'creative'].includes(input.mode) ? .8 : .4,
+          stream: true
         });
-        const content = response.choices[0]?.message?.content;
-        self.postMessage({ id, kind: 'result', answer: typeof content === 'string' ? content.trim() : '' });
+        let answer = '';
+        for await (const chunk of chunks) {
+          const delta = chunk.choices[0]?.delta?.content;
+          if (typeof delta !== 'string' || !delta) continue;
+          answer = (answer + delta).slice(0, 12_000);
+          self.postMessage({ id, kind: 'delta', answer });
+          if (answer.length >= 12_000) break;
+        }
+        self.postMessage({ id, kind: 'result', answer: answer.trim() });
       } finally {
         generating = undefined;
       }

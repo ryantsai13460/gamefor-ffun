@@ -97,10 +97,17 @@ export function renderGatewaySettings(target, label = 'Connect an authorized bac
 }
 
 export async function searchGatewayVideos(q, signal) {
-  const response = await gatewayRequest('/api/youtube', { q }, signal);
+  return (await searchGatewayVideoPage(q, signal)).items;
+}
+
+export async function searchGatewayVideoPage(q, signal, pageToken) {
+  const response = await gatewayRequest('/api/youtube', { q, pageToken }, signal);
   const data = await gatewayJson(response);
   if (!Array.isArray(data?.items)) throw new Error('The backend returned an invalid video list.');
-  return data.items.slice(0, 12);
+  const token = data.nextPageToken;
+  const nextPageToken = typeof token === 'string' && /^[!-~]{1,512}$/.test(token) && token !== pageToken
+    ? token : undefined;
+  return { items: data.items.slice(0, 12), nextPageToken };
 }
 
 async function gatewayJson(response) {
@@ -176,6 +183,8 @@ export async function getGatewayCapabilities(signal) {
   for (const key of ['standardOutputTokens', 'advancedOutputTokens']) {
     if (Number.isInteger(data[key]) && data[key] > 0 && data[key] <= 2400) available[key] = data[key];
   }
+  const knownModes = ['quick', 'think', 'brainstorm', 'study', 'code', 'creative', 'games'];
+  if (Array.isArray(data.modes)) available.modes = knownModes.filter(mode => data.modes.includes(mode));
   return available;
 }
 

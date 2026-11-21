@@ -1,6 +1,7 @@
 let runner;
 let preparing;
 let revision = 0;
+const replyTimeout = 80_000;
 
 async function supportsPortableModel() {
   const gpu = globalThis.navigator?.gpu;
@@ -46,6 +47,8 @@ function createRunner(worker) {
     if (!callback) return;
     if (data.kind === 'progress') {
       callback.onProgress?.(data.fraction, data.description);
+    } else if (data.kind === 'delta') {
+      callback.onUpdate?.(data.answer);
     } else if (data.kind === 'result') {
       callback.finish(undefined, data.answer);
     } else if (data.kind === 'error') {
@@ -53,7 +56,7 @@ function createRunner(worker) {
     }
   });
 
-  function request(action, input, signal, onProgress) {
+  function request(action, input, signal, { onProgress, onUpdate } = {}) {
     signal?.throwIfAborted();
     if (closed) return Promise.reject(new Error('The portable model is closed.'));
     const id = ++latest;
@@ -75,7 +78,7 @@ function createRunner(worker) {
         else if (error) reject(error);
         else resolve(value);
       };
-      requests.set(id, { finish, onProgress });
+      requests.set(id, { finish, onProgress, onUpdate });
       signal?.addEventListener('abort', stop, { once: true });
       try {
         worker.postMessage({ action, id, input });
@@ -100,11 +103,13 @@ export function preparePortableBlipModel(signal, onProgress) {
     if (!supported) throw new Error('An available WebGPU adapter is required.');
 
     runner?.close();
-    const worker = new Worker(new URL('./blip-model-worker.js', import.meta.url), { type: 'module' });
+    const workerUrl = new URL('./blip-model-worker.js', import.meta.url);
+    workerUrl.search = new URL(import.meta.url).search;
+    const worker = new Worker(workerUrl, { type: 'module' });
     const next = createRunner(worker);
     runner = next;
     try {
-      await next.request('prepare', undefined, signal, onProgress);
+      await next.request('prepare', undefined, signal, { onProgress });
       next.ready = true;
     } catch (error) {
       next.close();
@@ -125,12 +130,23 @@ export function releasePortableBlipModel() {
   runner = undefined;
 }
 
-export function runPortableBlipPrompt(messages, mode, signal) {
+export function runPortableBlipPrompt(messages, mode, signal, onUpdate) {
   signal?.throwIfAborted();
   if (!runner?.ready) return Promise.resolve('');
   const current = runner;
   // WebLLM's interrupt control applies to its active generation, so serialize requests.
-  const answer = current.queue.then(() => current.request('generate', { messages, mode }, signal));
+  const answer = current.queue.then(async () => {
+    const deadline = AbortSignal.timeout(replyTimeout);
+    const requestSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
+    try {
+      return await current.request('generate', { messages, mode }, requestSignal, {
+        onUpdate(value) { if (!requestSignal.aborted) onUpdate?.(value); },
+      });
+    } catch (error) {
+      if (deadline.aborted) current.close(error);
+      throw error;
+    }
+  });
   current.queue = answer.catch(() => {});
   return answer;
 }

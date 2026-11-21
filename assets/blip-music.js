@@ -134,12 +134,12 @@ async function renderLoop(OfflineContext, track) {
   const barLength = track.beatsPerBar * beat;
   const frames = Math.round(track.chords.length * barLength * SAMPLE_RATE);
   const duration = frames / SAMPLE_RATE;
-  const context = new OfflineContext(2, frames * 3, SAMPLE_RATE);
+  const context = new OfflineContext(2, frames * 2, SAMPLE_RATE);
   const output = context.createGain();
   output.gain.value = 1.95;
   output.connect(context.destination);
 
-  for (let cycle = 0; cycle < 3; cycle++) {
+  for (let cycle = 0; cycle < 2; cycle++) {
     track.chords.forEach(([bass, ...chord], bar) => {
       const start = cycle * duration + bar * barLength;
       tone(context, output, {
@@ -166,7 +166,7 @@ async function renderLoop(OfflineContext, track) {
       }
     });
   }
-  // Use a middle cycle so the ending and beginning have matching note tails.
+  // The second cycle includes the note tails from the previous cycle.
   const rendered = await context.startRendering();
   const loop = context.createBuffer(2, frames, SAMPLE_RATE);
   for (let channel = 0; channel < 2; channel++) {

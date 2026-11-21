@@ -2,7 +2,7 @@ const assetVersion = new URL(import.meta.url).search;
 const { normalizeBlipAttachments } = await import(`./blip-files.js${assetVersion}`);
 
 export const BLIP_STORE_KEY = 'gamefor-ffun:blip:v1';
-export const BLIP_MODES = Object.freeze(['quick', 'think', 'brainstorm', 'study']);
+export const BLIP_MODES = Object.freeze(['quick', 'think', 'brainstorm', 'study', 'code', 'creative', 'games']);
 export const DEFAULT_BLIP_MODE = 'quick';
 export const BLIP_LIMITS = Object.freeze({ chats: 40, messages: 100, title: 100, message: 12000 });
 

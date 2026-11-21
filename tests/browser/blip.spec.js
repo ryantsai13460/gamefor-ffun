@@ -340,14 +340,19 @@ test('connected Blip streams authorized replies and regenerates the last answer'
   await page.route('https://gateway.example/api/capabilities', route => {
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
     expect(route.request().headers().authorization).toBe('Bearer fixture-access');
-    return route.fulfill({ headers, json: { chat: true, advanced: true, research: true, search: true, youtube: false } });
+    return route.fulfill({ headers, json: {
+      chat: true, advanced: true, research: true, search: true, youtube: false, modes: ['quick', 'code']
+    } });
   });
   await page.route('https://gateway.example/api/chat', async route => {
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
     requests++;
     expect(route.request().headers().authorization).toBe('Bearer fixture-access');
     const expected = { messages: [{ role: 'user', content: 'Show a JavaScript example' }], mode: 'quick', stream: true };
-    if (requests === 3) expected.depth = 'advanced';
+    if (requests === 3) {
+      expected.depth = 'advanced';
+      expected.mode = 'code';
+    }
     expect(route.request().postDataJSON()).toEqual(expected);
     const text = ['**First example**\n\n```js\nconst score = 1;\n```', '**Updated example**', '**Advanced example**'][requests - 1];
     const event = JSON.stringify({ choices: [{ delta: { content: text } }] });
@@ -376,6 +381,7 @@ test('connected Blip streams authorized replies and regenerates the last answer'
   await page.locator('.blip-settings-popover > summary').click();
   await page.getByRole('checkbox', { name: 'Use Advanced replies' }).check();
   await page.locator('.blip-settings-popover > summary').click();
+  await page.getByText('Code', { exact: true }).click();
   await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
   await expect(page.locator('.blip-message strong')).toHaveText('Advanced example');
   expect(requests).toBe(3);
@@ -422,15 +428,19 @@ test('Blip resends an edited message in a new chat with the earlier context', as
 
 test('Blip research saves source links and keeps file chats local', async ({ page }) => {
   let requests = 0;
+  const headers = {
+    'access-control-allow-origin': '*',
+    'access-control-allow-headers': 'authorization, content-type',
+    'access-control-allow-methods': 'POST, OPTIONS'
+  };
   await page.addInitScript(() => {
     Object.defineProperty(window, 'LanguageModel', { configurable: true, value: undefined });
   });
+  await page.route('https://gateway.example/api/capabilities', route => {
+    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
+    return route.fulfill({ headers, json: { chat: true, advanced: true, research: true, search: true, youtube: false } });
+  });
   await page.route('https://gateway.example/api/chat', async route => {
-    const headers = {
-      'access-control-allow-origin': '*',
-      'access-control-allow-headers': 'authorization, content-type',
-      'access-control-allow-methods': 'POST, OPTIONS'
-    };
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
     requests++;
     expect(route.request().postDataJSON()).toEqual({
@@ -458,6 +468,7 @@ test('Blip research saves source links and keeps file chats local', async ({ pag
   await input.press('Enter');
   const source = page.getByRole('link', { name: /NASA Venus facts/ });
   await expect(source).toHaveAttribute('href', 'https://science.nasa.gov/venus/');
+  await expect(page.getByRole('link', { name: 'Source 1', exact: true })).toHaveAttribute('href', 'https://science.nasa.gov/venus/');
   await page.reload();
   await expect(source).toHaveAttribute('href', 'https://science.nasa.gov/venus/');
 
