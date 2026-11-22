@@ -24,6 +24,7 @@ test('Music opens the main 7clouds uploads playlist on demand and reports player
   });
   await page.setViewportSize({ width: 320, height: 750 });
   await page.goto('/#music');
+  await page.getByText('Music sources and archive', { exact: true }).click();
   await page.getByRole('link', { name: '7clouds uploads', exact: true }).click();
   await expect(page).toHaveURL(/#music\?lyrics=7clouds$/);
   await expect(page.getByRole('heading', { name: '7clouds uploads' })).toBeVisible();

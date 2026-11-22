@@ -6,13 +6,14 @@ const [{ BLIP_FILE_ACCEPT, BLIP_FILE_LIMITS, normalizeBlipAttachments, readBlipF
   prepareBlipModel, prepareCpuBlipModel, preparePortableBlipModel,
   releaseCpuBlipModel, releasePortableBlipModel
 }, { formatBlipReply }, { gatewayChatOptIn, gatewayConnected, gatewayCooldownSeconds, getGatewayCapabilities, hostedBlipReply,
-  renderGatewaySettings, setGatewayChatOptIn }, { mountBlipMusic }] = await Promise.all([
+  renderGatewaySettings, setGatewayChatOptIn }, { mountBlipMusic }, { createBlipSpeech }] = await Promise.all([
   import(`./blip-files.js${assetVersion}`),
   import(`./blip-store.js${assetVersion}`),
   import(`./blip-answer.js${assetVersion}`),
   import(`./blip-format.js${assetVersion}`),
   import(`./service-gateway.js${assetVersion}`),
-  import(`./blip-music.js${assetVersion}`)
+  import(`./blip-music.js${assetVersion}`),
+  import(`./blip-speech.js${assetVersion}`)
 ]);
 
 const examples = [
@@ -91,7 +92,7 @@ function downloadTranscript(chat) {
   downloadBlipFile(contents, `${name || 'blip-chat'}.txt`, 'text/plain;charset=utf-8');
 }
 
-function messageView(message, { onEdit, onRetry, onContinue } = {}) {
+function messageView(message, { onEdit, onRetry, onContinue, speech } = {}) {
   const item = element('article', `blip-message blip-message--${message.role}`);
   if (message.kind) item.dataset.replyKind = message.kind;
   item.append(element('h3', 'blip-message-author', message.role === 'user' ? 'You' : 'blip.ai'));
@@ -165,6 +166,16 @@ function messageView(message, { onEdit, onRetry, onContinue } = {}) {
         }
       }, 'blip-button');
       actions.append(copy, feedback);
+      if (speech && message.id) {
+        const read = button('Read aloud', () => {
+          const plain = [...body.children].map(node =>
+            (node.querySelector('pre') || node).textContent).join('\n');
+          speech.toggle(message.id, plain);
+        }, 'blip-button');
+        read.title = 'Play this reply with a device voice';
+        read.dataset.blipSpeech = message.id;
+        actions.append(read);
+      }
     }
     if (onEdit) actions.append(button('Edit & resend', onEdit, 'blip-button'));
     if (onRetry) actions.append(button('Regenerate', onRetry, 'blip-button'));
@@ -308,6 +319,7 @@ export function renderBlip(target, { draft = '', research: requestedResearch = '
           </div>
           <p class="blip-engine-state" data-blip="engine-state">Reply engine · Checking local AI</p>
           <p class="blip-compose-status" data-blip="gateway-wait" role="status"></p>
+          <p class="blip-compose-status" data-blip="speech-status" role="status"></p>
           <p class="blip-compose-status" data-blip="status" role="status"></p>
         </form>
       </section>
@@ -320,7 +332,7 @@ export function renderBlip(target, { draft = '', research: requestedResearch = '
         <div><dt>Focus message</dt><dd><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd></dd></div>
         <div><dt>Send message</dt><dd><kbd>Enter</kbd></dd></div>
         <div><dt>New line</dt><dd><kbd>Shift</kbd> + <kbd>Enter</kbd></dd></div>
-        <div><dt>Close menu or stop reply</dt><dd><kbd>Escape</kbd></dd></div>
+        <div><dt>Close a menu, stop reading, or stop a reply</dt><dd><kbd>Escape</kbd></dd></div>
       </dl>
       <form method="dialog"><div class="blip-dialog-actions"><button class="blip-button" type="submit">Close</button></div></form>
     </dialog>
@@ -382,6 +394,7 @@ export function renderBlip(target, { draft = '', research: requestedResearch = '
   const dialog = part('chat-dialog');
   const attachmentDialog = part('attachment-dialog');
   const shortcutsDialog = part('shortcuts-dialog');
+  const speech = createBlipSpeech(updateSpeechControls, message => { part('speech-status').textContent = message; });
   const researchPanel = part('research-panel');
   const researchChoice = part('research');
   const researchInput = part('research-query');
@@ -438,10 +451,11 @@ export function renderBlip(target, { draft = '', research: requestedResearch = '
     notice.textContent = !gatewayConnected() ? 'Connect a backend to use online chat.'
       : capabilityRequest ? 'Checking the connected gateway…'
       : capabilityProblem ? capabilityProblem.message
-      : capabilities?.chatProvider === 'workers-ai' ? 'Workers AI is configured. Replies use the owner’s Cloudflare allowance.'
-      : capabilities?.advanced ? 'Advanced replies allow more detail and may use more tokens.'
       : capabilities?.chat === false ? 'This gateway needs a Workers AI binding or an OpenAI key to offer chat.'
-      : 'This gateway’s Advanced replies are unavailable.';
+      : capabilities?.chatProvider === 'workers-ai' ? 'Workers AI is configured. Replies use the owner’s Cloudflare allowance.' +
+        (capabilities.advancedChatModel === 'gemma-4' ? ' Advanced replies use Gemma 4 and draw on more of that allowance.' : '')
+      : capabilities?.advanced ? 'Online chat is configured. Advanced replies can use more tokens.'
+      : capabilities?.chat ? 'Online chat is configured.' : 'The gateway will check provider access when you send a message.';
     drawEngineState(currentChat());
     drawRecovery(currentChat());
     drawResearch(currentChat());
@@ -668,7 +682,10 @@ export function renderBlip(target, { draft = '', research: requestedResearch = '
     input.value = drafts.get(chat?.id) || '';
     part('welcome').hidden = Boolean(chat?.messages.length);
     const messages = chat?.messages || [];
+    if (speech.readingId() && !messages.some(message => message.id === speech.readingId())) speech.stop();
+    part('speech-status').textContent = '';
     const items = messages.map((message, index) => messageView(message, {
+      speech,
       onEdit: message.role === 'user' && !pending.has(chat.id) ? () => beginMessageEdit(chat, message) : undefined,
       onRetry: message.role === 'assistant' && index === messages.length - 1 && !pending.has(chat.id) && modelSetup?.turn?.chatId !== chat.id
         ? () => retryReply(chat, message.id) : undefined,
@@ -676,9 +693,18 @@ export function renderBlip(target, { draft = '', research: requestedResearch = '
         ? () => draftContinuation(chat) : undefined,
     }));
     part('messages').replaceChildren(...items);
+    updateSpeechControls();
     drawPartial(chat?.id);
     drawComposer(chat);
     transcript.scrollTop = follow ? transcript.scrollHeight : previousScroll;
+  }
+
+  function updateSpeechControls() {
+    if (lifetime.signal.aborted) return;
+    for (const control of root.querySelectorAll('[data-blip-speech]')) {
+      control.hidden = !speech.available();
+      control.textContent = control.dataset.blipSpeech === speech.readingId() ? 'Stop reading' : 'Read aloud';
+    }
   }
 
   function nearTranscriptEnd() {
@@ -765,6 +791,8 @@ export function renderBlip(target, { draft = '', research: requestedResearch = '
       if (menu) {
         menu.open = false;
         menu.querySelector('summary').focus();
+      } else if (speech.readingId()) {
+        speech.stop();
       } else if (pending.has(currentChat()?.id)) {
         part('stop').click();
       } else if (compact && mobileChatsOpen) {
@@ -1030,7 +1058,10 @@ export function renderBlip(target, { draft = '', research: requestedResearch = '
 
   function retryReply(chat, messageId) {
     const turn = lastTurn(chat);
-    if (turn?.replyId === messageId) retryTurn(turn);
+    if (turn?.replyId === messageId) {
+      if (speech.readingId() === messageId) speech.stop();
+      retryTurn(turn);
+    }
   }
 
   async function runReply(chat, text, attachments, { replaceId, localOnly = false, researchQuery } = {}) {
@@ -1229,7 +1260,10 @@ export function renderBlip(target, { draft = '', research: requestedResearch = '
   }
 
   function hostedEngineLabel() {
-    if (capabilities?.chatProvider === 'workers-ai') return 'Workers AI';
+    if (capabilities?.chatProvider === 'workers-ai') {
+      if (!part('advanced').checked) return 'Workers AI';
+      return capabilities.advancedChatModel === 'gemma-4' ? 'Workers AI · Gemma 4' : 'Workers AI · Advanced';
+    }
     return part('advanced').checked ? 'Connected AI · Advanced' : 'Connected AI';
   }
 
@@ -1435,6 +1469,7 @@ export function renderBlip(target, { draft = '', research: requestedResearch = '
 
   return () => {
     lifetime.abort();
+    speech.dispose();
     clearTimeout(cooldownTimer);
     layoutObserver.disconnect();
     for (const id of pending.keys()) stopReply(id);

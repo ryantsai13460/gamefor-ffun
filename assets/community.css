@@ -1,0 +1,241 @@
+.community-page {
+  display: grid;
+  gap: clamp(1rem, 2vw, 1.6rem);
+  min-width: 0;
+}
+
+.community-header {
+  display: grid;
+  gap: .65rem;
+  padding: clamp(1.2rem, 4vw, 2.5rem);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+}
+
+.community-header h1 {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  line-height: 1;
+  letter-spacing: -.045em;
+}
+
+.community-header p {
+  max-width: 62ch;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.community-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.community-main,
+.community-side,
+.community-panel {
+  display: grid;
+  min-width: 0;
+  gap: 1rem;
+}
+
+.community-panel {
+  align-content: start;
+  padding: clamp(.9rem, 3vw, 1.35rem);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--panel);
+}
+
+.community-panel > h2 {
+  margin: 0;
+  font-size: clamp(1.2rem, 3vw, 1.55rem);
+  line-height: 1.24;
+  letter-spacing: -.025em;
+}
+
+.community-panel > .text-action {
+  justify-self: start;
+}
+
+.community-panel p {
+  margin: 0;
+  font-size: .875rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.community-panel .community-muted,
+.community-panel .community-recommendation {
+  color: var(--muted);
+}
+
+.community-topics {
+  display: grid;
+  gap: .65rem;
+}
+
+.community-topic {
+  display: grid;
+  min-width: 0;
+  gap: .55rem;
+  padding: .85rem;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-deep);
+}
+
+.community-topic h3,
+.community-report h3,
+.community-update h3 {
+  margin: 0;
+  font-size: .97rem;
+  line-height: 1.35;
+}
+
+.community-topic .community-prompt {
+  font-weight: 620;
+}
+
+.community-topic > .community-actions {
+  margin-top: .18rem;
+}
+
+.community-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+}
+
+.community-actions .button {
+  min-width: 0;
+  min-height: 44px;
+  padding-inline: .75rem;
+}
+
+.community-update,
+.community-report {
+  display: grid;
+  min-width: 0;
+  justify-items: start;
+  gap: .45rem;
+}
+
+.community-update p,
+.community-report p {
+  color: var(--muted);
+}
+
+.community-update + .community-update,
+.community-report + .community-report {
+  padding-top: .85rem;
+  border-top: 1px solid var(--line);
+}
+
+.community-rules {
+  display: grid;
+  gap: .45rem;
+  margin: 0;
+  padding-inline-start: 1.2rem;
+  color: var(--muted);
+  font-size: .875rem;
+  line-height: 1.5;
+}
+
+.community-reports {
+  display: grid;
+  gap: .8rem;
+  padding-top: .8rem;
+  border-top: 1px solid var(--line);
+}
+
+.community-discord-settings {
+  display: grid;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-deep);
+}
+
+.community-discord-settings > summary {
+  min-height: 44px;
+  padding: .7rem .75rem;
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 650;
+  font-size: .9rem;
+}
+
+.community-discord-settings > summary:focus-visible {
+  outline-offset: -2px;
+}
+
+.community-discord-form {
+  display: grid;
+  min-width: 0;
+  gap: .75rem;
+  padding: 0 .75rem .85rem;
+}
+
+.community-discord-form .text-action {
+  justify-self: start;
+}
+
+.community-field {
+  display: grid;
+  min-width: 0;
+  gap: .35rem;
+  color: var(--text);
+  font-size: .85rem;
+  font-weight: 650;
+}
+
+.community-field .field {
+  width: 100%;
+  min-width: 0;
+  font-weight: 400;
+}
+
+.community-field .field[aria-invalid="true"] {
+  border-color: var(--accent);
+}
+
+.community-discord-connected {
+  display: grid;
+  justify-items: start;
+  gap: .6rem;
+}
+
+.community-discord-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 5px;
+}
+
+.community-status {
+  color: var(--muted);
+}
+
+.community-discord-preview:empty,
+.community-discord-invite:empty {
+  display: none;
+}
+
+.community-status:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+@media (max-width: 780px) {
+  .community-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

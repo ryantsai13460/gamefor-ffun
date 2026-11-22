@@ -35,8 +35,8 @@ export const arcadeModes = [
     links: [
       ['Family films', '#movies?collection=family', 'film', 'Browse films for movie night'],
       ['YouTube', '#youtube?format=all', 'video', 'Search videos from the arcade catalog'],
-      ['Shorts', '#youtube?format=shorts', 'play', 'Open the scrollable Shorts collection'],
-      ['Lyric videos', '#music?lyrics=watch', 'music', 'Watch lyrics and browse music']
+      ['Shorts', '#shorts', 'shorts', 'Open the scrollable video feed'],
+      ['Lyric videos', '#music', 'music', 'Browse lyrics and visualizers']
     ]
   },
   {

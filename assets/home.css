@@ -115,7 +115,10 @@
   background: var(--panel);
   padding: 12px;
 }
-.home-destination { min-height: 78px; }
+.home-destination {
+  min-height: 78px;
+  border-inline-start: 3px solid color-mix(in srgb, var(--shortcut-color) 70%, var(--line-soft));
+}
 .home-utility { min-height: 44px; border-color: transparent; background: var(--panel-deep); padding: 7px 10px; }
 :is(.home-destination, .home-utility):hover { border-color: var(--shortcut-color); background: var(--panel-hover); }
 [data-tone="violet"] { --shortcut-color: #cebaff; }

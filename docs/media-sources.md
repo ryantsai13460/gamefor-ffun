@@ -22,7 +22,7 @@ The YouTube section preserves the 24 original Unstable SMP and Minecraft creator
 
 ## Movies
 
-The cinema catalog has 190 complete films, including 45 features and 145 shorts. A separate collection preserves 12 studio trailers. The catalog uses the official YouTube and NFB players for supported entries and opens the archive or provider for direct viewing. Film detail pages link to the source and credits. [Blender Studio Films](https://studio.blender.org/films/) · [Pixar Films](https://www.pixar.com/feature-films) · [DreamWorks Movies](https://www.dreamworks.com/movies)
+The cinema catalog has 227 complete films, including 55 features and 172 shorts. A separate collection preserves 12 studio trailers. The catalog uses the official YouTube and NFB players for supported entries and opens the archive or provider for direct viewing. Film detail pages link to the source and credits. [Blender Studio Films](https://studio.blender.org/films/) · [Pixar Films](https://www.pixar.com/feature-films) · [DreamWorks Movies](https://www.dreamworks.com/movies)
 
 The 10 new National Film Board of Canada animations use the official embed code for personal and noncommercial use. Each film played through the official player inside the development arcade. [NFB terms](https://help.nfb.ca/terms/) · [NFB embedding instructions](https://help.nfb.ca/knowledge-base/how-can-i-embed-videos-on-my-blog-social-networking-site-etc/)
 
@@ -47,6 +47,14 @@ The Music library contains 602 distinct uploads across 19 categories. This relea
 YouTube oEmbed returned matching uploader and thumbnail metadata for the 291 additions, and the official player reported them eligible for embedding. The arcade uses YouTube’s privacy-enhanced player. Playback depends on the viewer’s region, browser settings, and the upload’s current availability. The player offers a direct YouTube link when the provider cannot stream a selection. [YouTube oEmbed](https://www.youtube-nocookie.com/oembed) · [C418’s “Wet Hands”](https://www.youtube.com/watch?v=lq1vZxM-Iic) · [WaterTower Music’s “Time”](https://www.youtube.com/watch?v=c56t7upa8Bk)
 
 Chart listings show the source, market, and edition. On the November 21, 2026 U.S. Billboard Hot 100, “Dracula” by Tame Impala and JENNIE ranked third and “Housewife” by Tate McRae ranked fourth. [Billboard Hot 100](https://ca.billboard.com/charts/hot-100/2026-11-21)
+
+## Gamffun 6.0 additions
+
+The 32 new NFB films use their official embeds for personal and noncommercial use. Five NASA+ documentaries use official full-film links. All 37 additions advanced actual playback during browser checks. [NFB terms](https://help.nfb.ca/terms/) · [NASA+](https://plus.nasa.gov/)
+
+The default Music page uses the reviewed list in `assets/lyrics-reviewed.js`. Each record includes an official player ID, authentic thumbnail, publisher, and a source for its visual format. The legacy music and chart routes remain available from Music sources.
+
+The dedicated Short Videos page includes 814 curated YouTube Shorts, two public TikTok posts, and four public Instagram Reels. The provider supplies the preview for TikTok and Instagram. Provider restrictions can affect guest playback. [TikTok Embed Player](https://developers.tiktok.com/doc/embed-player/) · [Instagram embeds](https://help.instagram.com/513717858639392)
 
 ## Creator library and search service
 

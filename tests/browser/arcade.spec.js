@@ -713,7 +713,7 @@ test('searching Territorial.io from Google shows its preview, wiki and videos wi
   await page.getByRole('searchbox', { name: 'Google query' }).fill('territorial.io');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Territorial.io', exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Search Music' })).toHaveAttribute('href', '#music?view=videos&q=territorial.io');
+  await expect(page.getByRole('link', { name: 'Search Music' })).toHaveAttribute('href', '#music?q=territorial.io');
   await page.getByRole('button', { name: 'Preview Territorial.io', exact: true }).click();
   const game = page.getByRole('dialog', { name: 'Territorial.io', exact: true });
   await expect(game.locator('iframe')).toHaveAttribute('src', 'https://territorial.io/');
@@ -771,7 +771,7 @@ test('Music videos finds official songs and opens the player inside the arcade',
 });
 
 test('Music replaces lyric videos with creator uploads and keeps the searchable chart', async ({ page }) => {
-  await page.goto('/#music');
+  await page.goto('/#music?lyrics=chart');
   const songs = page.getByRole('list', { name: 'Chart songs' });
   await expect(page.getByText('Showing 25 of 550 chart songs')).toBeVisible();
   await page.getByRole('button', { name: 'Watch lyrics', exact: true }).click();

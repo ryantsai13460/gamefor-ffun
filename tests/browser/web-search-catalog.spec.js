@@ -96,13 +96,14 @@ test('Search history can be paused and cleared for both Web and library searches
 
 test('Web Search opens matching tracks and complete films from the real catalogs', async ({ page }) => {
   await page.goto('/#web-search');
-  await search(page, 'Radioactive Imagine Dragons');
+  await search(page, 'Plan A Ski Team');
   await category(page).getByRole('button', { name: 'Music', exact: true }).click();
   const music = panel(page, 'Music');
   await expect(music.getByRole('listitem')).toHaveCount(1);
-  await expect(music.getByText('Imagine Dragons · Pop rock')).toBeVisible();
-  await music.getByRole('link', { name: 'Radioactive', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Play Radioactive', exact: true })).toBeVisible();
+  await expect(music.getByText('Ski Team · Indie')).toBeVisible();
+  await music.getByRole('link', { name: 'Plan A', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Plan A', exact: true }).locator('iframe'))
+    .toHaveAttribute('src', /youtube-nocookie\.com\/embed\/PwGq2Xu_G7I/);
 
   await page.goto('/#web-search?q=Sintel');
   await category(page).getByRole('button', { name: 'Movies', exact: true }).click();
