@@ -18,8 +18,38 @@
   border-color: var(--accent);
   color: var(--accent);
 }
-.seven-clouds-player h2 { font-size: clamp(1.35rem, 3vw, 1.8rem); }
+.seven-clouds-player h2, .seven-clouds-queue h2 { font-size: clamp(1.35rem, 3vw, 1.8rem); }
 .seven-clouds-player .media-player { width: min(100%, 900px); min-height: 200px; margin: 0; }
+.seven-clouds-song { display: grid; gap: 5px; min-width: 0; }
+.seven-clouds-song h3 { overflow-wrap: anywhere; }
+.seven-clouds-song .interaction-row { margin-block-start: 4px; }
+.seven-clouds-queue { display: grid; gap: 10px; }
+.seven-clouds-queue label { display: grid; gap: 5px; width: min(100%, 28rem); color: var(--muted); }
+.seven-clouds-queue .field { width: 100%; min-width: 0; }
+.seven-clouds-queue-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.seven-clouds-choice {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  width: 100%;
+  height: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.seven-clouds-choice span { font-size: .85rem; }
+.seven-clouds-choice:hover, .seven-clouds-choice[aria-current="true"] { border-color: var(--accent); }
 .lyrics-track h3 { font-size: 1rem; overflow-wrap: anywhere; }
 .lyrics-track p { margin-top: 3px; font-size: .84rem; overflow-wrap: anywhere; }
 .lyrics-song-actions, .lyrics-provider-actions {

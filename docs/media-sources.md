@@ -38,7 +38,7 @@ The chart lyrics catalog contains 550 distinct songs from the Billboard Hot 100 
 
 Watch lyrics collects 55 videos from the main 7clouds channel and 29 from nine other uploaders. “Hall of Fame” and “Unstoppable” use verified lyric uploads from The Script and Sia. The arcade supplies text-only artwork and uses YouTube’s embedded player. [7clouds](https://www.youtube.com/@7clouds) · [The Script’s “Hall of Fame”](https://www.youtube.com/watch?v=dtgoDXEOxTM) · [Sia’s “Unstoppable”](https://www.youtube.com/watch?v=lIaGs-bWxEk)
 
-7clouds uploads plays the main channel's public uploads playlist on demand. Older channel-picker links lead to this view. YouTube provides the playlist and controls regional, per-video, and embedding availability. [Main 7clouds uploads playlist](https://www.youtube.com/playlist?list=UUNqFDjYTexJDET3rPDrmJKg)
+7clouds uploads offers 55 searchable main-channel lyric videos. Choosing a song loads its own official YouTube player. Previous and Next work with the selected search results, and the official full uploads playlist remains available. Older channel links lead to this view. YouTube controls regional, per-video, and embedding availability. [Main 7clouds uploads playlist](https://www.youtube.com/playlist?list=UUNqFDjYTexJDET3rPDrmJKg)
 
 The Music library contains 311 distinct tracks across 17 categories. It adds 244 tracks and preserves all 67 previous entries and their saved IDs. The catalog includes 126 release dates matched to Apple Music records and 22 tracks with a dated chart ranking. [Benson Boone](https://www.youtube.com/@BensonBoone) · [Imagine Dragons VEVO](https://www.youtube.com/@ImagineDragonsVEVO) · [Apple Music](https://music.apple.com/)
 
