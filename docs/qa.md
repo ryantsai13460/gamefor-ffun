@@ -1,5 +1,13 @@
 # Arcade release verification
 
+## Quick play, search filters, watch queue, and Blip backups
+
+Home reopens the latest game in one action. The library recognizes official game URLs and keeps game player, movie playback, and video format filters in shareable routes. Proxy Gemini keeps each tab's game filters and expanded list when switching tabs or returning from a player. Checked keyboard focus, filtering, and narrow layouts.
+
+Lantern Shift's three courses, relaxed pace, retry, and pause work without requesting an outside publisher. Chromium and WebKit covered the built-in player's keyboard and touch controls. Ten new hosted games responded to input in the live WebKit sandbox. [Game sources](catalog-recovery.md)
+
+The YouTube watch queue restores its order and most recently opened video across visits, supports Shorts and full videos, and resolves saved entries from My library. Blip backs up saved conversations as JSON and restores copies after checking the file and browser storage capacity. Verified both workflows with local browser fixtures. Hosted media remains subject to its provider and network.
+
 ## Main-channel song selection and popular game alternatives
 
 Music's 55-song 7clouds queue switches between individual official players and the full uploads playlist. Chromium and WebKit covered searching, keyboard selection, focus restoration, and video switching with the YouTube status script unavailable. Live WebKit received the playlist and individual player documents with the correct referrer, then YouTube returned HTTP 403 for the media requests when Play was pressed. Both streams stayed at 0:00. The view offers the official links and keeps song selection available. [Main 7clouds uploads](https://www.youtube.com/playlist?list=UUNqFDjYTexJDET3rPDrmJKg)

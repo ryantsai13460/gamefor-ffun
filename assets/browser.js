@@ -27,12 +27,14 @@ const savedLimits = { favorites: 40, history: 30 };
 const closedTabLimit = 8;
 const closedEntryLimit = 24;
 const gamePageSize = 24;
+const defaultGameFilters = { query: "", category: "", player: "", visibleEmbeds: gamePageSize };
 const youtubeApiUrl = "https://www.youtube.com/iframe_api";
 let viewerCount = 0;
 let youtubeApi;
 const builtInGames = games.filter(game => game.local);
 const embeddedGames = games.filter(arcadeEmbed);
 const inPageLibrary = createLibrary([...builtInGames, ...embeddedGames]);
+const playableCategories = [...inPageLibrary.categoryCounts.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b));
 const gameEmbeds = new Map(
   embeddedGames.flatMap(game => [[game.url, game], [arcadeEmbed(game), game]])
 );
@@ -306,7 +308,7 @@ function createBrowser() {
     panel.tabIndex = 0;
     panel.hidden = true;
     panels.append(panel);
-    return { id, entries, index, panel, preview: null, draft: undefined, invalid: false, gameQuery: "" };
+    return { id, entries, index, panel, preview: null, draft: undefined, invalid: false, gameFilters: { ...defaultGameFilters } };
   }
   let active = createTab();
   const items = [active];
@@ -555,6 +557,7 @@ function createBrowser() {
 
   function duplicateTab() {
     const next = createTab(active.entries.slice(), active.index);
+    next.gameFilters = { ...active.gameFilters };
     items.splice(items.indexOf(active) + 1, 0, next);
     activate(next);
     savedStatus.textContent = "Tab duplicated.";
@@ -622,24 +625,56 @@ function createBrowser() {
   }
 
   function playableGames(tab) {
+    const state = tab.gameFilters;
     const section = element("section", "proxy-playable proxy-game-shelf");
     const heading = element("div", "proxy-playable-heading");
     const title = element("h2", "", "Play inside the arcade");
+    title.id = `proxy-game-picker-${viewerId}-${tab.id}`;
     title.tabIndex = -1;
+    section.setAttribute("aria-labelledby", title.id);
     const browse = element("a", "text-action", "Games you can play here");
     browse.href = "#games?option=in-page";
     heading.append(title, browse);
+    const tools = element("div", "proxy-game-tools");
     const filter = element("input", "field proxy-game-filter");
     filter.type = "search";
     filter.placeholder = "Find an in-page game";
     filter.setAttribute("aria-label", filter.placeholder);
     filter.maxLength = 80;
-    filter.value = tab.gameQuery;
+    filter.value = state.query;
+    tools.append(filter);
+
+    function addGameSelect(label, options, value) {
+      const field = element("label", "proxy-game-select", label);
+      const select = element("select", "field");
+      select.append(...options.map(([title, key]) => new Option(title, key)));
+      select.value = value;
+      select.addEventListener("change", applyFilters);
+      field.append(select);
+      tools.append(field);
+      return select;
+    }
+
+    const category = addGameSelect("Category", [
+      ["All categories", ""], ...playableCategories.map(value => [value, value])
+    ], state.category);
+    const player = addGameSelect("Play option", [
+      ["All options", ""], ["Built-in games", "local"], ["Publisher games", "embed"]
+    ], state.player);
     const matchCount = element("p", "proxy-game-count");
     matchCount.setAttribute("role", "status");
-    section.append(heading, filter, matchCount);
+    const clear = control("Clear filters", "Clear filters", () => {
+      filter.value = "";
+      category.value = "";
+      player.value = "";
+      applyFilters();
+      filter.focus();
+    });
+    clear.className = "button proxy-game-clear";
+    const summary = element("div", "proxy-game-summary");
+    summary.append(matchCount, clear);
+    section.append(heading, tools, summary);
 
-    let visibleEmbeds = gamePageSize;
     const groups = [
       ["Built-in games", builtInGames],
       ["Official in-page players", embeddedGames]
@@ -651,8 +686,8 @@ function createBrowser() {
       if (hosted) group.append(element("p", "", "Playback depends on the publisher and your connection."));
       group.append(list);
       const more = control("Show more in-page games", "Show more", () => {
-        const next = visibleEmbeds;
-        visibleEmbeds += gamePageSize;
+        const next = state.visibleEmbeds;
+        state.visibleEmbeds += gamePageSize;
         syncGames();
         list.children[next]?.querySelector("button")?.focus();
       });
@@ -663,15 +698,17 @@ function createBrowser() {
       return { group, list, entries, hosted, more };
     });
 
+    let onlyMatch;
     function syncGames() {
-      tab.gameQuery = filter.value;
-      const query = filter.value.trim();
-      const matches = new Set(queryLibrary(inPageLibrary, { search: query }).map(game => game.id));
+      const query = state.query.trim();
+      const results = queryLibrary(inPageLibrary, { search: query, category: state.category, availability: state.player });
+      onlyMatch = results.length === 1 ? results[0] : undefined;
+      const matches = new Set(results.map(game => game.id));
       for (const { group, list, entries, hosted, more } of groups) {
         const found = entries.filter(game => matches.has(game.id));
         group.hidden = !found.length;
-        more.hidden = !hosted || found.length <= visibleEmbeds;
-        const visible = hosted ? found.slice(0, visibleEmbeds) : found;
+        more.hidden = !hosted || found.length <= state.visibleEmbeds;
+        const visible = hosted ? found.slice(0, state.visibleEmbeds) : found;
         list.replaceChildren(...visible.map(game => {
           const item = element("li");
           const play = control(`Play ${game.title}`, game.title, () => submit(gameLaunchAddress(game)));
@@ -680,14 +717,23 @@ function createBrowser() {
           return item;
         }));
       }
-      if (!query) matchCount.textContent = `${matches.size} games you can open here.`;
-      else if (matches.size) matchCount.textContent = `${matches.size} ${matches.size === 1 ? "game" : "games"} found.`;
-      else matchCount.textContent = "No in-page games match this search.";
+      const filtered = Boolean(query || state.category || state.player);
+      clear.hidden = !state.query && !state.category && !state.player;
+      const total = results.length.toLocaleString("en-US");
+      if (!filtered) matchCount.textContent = `${total} games you can open here.`;
+      else if (results.length) matchCount.textContent = `${total} ${onlyMatch ? "game" : "games"} found.`;
+      else matchCount.textContent = "No in-page games match these filters.";
     }
 
-    filter.addEventListener("input", () => {
-      visibleEmbeds = gamePageSize;
+    function applyFilters() {
+      Object.assign(state, { query: filter.value, category: category.value, player: player.value, visibleEmbeds: gamePageSize });
       syncGames();
+    }
+    filter.addEventListener("input", applyFilters);
+    filter.addEventListener("keydown", event => {
+      if (event.key !== "Enter" || event.isComposing || !onlyMatch) return;
+      event.preventDefault();
+      submit(gameLaunchAddress(onlyMatch));
     });
     syncGames();
     return section;
@@ -760,7 +806,7 @@ function createBrowser() {
 
   function playHereAction() {
     const choose = control("Choose an in-page game", "Choose an in-page game", () => {
-      active.gameQuery = "";
+      active.gameFilters = { ...defaultGameFilters };
       visit(home);
       active.panel.querySelector(".proxy-game-shelf h2")?.focus();
     });

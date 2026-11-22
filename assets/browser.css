@@ -388,9 +388,35 @@
   margin-bottom: 0;
 }
 
-.proxy-game-filter {
-  width: min(100%, 19rem);
+.proxy-game-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: .6rem;
   margin-top: .75rem;
+}
+
+.proxy-game-tools .field {
+  width: 100%;
+  min-width: 0;
+}
+
+.proxy-game-select {
+  display: grid;
+  gap: .25rem;
+  min-width: 0;
+  color: var(--muted, #a6a9b1);
+  font-size: .8rem;
+  font-weight: 650;
+}
+
+.proxy-game-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .4rem .75rem;
+  margin-top: .55rem;
 }
 
 .proxy-start .proxy-game-count {
@@ -398,8 +424,10 @@
   font-size: .875rem;
 }
 
-.proxy-game-count:not(:empty) {
-  padding-block: .55rem .15rem;
+.proxy-game-clear {
+  min-height: 2.15rem;
+  padding-block: .25rem;
+  font-size: .8rem;
 }
 
 .proxy-playable-group {
@@ -734,6 +762,14 @@
   .proxy-viewer .proxy-address {
     flex-basis: 100%;
     order: 3;
+  }
+
+  .proxy-game-tools {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .proxy-game-filter {
+    grid-column: 1 / -1;
   }
 }
 

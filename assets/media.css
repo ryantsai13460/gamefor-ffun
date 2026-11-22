@@ -233,6 +233,82 @@
   color: var(--accent, #baff60);
 }
 
+.media-queue-card-action {
+  position: absolute;
+  inset-block-start: 8px;
+  inset-inline-start: 8px;
+  min-block-size: 42px;
+  padding: 0 .55rem;
+  border: 1px solid #fff5;
+  border-radius: 8px;
+  color: #fff;
+  background: #111218eb;
+  font-size: .75rem;
+  font-weight: 750;
+}
+
+.media-queue-card-action[aria-pressed="true"] { color: var(--accent); }
+
+.media-watch-queue { display: grid; gap: .8rem; }
+.media-watch-queue-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .6rem;
+}
+.media-watch-queue-header h2 { font-size: clamp(1.3rem, 3vw, 1.7rem); }
+.media-watch-queue-list {
+  display: grid;
+  gap: .55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.media-watch-queue-list:empty { display: none; }
+.media-watch-queue-entry {
+  display: grid;
+  grid-template-columns: 2ch minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .6rem;
+  padding: .6rem .75rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.media-watch-queue-order {
+  align-self: start;
+  padding-block-start: .3rem;
+  color: var(--muted);
+  font-size: .8rem;
+  font-variant-numeric: tabular-nums;
+}
+.media-watch-queue-launch {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr);
+  align-items: center;
+  gap: .45rem;
+  min-block-size: 44px;
+  padding: .2rem 0;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text);
+  background: transparent;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.media-watch-queue-play-icon { color: var(--accent); font-size: .85rem; }
+.media-watch-queue-label { display: grid; gap: .15rem; min-width: 0; }
+.media-watch-queue-launch:hover strong { color: var(--accent); }
+.media-watch-queue-actions { gap: .3rem; }
+.media-video-details { display: grid; justify-items: start; gap: .6rem; width: 100%; }
+.media-queue-navigation { gap: .4rem; }
+
+@media (max-width: 690px) {
+  .media-watch-queue-entry { grid-template-columns: 2ch minmax(0, 1fr); }
+  .media-watch-queue-actions { grid-column: 2; }
+}
+
 .media-pages {
   justify-content: center;
 }

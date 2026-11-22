@@ -52,6 +52,48 @@ test('the library searches across media and remembers the filtered route on game
   await expect(page.locator('.discovery-card').filter({ hasText: '2048' })).toHaveAttribute('href', '#play/2048');
 });
 
+test('library search matches a game address and keeps playback filters in its links', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 760 });
+  await page.goto('/#discover?q=https%3A%2F%2Fterritorial.io%2F&type=games&play=embed');
+  const cards = page.locator('.discovery-card');
+  const player = page.getByRole('combobox', { name: 'Game player' });
+  await expect(player).toHaveValue('embed');
+  await expect(cards).toHaveCount(1);
+  await expect(cards.first()).toContainText('In-page player');
+  await expect(cards.first()).toHaveAttribute('href', '#play/territorial');
+  await player.selectOption('local');
+  await expect(page.locator('.discovery-status')).toHaveText('No matching titles');
+  await expect(page).toHaveURL(/&play=local$/);
+  await page.reload();
+  await expect(player).toHaveValue('local');
+
+  await page.goto('/#discover?q=Sintel&type=movies&watch=embedded');
+  await expect(page.getByRole('combobox', { name: 'Movie playback' })).toHaveValue('embedded');
+  await expect(cards.first()).toHaveAttribute('href', '#movies?film=sintel');
+  await expect(player).toBeHidden();
+
+  await page.goto('/#discover?q=MrBeast&type=videos&format=shorts');
+  await expect(page.getByRole('combobox', { name: 'Video format' })).toHaveValue('shorts');
+  await expect(cards.first()).toHaveAttribute('href', /#youtube\?format=shorts&video=/);
+  const destinations = await cards.evaluateAll(nodes => nodes.map(node => new URL(node.href).hash));
+  expect(destinations.every(hash => hash.startsWith('#youtube?format=shorts&video='))).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+});
+
+test('Home can replay a recently opened built-in game in one tap', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.goto('/#play/terrace-workshop?start=1');
+  const game = page.getByRole('group', { name: 'Terrace Workshop controls' });
+  await expect(game).toBeVisible();
+  await page.goto('/#home');
+  const panel = page.locator('.home-play-panel');
+  const playAgain = panel.getByRole('link', { name: /Terrace Workshop.*Play again/ });
+  await expect(playAgain).toHaveAttribute('href', '#play/terrace-workshop?start=1');
+  await expect(panel.getByRole('link', { name: 'Built-in only' })).toHaveAttribute('href', '#games?local=1');
+  await playAgain.click();
+  await expect(game).toBeVisible();
+});
+
 test('the mobile home shows lazy media shelves with the arcade links', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto('/');

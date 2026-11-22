@@ -609,11 +609,11 @@
   background: var(--blip-panel);
 }
 .blip-dialog::backdrop { background: #05090fbb; }
-.blip-dialog form, .blip-name-label { display: grid; gap: 10px; }
+.blip-dialog form, .blip-name-label, .blip-backup-file { display: grid; gap: 10px; }
 .blip-dialog h2 { font-size: 1.22rem; }
 .blip-dialog p { color: var(--blip-faint); overflow-wrap: anywhere; }
-.blip-edit-error:empty { display: none; }
-.blip-name-label input {
+.blip-edit-error:empty, .blip-backup-status:empty { display: none; }
+.blip-name-label input, .blip-backup-file input {
   min-width: 0;
   min-height: 40px;
   padding: 6px 9px;
@@ -621,6 +621,17 @@
   border-radius: 8px;
   color: var(--blip-ink);
   background: var(--blip-background);
+}
+.blip-backup-file { min-width: 0; }
+.blip-backup-file input { width: 100%; box-sizing: border-box; }
+.blip-backup-file input::file-selector-button {
+  margin-inline-end: 8px;
+  padding: 4px 6px;
+  border: 1px solid var(--blip-line);
+  border-radius: 5px;
+  color: var(--blip-ink);
+  background: var(--blip-panel);
+  cursor: pointer;
 }
 .blip-dialog-actions { justify-content: end; }
 .blip-shortcuts { display: grid; gap: 7px; margin-block: 14px; }
