@@ -1,3 +1,6 @@
+const version = new URL(import.meta.url).search;
+const { amazonProduct } = await import(`./shopping-products.js${version}`);
+
 export const shoppingCategories = [
   {
     id: 'gaming', title: 'Gaming gear', description: 'Controllers, charging stands, and accessories for your setup.',
@@ -59,13 +62,18 @@ export function shoppingCategory(id) {
   return categoriesById.get(id);
 }
 
-export function shoppingLink({ query, category, retailer } = {}) {
+export function shoppingLink({ query, category, retailer, product } = {}) {
   const params = new URLSearchParams();
   const text = shoppingQuery(query);
+  const item = amazonProduct(product);
   if (text && !isExcludedShoppingQuery(text)) params.set('q', text);
   if (categoriesById.has(category)) params.set('category', category);
-  if (retailersById.has(retailer)) params.set('retailer', retailer);
-  return '#shopping' + (params.size ? '?' + params : '');
+  if (item) {
+    params.set('retailer', 'amazon');
+    params.set('product', item.asin);
+  } else if (retailersById.has(retailer)) params.set('retailer', retailer);
+  const queryString = params.toString();
+  return '#shopping' + (queryString ? '?' + queryString : '');
 }
 
 export function shoppingRetailerLink(retailerId, { query, category } = {}) {
@@ -114,7 +122,9 @@ function restoreShoppingState(value) {
     interests: Array.isArray(value?.interests)
       ? [...new Set(value.interests.slice(0, 30).filter(id => categoriesById.has(id)))] : [],
     saved: restoredSearches(value?.saved, shoppingSavedLimit),
-    recent: restoredSearches(value?.recent, maxRecent)
+    recent: restoredSearches(value?.recent, maxRecent),
+    products: Array.isArray(value?.products)
+      ? [...new Set(value.products.slice(0, 40).map(value => amazonProduct(value)?.asin).filter(Boolean))] : []
   };
 }
 
@@ -129,7 +139,10 @@ export function getShoppingLibraryState() {
   } catch {
     // Keep changes from this tab if browser storage cannot be read.
   }
-  return { interests: [...sessionState.interests], saved: sessionState.saved.map(s => ({ ...s })), recent: sessionState.recent.map(s => ({ ...s })) };
+  return {
+    interests: [...sessionState.interests], saved: sessionState.saved.map(s => ({ ...s })),
+    recent: sessionState.recent.map(s => ({ ...s })), products: [...sessionState.products]
+  };
 }
 
 export function updateShoppingLibrary(update) {

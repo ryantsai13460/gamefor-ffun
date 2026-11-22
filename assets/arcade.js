@@ -3,7 +3,7 @@ import { createSearchFullscreen } from './search-fullscreen.js';
 import { createGameAddressLookup, isGamePortalAddress } from './game-play-policy.js';
 
 const assetVersion = new URL(import.meta.url).search;
-const [{ games }, { createLibrary, discoverySearchHistoryKey, gameAvailability, normalize, queryLibrary, restorePreferences, themeOptions },
+const [{ games }, { createLibrary, defaultProfileName, discoverySearchHistoryKey, gameAvailability, normalize, queryLibrary, restorePreferences, themeOptions, validateProfileName },
   { gatewayConnected, renderGatewaySettings, searchGateway, searchGatewayPage },
   { gameBackgroundOptions, readGameBackground, saveGameBackground, showGameBackground, prepareGameBackground },
   { arcadeModes }] = await Promise.all([
@@ -28,19 +28,20 @@ const drawerClose = document.getElementById('drawer-close');
 const workspace = document.querySelector('.workspace');
 const skipLink = document.querySelector('.skip-link');
 const confirmDialog = document.getElementById('confirm-dialog');
+const profileLink = document.getElementById('arcade-profile');
 const announce = text => { document.getElementById('announcement').textContent = text; };
 const localCount = games.filter(game => game.local).length;
 const mainCatalogCount = games.filter(game => game.collection === 'github' || game.collection === 'base44-library').length;
 const categories = [...library.categoryCounts.keys()].sort((a, b) => a.localeCompare(b));
 const altFeatured = ['lantern-shift', 'territorial', 'candy-box-2', 'terrace-workshop', 'tapamine-dash', 'voxelia', '2048', 'ffun-skyline-v1', 'snake', 'memory-match', 'pong'];
 const drawerMedia = matchMedia('(max-width: 860px)');
-const discoveryRoutes = { shorts: 'renderShorts', community: 'renderCommunity', shopping: 'renderShopping' };
+const discoveryRoutes = { shorts: 'renderShorts', instagram: 'renderInstagram', community: 'renderCommunity', shopping: 'renderShopping' };
 const routes = new Set(['home', 'explore', 'discover', 'library', 'games', 'categories', 'trending', 'new', 'favorites', 'recent', 'youtube', 'movies', 'music', 'browse', 'web-search', 'blip', 'play-hub', 'settings', 'credits', 'play', ...Object.keys(discoveryRoutes)]);
 const gameSearchRoutes = new Set(['games', 'categories', 'trending', 'new', 'favorites', 'recent', 'play-hub']);
 const routeNames = {
   home: 'Home', explore: 'Explore', discover: 'Search the library', library: 'My library', games: 'All Games', categories: 'Categories', trending: 'Trending',
   new: 'New Games', favorites: 'Favorites', recent: 'Recently Played',
-  youtube: 'YouTube', movies: 'Movies', music: 'Music', shorts: 'Short Videos', community: 'Community', shopping: 'Shopping',
+  youtube: 'YouTube', movies: 'Movies', music: 'Music', shorts: 'Short Videos', instagram: 'Instagram', community: 'Community', shopping: 'Shopping',
   browse: 'Proxy Gemini', 'web-search': 'Web Search', blip: 'blip.ai', 'play-hub': 'Play Hub',
   settings: 'Settings', credits: 'Credits'
 };
@@ -61,6 +62,7 @@ const paths = {
   gamepad: '<path d="M7 7h10c3.1 0 4.2 3 5 7.7.6 3.4-2 4.8-4.3 2.4L15.5 15h-7l-2.2 2.1C4 19.5 1.4 18.1 2 14.7 2.8 10 3.9 7 7 7zM7.5 9.5v4m-2-2h4m6.5.9h.02m2.2-2.1h.02"/>',
   video: '<rect x="3" y="5.5" width="18" height="13" rx="3"/><path d="m10 9 5 3-5 3z"/>',
   shorts: '<rect x="6" y="2.7" width="12" height="18.6" rx="3"/><path d="m10 8.5 5 3.5-5 3.5z"/>',
+  camera: '<rect x="3.5" y="5.5" width="17" height="14" rx="3"/><circle cx="12" cy="12.5" r="3.6"/><path d="M8 5.5 9.4 3h5.2L16 5.5"/>',
   bag: '<path d="M5 8h14l1.5 12h-17zM9 9V6a3 3 0 1 1 6 0v3"/>',
   chat: '<path d="M20 11a8 8 0 0 1-8.5 8 9 9 0 0 1-3.4-.7L4 20l1.3-4A7.4 7.4 0 0 1 3.5 11a8.3 8.3 0 0 1 16.5 0zM8 11h.01M12 11h.01M16 11h.01"/>',
   film: '<rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M7.5 4v16m9-16v16M3.5 9h4m-4 6h4m9-6h4m-4 6h4"/>',
@@ -177,9 +179,17 @@ let gameBackground = readGameBackground();
 function savePreferences() {
   try {
     localStorage.setItem(storageKey, JSON.stringify(prefs));
+    return true;
   } catch {
     announce('Browser storage is unavailable. Changes will last for this visit.');
+    return false;
   }
+}
+
+function updateProfileBadge() {
+  profileLink.querySelector('.profile-initial').textContent = prefs.profileName[0].toUpperCase();
+  profileLink.querySelector('.profile-username').textContent = prefs.profileName;
+  profileLink.setAttribute('aria-label', `Edit Gamffun profile ${prefs.profileName}`);
 }
 
 let current = null;
@@ -399,7 +409,10 @@ function homeDestinations() {
     item.append(mark, copy);
     (description ? primary : secondary).append(item);
   }
-  nav.append(header, primary, secondary);
+  const services = element('div', 'interaction-row home-service-links');
+  services.append(link('Instagram', '#instagram', 'button', 'camera'), link('Discord', '#community?view=discord', 'button', 'chat'),
+    link('Amazon picks', '#shopping?retailer=amazon', 'button', 'bag'));
+  nav.append(header, primary, secondary, services);
   return nav;
 }
 
@@ -1445,15 +1458,69 @@ function applyTheme() {
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', background);
 }
 
+function profileSettings() {
+  const panel = element('section', 'info-panel profile-settings');
+  panel.tabIndex = -1;
+  const title = element('h2', '', 'Gamffun profile');
+  title.id = 'profile-settings-title';
+  panel.setAttribute('aria-labelledby', title.id);
+  const form = element('form', 'profile-form');
+  const label = element('label', '', 'Gamffun username');
+  const field = element('input', 'field');
+  field.type = 'text';
+  field.name = 'username';
+  field.value = prefs.profileName;
+  field.maxLength = 24;
+  field.autocomplete = 'off';
+  field.spellcheck = false;
+  field.setAttribute('autocapitalize', 'off');
+  field.setAttribute('aria-describedby', 'profile-hint profile-status');
+  label.append(field);
+  const hint = element('p', 'muted', 'Use 3 to 24 letters, numbers, underscores, or hyphens. Start with a letter or number.');
+  hint.id = 'profile-hint';
+  const status = element('p', 'muted');
+  status.id = 'profile-status';
+  status.setAttribute('role', 'status');
+  function saveName(name) {
+    prefs.profileName = name;
+    field.value = name;
+    field.removeAttribute('aria-invalid');
+    updateProfileBadge();
+    status.textContent = savePreferences() ? 'Username saved on this device.' : 'Username updated for this visit.';
+  }
+  const save = element('button', 'button primary', 'Save username');
+  save.type = 'submit';
+  const actions = element('div', 'interaction-row');
+  actions.append(save, action('Use default username', () => saveName(defaultProfileName)));
+  form.append(label, hint, actions, status);
+  field.addEventListener('input', () => {
+    field.removeAttribute('aria-invalid');
+    status.textContent = '';
+  });
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    const name = validateProfileName(field.value);
+    if (name) saveName(name);
+    else {
+      field.setAttribute('aria-invalid', 'true');
+      status.textContent = 'Choose a username that follows the rules above.';
+      field.focus();
+    }
+  });
+  panel.append(title, element('p', 'muted', 'Your profile stays in this browser. Instagram, Discord, and Amazon manage their own sign-ins.'), form);
+  return panel;
+}
+
 function renderSettings(target, params) {
-  const header = heading('Settings', 'Your mode, colors, and background are saved in this browser.');
+  const header = heading('Settings', 'Manage your profile and preferences for this browser.');
   const sections = element('nav', 'settings-shortcuts');
   sections.setAttribute('aria-label', 'Settings sections');
-  sections.append(link('Colors & modes', '#settings?panel=appearance', 'chip'),
+  sections.append(link('Gamffun profile', '#settings?panel=profile', 'chip'), link('Colors & modes', '#settings?panel=appearance', 'chip'),
     link('Game backgrounds', '#settings?panel=background', 'chip'),
     link('Home preferences', '#settings?panel=home', 'chip'));
   header.append(sections);
-  target.append(header);
+  const profile = profileSettings();
+  target.append(header, profile);
   const appearance = element('div', 'appearance-settings');
   appearance.tabIndex = -1;
   const modes = element('section', 'info-panel mode-settings');
@@ -1564,7 +1631,7 @@ function renderSettings(target, params) {
   target.append(row);
   const panel = gameBackgroundSettings();
   target.append(panel);
-  const highlighted = new Map([['appearance', appearance], ['background', panel], ['home', row]]).get(params.get('panel'));
+  const highlighted = new Map([['profile', profile], ['appearance', appearance], ['background', panel], ['home', row]]).get(params.get('panel'));
   if (highlighted) {
     highlighted.focus({ preventScroll: true });
     highlighted.scrollIntoView({ block: 'start' });
@@ -1925,10 +1992,11 @@ async function renderRoute(focus = true) {
   updateGlobalSearchHint();
   document.title = `${route.name === 'play' ? resolveGame(route.id)?.title || 'Game' : routeNames[route.name]} · Gamefor Ffun`;
 
+  let active = route.name;
+  if (route.name === 'games' && route.params.get('local') === '1') active = 'offline';
+  if (route.name === 'web-search' && route.params.get('mode') === 'ai') active = 'ai-help';
+  if (route.name === 'community' && route.params.get('view') === 'discord') active = 'discord';
   document.querySelectorAll('[data-page]').forEach(item => {
-    const offline = route.name === 'games' && route.params.get('local') === '1';
-    const assistant = route.name === 'web-search' && route.params.get('mode') === 'ai';
-    const active = offline ? 'offline' : assistant ? 'ai-help' : route.name;
     if (item.dataset.page === active) item.setAttribute('aria-current', 'page');
     else item.removeAttribute('aria-current');
   });
@@ -1950,7 +2018,9 @@ async function renderRoute(focus = true) {
             route.hash = hash;
             globalQuery.value = query;
           } })
-          : renderSavedLibrary(target, { favorites: records(prefs.favorites), recent: records(prefs.recent), showArtwork: prefs.artwork });
+          : renderSavedLibrary(target, {
+            favorites: records(prefs.favorites), recent: records(prefs.recent), showArtwork: prefs.artwork, profileName: prefs.profileName
+          });
         break;
       }
       case 'explore': {
@@ -2000,6 +2070,7 @@ async function renderRoute(focus = true) {
         break;
       }
       case 'shorts':
+      case 'instagram':
       case 'community':
       case 'shopping': {
         target.append(element('p', 'boot-note', `Loading ${routeNames[route.name]}…`));
@@ -2088,6 +2159,7 @@ document.querySelectorAll('[data-icon]').forEach(node => node.prepend(icon(node.
 document.body.classList.toggle('compact', prefs.compact);
 applyTheme();
 applyMode();
+updateProfileBadge();
 randomButton.addEventListener('click', randomGame);
 document.getElementById('global-search').addEventListener('submit', event => {
   event.preventDefault();

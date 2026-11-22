@@ -1,11 +1,13 @@
 const version = new URL(import.meta.url).search;
-const {
+const [{
   getShoppingLibraryState, isExcludedShoppingQuery, shoppingCategories, shoppingCategory,
   shoppingLink, shoppingQuery, shoppingQueryLimit, shoppingRetailerLink, shoppingRetailers,
   shoppingSavedLimit, shoppingSearchKey, shoppingStorageKey, updateShoppingLibrary
-} = await import(`./shopping-data.js${version}`);
+}, { amazonProduct, amazonProductUrl, amazonProducts, findAmazonProducts }] = await Promise.all([
+  import(`./shopping-data.js${version}`), import(`./shopping-products.js${version}`)
+]);
 
-export { getShoppingLibraryState, shoppingLink };
+export { amazonProduct, getShoppingLibraryState, shoppingLink };
 
 export function clearShoppingHistory() {
   return updateShoppingLibrary(state => { state.recent = []; });
@@ -28,6 +30,13 @@ function button(label, callback, signal, className = 'button') {
 function link(label, href, className) {
   const result = element('a', className, label);
   result.href = href;
+  return result;
+}
+
+function externalLink(label, href, className = 'button') {
+  const result = link(label, href, className);
+  result.target = '_blank';
+  result.rel = 'noopener noreferrer';
   return result;
 }
 
@@ -62,6 +71,101 @@ function searchDetail(search) {
   ].filter(Boolean).join(' · ');
 }
 
+function productName(product) {
+  return product.brand + ' ' + product.title;
+}
+
+function amazonCatalog(search, level = 2) {
+  const catalog = element('section', 'shopping-section shopping-catalog');
+  catalog.setAttribute('aria-labelledby', 'shopping-catalog-heading');
+  const heading = element('h' + level, 'shopping-catalog-heading', 'Amazon picks');
+  heading.id = 'shopping-catalog-heading';
+  const products = findAmazonProducts(search);
+  const filters = element('div', 'shopping-chips shopping-product-filters');
+  const filtersByCategory = [...new Set(amazonProducts.map(product => product.category))];
+  for (const id of ['', ...filtersByCategory]) {
+    const filter = link(shoppingCategory(id)?.title || 'All picks', shoppingLink({ ...search, category: id }), 'chip');
+    if (id === search.category) filter.setAttribute('aria-current', 'true');
+    filters.append(filter);
+  }
+  catalog.append(heading, element('p', 'shopping-catalog-note', 'Browse a curated collection with specifications from the makers.'), filters);
+  if (!products.length) {
+    catalog.append(element('p', 'shopping-empty-state', 'No matches in the Gamffun catalog. Use Open Amazon results to search the full store.'));
+    return catalog;
+  }
+
+  const grid = element('div', 'shopping-product-grid');
+  for (const product of products) {
+    const card = element('article', 'shopping-product-card');
+    card.dataset.category = product.category;
+    const detailHref = shoppingLink({ ...search, product: product.asin });
+    const title = element('h' + (level + 1), 'shopping-product-title');
+    title.append(link(productName(product), detailHref, 'text-action'));
+    card.append(element('span', 'shopping-product-category', shoppingCategory(product.category).title),
+      title, element('p', '', product.description));
+    const specs = element('p', 'shopping-product-summary', product.specs[0][1]);
+    card.append(specs);
+    grid.append(card);
+  }
+  catalog.append(grid);
+  return catalog;
+}
+
+function renderAmazonItem(target, product, search, controller) {
+  const { signal } = controller;
+  const shell = element('div', 'shopping shopping-detail');
+  const back = link('Back to Amazon picks', shoppingLink({ ...search, retailer: 'amazon' }), 'text-action shopping-detail-back');
+  const header = element('header', 'page-heading shopping-intro');
+  const title = element('h1', '', productName(product));
+  title.tabIndex = -1;
+  header.append(title, element('p', '', shoppingCategory(product.category).title));
+  const detail = element('article', 'shopping-product-detail');
+  detail.dataset.category = product.category;
+  const summary = element('div', 'shopping-product-overview');
+  const actions = element('div', 'shopping-product-actions');
+  const save = button('Save item', toggleProduct, signal);
+  actions.append(save, externalLink('Open on Amazon', amazonProductUrl(product.asin), 'button primary'));
+  const feedback = element('p', 'shopping-feedback');
+  feedback.setAttribute('role', 'status');
+  summary.append(element('p', '', product.description), actions,
+    element('p', 'shopping-catalog-note', 'Check current price, stock and checkout on Amazon U.S. The link opens in a new tab.'), feedback);
+  const specifications = element('section', 'shopping-product-specifications');
+  const specs = element('dl');
+  for (const [label, value] of product.specs) {
+    const pair = element('div');
+    pair.append(element('dt', '', label), element('dd', '', value));
+    specs.append(pair);
+  }
+  specifications.append(element('h2', '', 'Specifications'), specs,
+    externalLink('Details from ' + product.brand, product.source, 'text-action'));
+  detail.append(summary, specifications);
+  shell.append(back, header, detail);
+  target.replaceChildren(shell);
+  updateSaveLabel();
+  if (document.activeElement === target.parentElement) title.focus();
+  window.addEventListener('storage', event => {
+    if (event.key === shoppingStorageKey || event.key === null) updateSaveLabel();
+  }, { signal });
+
+  function updateSaveLabel() {
+    const saved = getShoppingLibraryState().products.includes(product.asin);
+    save.textContent = saved ? 'Saved item' : 'Save item';
+    save.setAttribute('aria-pressed', String(saved));
+  }
+
+  function toggleProduct() {
+    let saved;
+    const stored = updateShoppingLibrary(state => {
+      saved = !state.products.includes(product.asin);
+      state.products = saved ? [product.asin, ...state.products] : state.products.filter(asin => asin !== product.asin);
+    });
+    updateSaveLabel();
+    feedback.textContent = (saved ? 'Item saved.' : 'Item removed.') + (stored ? '' : ' This change will last for this visit.');
+  }
+
+  return () => controller.abort();
+}
+
 export function renderShopping(target, params = new URLSearchParams(), { rememberSearches = true } = {}) {
   const controller = new AbortController();
   const { signal } = controller;
@@ -70,11 +174,23 @@ export function renderShopping(target, params = new URLSearchParams(), { remembe
   const category = shoppingCategory(params.get('category'))?.id || '';
   const retailer = shoppingRetailers.find(item => item.id === params.get('retailer'))?.id || '';
   const search = { query: excluded ? '' : inputQuery, category, retailer };
+  const item = retailer !== 'ebay' && amazonProduct(params.get('product'));
+  if (item && !excluded) return renderAmazonItem(target, item, search, controller);
+  const amazon = retailer === 'amazon';
   const hasSearch = !excluded && Boolean(search.query || category);
   const searchKey = hasSearch ? shoppingSearchKey(search) : '';
   const shell = element('div', 'shopping');
   const intro = element('header', 'page-heading shopping-intro');
-  intro.append(element('h1', '', 'Shopping'), element('p', '', 'Find gaming gear, electronics, books, and collectibles on Amazon and eBay.'));
+  intro.append(element('h1', '', amazon ? 'Amazon discovery' : 'Shopping'), element('p', '', amazon
+    ? 'Browse and save Gamffun picks for your setup, or search Amazon for more.'
+    : 'Find gaming gear, electronics, books, and collectibles on Amazon and eBay.'));
+  const retailers = element('nav', 'shopping-chips shopping-retailer-nav');
+  retailers.setAttribute('aria-label', 'Retailers');
+  for (const option of [{ id: '', title: 'Both retailers' }, ...shoppingRetailers]) {
+    const retailerLink = link(option.title, shoppingLink({ ...search, retailer: option.id }), 'chip');
+    if (option.id === retailer) retailerLink.setAttribute('aria-current', 'page');
+    retailers.append(retailerLink);
+  }
 
   const form = element('form', 'shopping-form');
   form.setAttribute('role', 'search');
@@ -125,7 +241,15 @@ export function renderShopping(target, params = new URLSearchParams(), { remembe
   }, { signal });
 
   const notice = element('p', 'shopping-notice', 'Retailer links open in a new tab. Listings, current prices, and checkout are on the retailer’s U.S. website.');
-  shell.append(intro, form, notice);
+  shell.append(intro, retailers, form, notice);
+
+  const savedItemsPanel = element('section', 'shopping-section shopping-saved-products');
+  const savedItems = element('div', 'shopping-chips');
+  savedItemsPanel.append(element('h2', '', 'Saved Amazon items'), savedItems);
+  shell.append(savedItemsPanel);
+  if (params.has('product') && !item) {
+    shell.append(element('p', 'shopping-empty-state', 'That item is outside the Gamffun catalog.'));
+  }
 
   let resultsTitle;
   let saveButton;
@@ -148,14 +272,16 @@ export function renderShopping(target, params = new URLSearchParams(), { remembe
       if (!href) continue;
       const card = element('article', 'shopping-retailer');
       card.dataset.retailer = merchant.id;
-      const open = link('Open ' + merchant.title + ' results', href, 'button');
-      open.target = '_blank';
-      open.rel = 'noopener noreferrer';
+      const open = externalLink('Open ' + merchant.title + ' results', href);
       card.append(element('h3', '', merchant.title), open);
       row.append(card);
     }
-    results.append(heading, row);
+    results.append(heading);
+    if (amazon) results.append(amazonCatalog(search, 3));
+    results.append(row);
     shell.append(results);
+  } else if (amazon && !excluded) {
+    shell.append(amazonCatalog(search));
   }
 
   let library = getShoppingLibraryState();
@@ -238,6 +364,9 @@ export function renderShopping(target, params = new URLSearchParams(), { remembe
       saveButton.setAttribute('aria-pressed', String(saved));
       saveButton.textContent = saved ? 'Saved search' : 'Save search';
     }
+    savedItemsPanel.hidden = retailer === 'ebay' || !library.products.length;
+    savedItems.replaceChildren(...library.products.map(amazonProduct).map(product =>
+      link(productName(product), shoppingLink({ product: product.asin }), 'chip')));
     savedPanel.hidden = !library.saved.length;
     savedList.replaceChildren(...library.saved.map(entry => {
       const item = element('li', 'shopping-saved-item');

@@ -97,3 +97,59 @@ test('shopping keeps changes for this visit if browser storage is unavailable', 
   const saved = page.getByRole('heading', { name: 'Saved searches' }).locator('..');
   await expect(saved.getByRole('link', { name: 'chess sets' })).toBeVisible();
 });
+
+test('Amazon picks open exact in-site product details and persist saved items', async ({ page }) => {
+  const merchantRequests = [];
+  page.on('request', request => {
+    if (/^https:\/\/(?:[^/]+\.)?amazon\.com\//.test(request.url())) merchantRequests.push(request.url());
+  });
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/#shopping?retailer=amazon');
+  await expect(page.getByRole('heading', { name: 'Amazon discovery' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Retailers' }).getByRole('link', { name: 'Amazon', exact: true }))
+    .toHaveAttribute('aria-current', 'page');
+  const catalog = page.getByRole('region', { name: 'Amazon picks' });
+  await catalog.getByRole('link', { name: 'Gaming gear' }).press('Enter');
+  await expect(catalog.getByRole('link', { name: 'Gaming gear' })).toHaveAttribute('aria-current', 'true');
+  await expect(catalog.getByRole('link', { name: 'Plugable 9-in-1 USB-C Hub' })).toHaveCount(0);
+  const itemTitle = '8BitDo Ultimate 2C Bluetooth Controller';
+  await catalog.getByRole('link', { name: itemTitle }).press('Enter');
+  await expect(page).toHaveURL(/category=gaming&retailer=amazon&product=B0DM1WH5BV$/);
+  await expect(page.getByRole('heading', { name: itemTitle, exact: true })).toBeFocused();
+  await expect(page.getByRole('heading', { name: 'Specifications', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Details from 8BitDo' }))
+    .toHaveAttribute('href', 'https://www.8bitdo.com/ultimate-2c-bluetooth-controller/');
+  const officialLink = page.getByRole('link', { name: 'Open on Amazon' });
+  await expect(officialLink).toHaveAttribute('href', 'https://www.amazon.com/dp/B0DM1WH5BV');
+  await expect(officialLink).toHaveAttribute('target', '_blank');
+  await expect(officialLink).toHaveAttribute('rel', 'noopener noreferrer');
+  await page.getByRole('button', { name: 'Save item' }).click();
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Saved item', pressed: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Back to Amazon picks' }).click();
+  await expect(page).toHaveURL(/#shopping\?category=gaming&retailer=amazon$/);
+  const saved = page.getByRole('heading', { name: 'Saved Amazon items' }).locator('..');
+  await saved.getByRole('link', { name: itemTitle }).click();
+  await page.getByRole('button', { name: 'Saved item' }).click();
+  await page.getByRole('link', { name: 'Back to Amazon picks' }).click();
+  await expect(page.getByRole('heading', { name: 'Saved Amazon items' })).toBeHidden();
+  expect(merchantRequests).toEqual([]);
+});
+
+test('Amazon search finds catalog picks and falls back to the full retailer search', async ({ page }) => {
+  await page.goto('/#shopping?retailer=amazon');
+  const query = page.getByRole('search', { name: 'Shopping' }).getByRole('searchbox', { name: 'Search shopping' });
+  await query.fill('USB-C hubs & HDMI');
+  await query.press('Enter');
+  const catalog = page.getByRole('region', { name: 'Amazon picks' });
+  await expect(catalog.getByRole('link', { name: 'Plugable 9-in-1 USB-C Hub' })).toBeVisible();
+  await expect(catalog.getByRole('link', { name: /8BitDo/ })).toHaveCount(0);
+  await query.fill('portable speakers');
+  await query.press('Enter');
+  await expect(catalog.getByText('No matches in the Gamffun catalog.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Open Amazon results' }))
+    .toHaveAttribute('href', 'https://www.amazon.com/s?k=portable+speakers');
+  await page.goto('/#shopping?retailer=amazon&product=https://outside.example');
+  await expect(page.getByText('That item is outside the Gamffun catalog.')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Open on Amazon' })).toHaveCount(0);
+});

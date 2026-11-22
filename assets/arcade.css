@@ -194,6 +194,22 @@ h1, h2, h3, p { margin: 0; }
   color: var(--muted); font: inherit; font-size: .69rem; font-weight: 600; white-space: nowrap;
 }
 .random-top { margin-left: auto; white-space: nowrap; }
+.profile-link { flex: none; padding-inline: 9px 12px; gap: 7px; }
+.random-top[hidden] + .profile-link { margin-inline-start: auto; }
+.profile-initial {
+  display: grid; place-items: center; flex: none;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--accent-wash); color: var(--accent); border: 1px solid var(--accent-border);
+  font-size: .8rem; font-weight: 750;
+}
+.profile-username { max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-settings { margin-bottom: 14px; }
+.profile-form { display: grid; gap: 8px; width: min(100%, 32rem); }
+.profile-form label { display: grid; gap: 5px; min-width: 0; }
+.profile-form .field { width: 100%; min-width: 0; }
+.info-panel.profile-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 16px; }
+.profile-summary h2 { min-width: 0; font-size: 1rem; overflow-wrap: anywhere; }
+.profile-summary .text-action { margin-inline-start: auto; }
 .content {
   flex: 1; width: 100%; max-width: 1790px; margin: 0 auto;
   padding: 28px var(--content-gutter) 54px;
@@ -412,6 +428,8 @@ select.field { cursor: pointer; }
   .global-search kbd { display: none; }
   .random-top { flex: none; width: 42px; min-height: 42px; padding: 0; }
   .random-top span { display: none; }
+  .profile-link { inline-size: 42px; padding: 0; }
+  .profile-link .profile-username { display: none; }
   .content { padding-top: 22px; }
 }
 @media (max-width: 520px) {

@@ -3,6 +3,12 @@ import { arcadeModes } from './arcade-modes.js';
 
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 export const discoverySearchHistoryKey = 'ffun.discovery.history';
+export const defaultProfileName = 'user_12345';
+
+export function validateProfileName(value) {
+  const name = typeof value === 'string' ? value.trim() : '';
+  return /^[a-z\d][a-z\d_-]{2,23}$/i.test(name) ? name : '';
+}
 
 export const themeOptions = [
   ['midnight', 'Midnight'],
@@ -92,6 +98,7 @@ export function restorePreferences(saved, byId) {
   return {
     favorites: ids(saved?.favorites),
     recent: ids(saved?.recent).slice(0, 30),
+    profileName: validateProfileName(saved?.profileName) || defaultProfileName,
     compact: saved?.compact === true,
     artwork: saved?.artwork !== false,
     theme: themeOptions.some(([id]) => id === saved?.theme) ? saved.theme : 'midnight',

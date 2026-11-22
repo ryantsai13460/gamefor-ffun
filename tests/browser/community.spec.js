@@ -107,3 +107,89 @@ test('Discord rejects invalid URLs, mismatched invites and age-restricted conten
   await expect(page.getByRole('link', { name: 'Open Discord invite' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Open server in Discord' })).toHaveAttribute('href', `https://discord.com/channels/${serverId}`);
 });
+
+const widgetData = `https://discord.com/api/v10/guilds/${serverId}/widget.json`;
+
+test('Discord browsing loads public channels on demand and filters them in the arcade', async ({ page }) => {
+  const calls = [];
+  await page.route('https://discord.com/**', async route => {
+    const request = route.request();
+    calls.push({ url: request.url(), headers: await request.allHeaders() });
+    await route.fulfill({
+      json: {
+        id: serverId, name: 'Arcade Guild',
+        members: [{ username: 'Private Fixture', avatar_url: 'https://example.com/member.png' }],
+        instant_invite: 'https://discord.gg/widget-invite',
+        channels: [
+          { id: '120000000000000011', name: 'Talk about games', position: 1, type: 2 },
+          { id: '120000000000000012', name: 'Community Stage', position: 2, type: 13 },
+          { id: '120000000000000013', name: 'Restricted fixture', type: 2, nsfw: true },
+          ...Array.from({ length: 36 }, (_, index) => ({
+            id: String(120000000000001010n + BigInt(index)), name: `Extra channel ${index + 1}`, position: index + 3
+          }))
+        ]
+      },
+      headers: { 'Access-Control-Allow-Origin': '*' }
+    });
+  });
+
+  await page.setViewportSize({ width: 390, height: 820 });
+  await page.goto('/#community');
+  await page.getByRole('link', { name: 'Browse Discord', exact: true }).click();
+  await expect(page).toHaveURL(/#community\?view=discord$/);
+  await expect(page.getByRole('heading', { name: 'Discord', level: 1 })).toBeVisible();
+  await page.getByRole('button', { name: 'Discord settings' }).click();
+  await page.getByLabel('Server ID', { exact: true }).fill(serverId);
+  await page.getByRole('button', { name: 'Save on this device' }).click();
+  expect(calls).toEqual([]);
+
+  await page.reload();
+  const load = page.getByRole('button', { name: 'Load public channels', exact: true });
+  await expect(load).toBeVisible();
+  expect(calls).toEqual([]);
+  await load.click();
+  const list = page.getByRole('list', { name: 'Public Discord channels' });
+  await expect(list.getByRole('link')).toHaveCount(36);
+  const more = page.getByRole('button', { name: 'Show more channels' });
+  await more.click();
+  await expect(list.getByRole('link')).toHaveCount(38);
+  await expect(list.getByRole('link', { name: 'Extra channel 35', exact: true })).toBeFocused();
+
+  const filter = page.getByRole('searchbox', { name: 'Filter public channels' });
+  await filter.fill('stage');
+  await expect(list.getByRole('link')).toHaveCount(1);
+  await expect(list.getByRole('link', { name: 'Community Stage' })).toHaveAttribute('href', `https://discord.com/channels/${serverId}/120000000000000012`);
+  await expect(list.getByRole('link', { name: 'Talk about games' })).toHaveCount(0);
+  await expect(page.getByText('Private Fixture')).toHaveCount(0);
+  await expect(page.getByText('Restricted fixture')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Open Discord invite' })).toHaveCount(0);
+  expect(calls.map(call => call.url)).toEqual([widgetData]);
+  expect(calls.every(item => !item.headers.cookie && !item.headers.referer)).toBe(true);
+  await expect(page).toHaveURL(/#community\?view=discord$/);
+
+  await page.getByRole('link', { name: 'Community overview' }).click();
+  await expect(page.getByRole('heading', { name: 'Community', level: 1 })).toBeVisible();
+  await page.goBack();
+  await expect(load).toBeVisible();
+  await expect(list).toBeHidden();
+  expect(calls.map(call => call.url)).toEqual([widgetData]);
+});
+
+test('Discord channel lookup handles disabled and empty widgets while preserving the official server link', async ({ page }) => {
+  let runs = 0;
+  await page.route(widgetData, route => route.fulfill(++runs === 1
+    ? { status: 403, headers: { 'Access-Control-Allow-Origin': '*' } }
+    : { json: { id: serverId, name: 'Arcade Guild', channels: [] }, headers: { 'Access-Control-Allow-Origin': '*' } }));
+  await page.goto('/#community?view=discord');
+  await page.getByRole('button', { name: 'Discord settings' }).click();
+  await page.getByLabel('Server ID', { exact: true }).fill(serverId);
+  await page.getByRole('button', { name: 'Save on this device' }).click();
+  const load = page.getByRole('button', { name: 'Load public channels', exact: true });
+  await load.click();
+  await expect(page.getByText(/Discord’s public widget is unavailable/)).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Open server in Discord' })).toHaveAttribute('href', `https://discord.com/channels/${serverId}`);
+  await load.click();
+  await expect(page.getByText(/Arcade Guild does not publish any voice or stage channels/)).toBeVisible();
+  await expect(page.getByRole('searchbox', { name: 'Filter public channels' })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Load server widget' })).toBeVisible();
+});

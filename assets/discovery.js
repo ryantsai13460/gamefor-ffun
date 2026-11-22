@@ -373,11 +373,16 @@ export function renderDiscovery(target, { params, games, showArtwork, rememberSe
   return () => { active = false; };
 }
 
-export function renderSavedLibrary(target, { favorites, recent, showArtwork }) {
+export function renderSavedLibrary(target, { favorites, recent, showArtwork, profileName }) {
   let active = true;
   const sections = element('div', 'discovery-shelves');
   const loading = element('p', 'muted', 'Loading saved media…');
-  target.replaceChildren(heading('My library', 'Saved games, media, bookmarks, and chats on this device.'), sections, loading);
+  const profile = element('section', 'info-panel profile-summary');
+  const initial = element('span', 'profile-initial', profileName[0].toUpperCase());
+  initial.setAttribute('aria-hidden', 'true');
+  profile.setAttribute('aria-label', 'Your Gamffun profile');
+  profile.append(initial, element('h2', '', profileName), link('Edit profile', '#settings?panel=profile'));
+  target.replaceChildren(heading('My library', 'Saved games, media, bookmarks, and chats on this device.'), profile, sections, loading);
   const featured = (title, records, href, text) => {
     if (records.length) sections.append(shelf(title, records.slice(0, 6), href, text));
   };
@@ -400,8 +405,9 @@ export function renderSavedLibrary(target, { favorites, recent, showArtwork }) {
     videoData().then(({ getVideoLibraryState }) => getVideoLibraryState()),
     import(`./blip.js${version}`).then(({ getBlipChatSummary }) => getBlipChatSummary()),
     import(`./browser.js${version}`).then(({ getBrowserLibraryState }) => getBrowserLibraryState()),
-    import(`./shopping-data.js${version}`).then(({ getShoppingLibraryState, shoppingLink, shoppingCategory }) =>
-      ({ ...getShoppingLibraryState(), shoppingLink, shoppingCategory })),
+    Promise.all([import(`./shopping-data.js${version}`), import(`./shopping-products.js${version}`)]).then(([shopping, products]) =>
+      ({ ...shopping.getShoppingLibraryState(), shoppingLink: shopping.shoppingLink, shoppingCategory: shopping.shoppingCategory,
+        amazonProduct: products.amazonProduct })),
     import(`./music-library.js${version}`).then(({ getMusicLibraryState }) => getMusicLibraryState()),
     Promise.all([import(`./shorts.js${version}`), shortData()]).then(([{ getShortLibraryState }, catalog]) =>
       ({ ...getShortLibraryState(), ...catalog }))
@@ -448,9 +454,12 @@ export function renderSavedLibrary(target, { favorites, recent, showArtwork }) {
         '#browse?panel=history', 'Manage browsing history');
     }
     if (shopping.status === 'fulfilled') {
-      const { saved, shoppingLink, shoppingCategory } = shopping.value;
+      const { saved, products, shoppingLink, shoppingCategory, amazonProduct } = shopping.value;
       shortcuts('Saved shopping searches', saved.map(search => [search.query || shoppingCategory(search.category)?.title, shoppingLink(search)]),
         '#shopping', 'Open Shopping');
+      shortcuts('Saved Amazon picks', products.map(amazonProduct).filter(Boolean).map(product => [
+        `${product.brand} ${product.title}`, shoppingLink({ product: product.asin })
+      ]), '#shopping?retailer=amazon', 'Browse Amazon picks');
     }
     if (!sections.childElementCount) {
       sections.append(element('p', 'empty-state', 'Save a game, movie, song, video, or chat to see it here.'));

@@ -1,0 +1,154 @@
+.instagram-page {
+  display: grid;
+  min-width: 0;
+  gap: 18px;
+}
+
+.instagram-page [hidden] { display: none !important; }
+.instagram-heading h1 { margin: 0; font-size: clamp(2rem, 5vw, 3.5rem); line-height: 1.04; letter-spacing: -.055em; }
+.instagram-heading p { margin: 9px 0 0; max-width: 54ch; color: var(--muted); }
+
+.instagram-paste,
+.instagram-catalog,
+.instagram-viewer {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: clamp(14px, 2.4vw, 24px);
+}
+
+.instagram-paste {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 9px 12px;
+  background: var(--panel);
+}
+
+.instagram-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  font-size: .9rem;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.instagram-field .field { width: 100%; min-width: 0; font-weight: 400; }
+.instagram-field .field[aria-invalid="true"] { border-color: var(--accent); }
+.instagram-url-message { grid-column: 1 / -1; }
+
+.instagram-url-message,
+.instagram-player-status,
+.instagram-result-count {
+  margin: 0;
+  color: var(--muted);
+  font-size: .86rem;
+}
+
+.instagram-url-message:empty,
+.instagram-player-status:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.instagram-layout {
+  display: grid;
+  grid-template-areas: "catalog viewer";
+  grid-template-columns: minmax(240px, 36%) minmax(0, 1fr);
+  align-items: start;
+  gap: clamp(14px, 2.4vw, 24px);
+}
+
+.instagram-catalog {
+  grid-area: catalog;
+  display: grid;
+  gap: 12px;
+  background: var(--panel);
+}
+
+.instagram-catalog h2 { margin: 0; font-size: 1.18rem; }
+.instagram-filters { display: grid; gap: 10px; }
+
+.instagram-posts {
+  display: grid;
+  gap: 7px;
+  list-style: none;
+  max-height: 46svh;
+  overflow: auto;
+  margin: 0;
+  padding: 3px;
+  scrollbar-width: thin;
+}
+
+.instagram-posts:empty { display: none; }
+
+.instagram-card {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 3px;
+  padding: 11px 13px;
+  text-align: start;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  color: var(--text);
+  background: var(--panel-deep);
+  cursor: pointer;
+}
+
+.instagram-card:hover { background: var(--panel-hover); }
+.instagram-card[aria-pressed="true"] { border-color: var(--accent); }
+.instagram-card-kind { color: var(--accent); font-size: .74rem; font-weight: 690; }
+.instagram-card-title { overflow-wrap: anywhere; font-size: .95rem; line-height: 1.22; }
+.instagram-card-creator { color: var(--muted); font-size: .8rem; }
+
+.instagram-viewer {
+  grid-area: viewer;
+  display: grid;
+  gap: 15px;
+  background: linear-gradient(155deg, var(--panel) 0%, var(--panel-deep) 66%);
+}
+
+.instagram-selected { display: grid; gap: 9px; }
+.instagram-selected h2 { margin: 0; font-size: clamp(1.35rem, 3vw, 2.25rem); line-height: 1.1; overflow-wrap: anywhere; }
+.instagram-selected-meta { margin: 0; font-size: .83rem; font-weight: 650; color: var(--accent); }
+.instagram-description { margin: 0; max-width: 58ch; color: var(--muted); }
+.instagram-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 7px; }
+
+.instagram-stage {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  padding-block: 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.instagram-stage iframe {
+  display: block;
+  width: min(100% - 16px, 420px);
+  height: clamp(455px, 67svh, 675px);
+  border: 0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+@media (max-width: 700px) {
+  .instagram-layout {
+    grid-template-areas: "catalog" "viewer";
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .instagram-filters { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); }
+  .instagram-posts { max-height: min(35svh, 300px); }
+}
+
+@media (max-width: 400px) {
+  .instagram-paste { grid-template-columns: minmax(0, 1fr); }
+  .instagram-paste .button { justify-self: start; }
+  .instagram-actions .button { font-size: .81rem; }
+}
