@@ -1,10 +1,10 @@
-import { arcadeEmbed, browserApps } from "./embedded-content.js";
-import { createGameAddressLookup, isGamePortalAddress } from "./game-play-policy.js";
 import { browserBrowsingStorageKey as browsingStorageKey, createLibrary, normalize, queryLibrary } from "./library.js";
 
 const assetVersion = new URL(import.meta.url).search;
-const [{ games }, { mountLocalGame }] = await Promise.all([
-  import(`./catalog.js${assetVersion}`), import(`./local-games.js${assetVersion}`)
+const [{ games }, { mountLocalGame }, { arcadeEmbed, browserApps, gamepadPermission },
+  { createGameAddressLookup, isGamePortalAddress }] = await Promise.all([
+  import(`./catalog.js${assetVersion}`), import(`./local-games.js${assetVersion}`),
+  import(`./embedded-content.js${assetVersion}`), import(`./game-play-policy.js${assetVersion}`)
 ]);
 
 const legacyViewerOrigin = "https://proxy-arcade-play.base44.app";
@@ -35,21 +35,9 @@ const builtInGames = games.filter(game => game.local);
 const embeddedGames = games.filter(arcadeEmbed);
 const inPageLibrary = createLibrary([...builtInGames, ...embeddedGames]);
 const playableCategories = [...inPageLibrary.categoryCounts.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b));
-const gameEmbeds = new Map(
-  embeddedGames.flatMap(game => [[game.url, game], [arcadeEmbed(game), game]])
-);
 const appEmbeds = new Map(browserApps.flatMap(app => [[app.embed, app], [app.url, app]]));
 const catalogGameTitles = new Map(games.map(game => [normalize(game.title), game]));
 const catalogGameAtAddress = createGameAddressLookup(games);
-const catalogAddressAliases = new Map();
-for (const game of games) {
-  const addresses = [...(game.legacyUrls || [])];
-  if (!game.url && game.relatedLabel?.endsWith("closure notice")) addresses.push(game.relatedUrl);
-  for (const address of addresses) {
-    const url = publicHttpsAddress(address);
-    if (url) catalogAddressAliases.set(catalogAddressKey(url), game);
-  }
-}
 const featuredAlternatives = ["ffun-circuit-v1", "ffun-skyline-v1", "2048"];
 
 function gameLaunchAddress(game) {
@@ -87,10 +75,6 @@ function publicHttpsAddress(address) {
   if (/^[\d.]+$/.test(url.hostname) || url.hostname.includes(":")) return null;
   if (/\.(?:local|localhost|home|lan|internal|test|invalid|example|onion)$/i.test(url.hostname)) return null;
   return url;
-}
-
-function catalogAddressKey(url) {
-  return url.origin + url.pathname.replace(/\/+$/, "");
 }
 
 function officialGameSource(page) {
@@ -171,10 +155,12 @@ export function resolveBrowserAddress(input, pageUrl) {
     };
   }
 
-  const game = gameEmbeds.get(url.href);
-  if (game) {
-    const page = { kind: "game", title: game.title, address: url.href, url: game.url, embed: arcadeEmbed(game) };
-    if (game.attribution) page.credit = game.creator;
+  const knownGame = catalogGameAtAddress(url);
+  const embed = knownGame && arcadeEmbed(knownGame);
+  if (embed) {
+    const page = { kind: "game", title: knownGame.title, address: url.href, url: knownGame.url, embed };
+    if (knownGame.attribution) page.credit = knownGame.creator;
+    if (knownGame.gamepadOrigins) page.gamepadAllow = gamepadPermission(knownGame);
     return page;
   }
 
@@ -187,7 +173,6 @@ export function resolveBrowserAddress(input, pageUrl) {
     return { kind: "unavailable", title: "Base44 viewer", address: url.href };
   }
 
-  const knownGame = catalogGameAtAddress(url) || catalogAddressAliases.get(catalogAddressKey(url));
   if (knownGame || isGamePortalAddress(url)) {
     return { kind: "external-game", title: knownGame?.title || url.hostname, address: url.href, game: knownGame };
   }
@@ -1146,7 +1131,7 @@ function createBrowser() {
       frame.allow = "fullscreen; encrypted-media; picture-in-picture";
       frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-presentation");
     } else if (page.kind === "game") {
-      frame.allow = "fullscreen; gamepad";
+      frame.allow = `fullscreen; ${page.gamepadAllow || "gamepad"}`;
       frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-pointer-lock allow-presentation");
     } else if (page.kind === "app") {
       frame.allow = "fullscreen";
@@ -1189,7 +1174,8 @@ function createBrowser() {
       : publisher ? "Retry the player, open the game page, or choose another in-page game."
         : "Retry the player or choose another in-page game.";
     const timer = setTimeout(() => {
-      if (frameResponded && youtube) finish("YouTube playback could not be verified. Open the video on YouTube if it does not play here.");
+      if (page.kind === "game") finish("The official player is still loading. Use its controls as soon as they appear.");
+      else if (frameResponded && youtube) finish("YouTube playback could not be verified. Open the video on YouTube if it does not play here.");
       else fail("Preview timed out", retryMessage);
     }, 10000);
     frame.addEventListener("load", () => {

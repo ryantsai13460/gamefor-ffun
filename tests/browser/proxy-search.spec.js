@@ -213,10 +213,10 @@ test('Proxy Gemini opens a catalog source only when the visitor follows its link
   await expect(official).toHaveCount(0);
   await expect(viewer.locator('iframe')).toHaveCount(0);
 
-  await address.fill('https://poki.com/en/g/drive-mad?ref=bookmark');
+  await address.fill('https://poki.com/en/g/monkey-mart?ref=bookmark');
   await address.press('Enter');
-  await expect(viewer.getByRole('heading', { name: 'Drive Mad isn’t available in-page' })).toBeVisible();
-  await expect(official).toHaveAttribute('href', 'https://www.drivemad.com/');
+  await expect(viewer.getByRole('heading', { name: 'Monkey Mart isn’t available in-page' })).toBeVisible();
+  await expect(official).toHaveAttribute('href', 'https://poki.com/en/g/monkey-mart');
   await expect(viewer.locator('iframe')).toHaveCount(0);
 
   await address.fill('https://spinz.io/?ref=bookmark');
@@ -289,6 +289,34 @@ test('Proxy Gemini recovers from a blocked preview and finds in-page games on mo
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(filter).toHaveValue('2048');
   expect(requests).toBe(2);
+});
+
+test('Proxy Gemini leaves a slow official game running while its resources finish loading', async ({ page }) => {
+  const game = 'https://www.crazygames.com/embed/ovo';
+  const resource = 'https://www.crazygames.com/slow-game-image.png';
+  let release;
+  const imageReady = new Promise(resolve => { release = resolve; });
+  await page.clock.install();
+  await page.route(resource, async route => {
+    await imageReady;
+    await route.fulfill({ status: 204, body: '' });
+  });
+  await page.route(game, route => route.fulfill({
+    contentType: 'text/html', body: `<button>Publisher start control</button><img src="${resource}" alt="">`
+  }));
+
+  try {
+    await page.goto(`/#browse?${new URLSearchParams({ address: game })}`, { waitUntil: 'domcontentloaded' });
+    const gameControl = page.frameLocator('.proxy-frame').getByRole('button', { name: 'Publisher start control' });
+    await expect(gameControl).toBeVisible();
+    await page.clock.fastForward(11_000);
+    await expect(page.getByText('The official player is still loading. Use its controls as soon as they appear.', { exact: true })).toBeVisible();
+    await expect(gameControl).toBeVisible();
+    release();
+    await expect(page.getByText('Official game player preview. Playback depends on the publisher and your connection.', { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
 });
 
 test('Proxy Gemini cancels a loading preview and restores the hidden state through navigation', async ({ page }) => {
