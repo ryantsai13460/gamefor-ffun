@@ -18,12 +18,28 @@ const COLLECTIONS = [
   { id: 'continuing', title: 'Continue watching' },
   { id: 'recent', title: 'Recently opened' }
 ];
+const FILTER_OPTIONS = {
+  runtime: new Map([
+    ['', 'Any runtime'],
+    ['under-20', 'Under 20 min'],
+    ['20-59', '20–59 min'],
+    ['60-plus', '60+ min'],
+    ['unknown', 'Runtime not listed']
+  ]),
+  playback: new Map([
+    ['', 'Any playback'],
+    ['full', 'Full films only'],
+    ['in-page', 'Full films in-page'],
+    ['provider', 'Full films on provider site']
+  ])
+};
 const PAGE_SIZE = 16;
 const SHELF_SIZE = 4;
 const filmKey = 'ffun-film-library-v1';
 const byId = new Map(filmCatalog.map(film => [film.id, film]));
 const fullSources = new Map(filmCatalog.map(film => [film.id, filmPlayback(film)]));
 const trailerSources = new Map(filmCatalog.map(film => [film.id, filmPlayback(film, true)]));
+const runtimeGroups = new Map(filmCatalog.map(film => [film.id, runtimeGroup(film)]));
 const genres = [...new Set(filmCatalog.flatMap(film => film.genres))].sort();
 const addedDates = new Map(filmCatalog.flatMap(film => {
   const date = Date.parse(film.addedAt);
@@ -125,6 +141,30 @@ function runtime(film) {
     ? `${film.runtimeMinutes} min` : film.duration || '';
 }
 
+function runtimeGroup(film) {
+  let minutes = film.runtimeMinutes;
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    const duration = film.duration?.trim() || '';
+    // Older entries store the runtime as minutes, seconds, or both.
+    const parts = /^(?:(\d+) min)?\s*(?:(\d+) sec)?$/i.exec(duration);
+    minutes = duration === 'Half-hour special' ? 30 : Number(parts?.[1] || 0) + Number(parts?.[2] || 0) / 60;
+  }
+  if (!minutes) return 'unknown';
+  if (minutes < 20) return 'under-20';
+  if (minutes < 60) return '20-59';
+  return '60-plus';
+}
+
+function filmFilter(key, label, params) {
+  const select = element('select', 'field');
+  select.setAttribute('aria-label', label);
+  const options = FILTER_OPTIONS[key];
+  select.append(...[...options].map(([value, name]) => new Option(name, value)));
+  const value = params.get(key);
+  select.value = options.has(value) ? value : '';
+  return select;
+}
+
 function filmIds(list) {
   return Array.isArray(list) ? [...new Set(list.filter(id => byId.has(id)))] : [];
 }
@@ -200,9 +240,9 @@ export function getFilmLibraryState() {
 
 function browsePath(params) {
   const query = new URLSearchParams();
-  for (const key of ['collection', 'q', 'genre', 'sort', 'page']) {
+  for (const key of ['collection', 'q', 'genre', 'runtime', 'playback', 'sort', 'page']) {
     const value = params?.get(key);
-    if (value) query.set(key, value);
+    if (value && (!FILTER_OPTIONS[key] || FILTER_OPTIONS[key].has(value))) query.set(key, value);
   }
   return `#movies${query.size ? `?${query}` : ''}`;
 }
@@ -448,6 +488,8 @@ export function renderFilms(target, { collection, params = new URLSearchParams(l
   genre.setAttribute('aria-label', 'Film genre');
   genre.append(new Option('All genres', ''), ...genres.map(name => new Option(name, name)));
   genre.value = genres.includes(params.get('genre')) ? params.get('genre') : '';
+  const runtimeFilter = filmFilter('runtime', 'Film runtime', params);
+  const playbackFilter = filmFilter('playback', 'Full-film playback', params);
   const sort = element('select', 'field');
   sort.setAttribute('aria-label', 'Sort films');
   const orders = [
@@ -457,7 +499,7 @@ export function renderFilms(target, { collection, params = new URLSearchParams(l
   if (addedDates.size) orders.splice(4, 0, ['recently-added', 'Recently added']);
   sort.append(...orders.map(([value, name]) => new Option(name, value)));
   sort.value = orders.some(([value]) => value === params.get('sort')) ? params.get('sort') : 'catalog';
-  filters.append(query, genre, sort);
+  filters.append(query, genre, runtimeFilter, playbackFilter, sort);
   const tabs = element('div', 'film-tabs');
   tabs.setAttribute('role', 'group');
   tabs.setAttribute('aria-label', 'Film collections');
@@ -498,6 +540,8 @@ export function renderFilms(target, { collection, params = new URLSearchParams(l
     if (current !== 'discover') selected.set('collection', current);
     if (query.value.trim()) selected.set('q', query.value.trim());
     if (genre.value) selected.set('genre', genre.value);
+    if (runtimeFilter.value) selected.set('runtime', runtimeFilter.value);
+    if (playbackFilter.value) selected.set('playback', playbackFilter.value);
     if (sort.value !== 'catalog') selected.set('sort', sort.value);
     if (page > 0) selected.set('page', String(page + 1));
     return selected;
@@ -532,8 +576,15 @@ export function renderFilms(target, { collection, params = new URLSearchParams(l
 
   function matches(film, words) {
     const text = searchable.get(film.id);
-    return words.every(word => text.includes(word) || text.replaceAll(' ', '').includes(word))
-      && (!genre.value || film.genres.includes(genre.value));
+    if (runtimeFilter.value && runtimeGroups.get(film.id) !== runtimeFilter.value) return false;
+    if (genre.value && !film.genres.includes(genre.value)) return false;
+    if (playbackFilter.value) {
+      const full = fullSources.get(film.id);
+      if (!full) return false;
+      if (playbackFilter.value === 'in-page' && !full.embed) return false;
+      if (playbackFilter.value === 'provider' && full.embed) return false;
+    }
+    return words.every(word => text.includes(word) || text.replaceAll(' ', '').includes(word));
   }
 
   function collectionFilms(id, state) {
@@ -566,7 +617,8 @@ export function renderFilms(target, { collection, params = new URLSearchParams(l
     const state = filmState();
     const words = normalize(query.value).split(' ').filter(Boolean);
     const filtered = sortFilms(collectionFilms(current, state).filter(film => matches(film, words)), state);
-    const shelves = current === 'discover' && !words.length && !genre.value && sort.value === 'catalog';
+    const viewingFilters = Boolean(runtimeFilter.value || playbackFilter.value);
+    const shelves = current === 'discover' && !words.length && !genre.value && !viewingFilters && sort.value === 'catalog';
     feature.hidden = !shelves;
     results.replaceChildren();
     const pages = Math.ceil(filtered.length / PAGE_SIZE);
@@ -588,14 +640,18 @@ export function renderFilms(target, { collection, params = new URLSearchParams(l
         if (entries.length) results.append(section(title, entries.slice(0, SHELF_SIZE), id));
       }
     } else if (filtered.length) {
-      const name = words.length ? 'Search results' : COLLECTIONS.find(({id}) => id === current).title;
+      const { title } = COLLECTIONS.find(({id}) => id === current);
+      const name = words.length ? 'Search results' : current === 'discover' && viewingFilters ? 'Filtered films' : title;
       results.append(section(name, filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)));
     } else {
       const empty = {
         favorites: 'Favorite a film to see it here.', watchlist: 'Add a film to your watchlist to see it here.',
         continuing: 'Films with saved playback progress appear here.', recent: 'Films you open for playback appear here.'
       };
-      results.append(element('p', 'film-empty', words.length || genre.value ? 'No films match your search.' : empty[current] || 'No films found.'));
+      let message = empty[current] || 'No films found.';
+      if (viewingFilters) message = 'No films match your filters.';
+      if (words.length || genre.value) message = 'No films match your search.';
+      results.append(element('p', 'film-empty', message));
     }
     pagination.hidden = shelves || pages <= 1;
     previous.disabled = page === 0;
@@ -627,6 +683,8 @@ export function renderFilms(target, { collection, params = new URLSearchParams(l
 
   query.addEventListener('input', updateFilters);
   genre.addEventListener('change', updateFilters);
+  runtimeFilter.addEventListener('change', updateFilters);
+  playbackFilter.addEventListener('change', updateFilters);
   sort.addEventListener('change', updateFilters);
   draw();
   return () => closeDialog?.();

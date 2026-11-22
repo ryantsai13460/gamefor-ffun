@@ -139,6 +139,30 @@ test('the Home shortcuts open the main sections and lead to an in-page game', as
   await expect(page.locator('.player-status')).toHaveText('Built-in game ready.');
 });
 
+test('Home spotlight opens Lantern Shift and uses the chosen category for recommendations', async ({ page }) => {
+  await page.goto('/#home');
+  const choices = page.getByRole('group', { name: 'Featured games' });
+  const lantern = choices.getByRole('button', { name: 'Lantern Shift' });
+  await lantern.press('Enter');
+  await expect(lantern).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('heading', { name: 'Lantern Shift', level: 1 })).toBeVisible();
+  await page.getByRole('link', { name: 'Play game', exact: true }).click();
+  await expect(page.getByRole('group', { name: 'Lantern Shift controls' })).toBeVisible();
+  await page.getByRole('link', { name: 'Back to browsing', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Pocket Circuit', level: 1 })).toBeVisible();
+
+  await page.goto('/#settings');
+  await page.getByRole('combobox', { name: 'Recommended game category' }).selectOption('Puzzle');
+  await page.goto('/#home');
+  const picks = page.getByRole('heading', { name: 'Your picks in Puzzle' });
+  await expect(picks).toBeVisible();
+  await expect(page.getByRole('link', { name: 'More picks', exact: true })).toHaveAttribute('href', '#games?category=Puzzle&option=in-page');
+  await page.goto('/#settings');
+  await page.getByRole('checkbox', { name: 'Picks in your chosen category' }).uncheck();
+  await page.goto('/#home');
+  await expect(picks).toHaveCount(0);
+});
+
 test('the racing shelf and a copied link open the official Drift Track player inside the arcade', async ({ page }) => {
   const player = 'https://360playzone.com/game/drift-track';
   await page.unrouteAll();

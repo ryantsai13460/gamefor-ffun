@@ -286,6 +286,10 @@
   font-size: .9rem;
 }
 
+.proxy-search-retry {
+  margin-block-end: .85rem;
+}
+
 .proxy-search-result-list {
   display: grid;
   gap: .65rem;
@@ -610,6 +614,12 @@
 
 .proxy-saved-content {
   padding: .4rem .65rem .75rem;
+}
+
+.proxy-saved-filter {
+  width: 100%;
+  min-width: 0;
+  margin-block: .3rem .5rem;
 }
 
 .proxy-share-content {

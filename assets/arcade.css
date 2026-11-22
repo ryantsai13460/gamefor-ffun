@@ -305,7 +305,8 @@ select.field { cursor: pointer; }
 .category-card span { color: var(--muted); font-size: .86rem; }
 .settings-option { display: flex; align-items: center; gap: 9px; color: var(--text); }
 .settings-option input { width: 17px; height: 17px; accent-color: var(--accent); }
-.settings-grid .info-panel { align-content: start; }
+.settings-grid .info-panel { align-content: start; min-width: 0; overflow-wrap: anywhere; }
+.settings-grid select.field { width: 100%; min-width: 0; }
 .game-background-settings { margin-top: 13px; grid-template-columns: minmax(0, 1fr); }
 .game-background-settings label {
   display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; width: min(100%, 320px); min-width: 0;

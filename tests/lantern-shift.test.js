@@ -2,11 +2,12 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { createLanternShift } from '../assets/lantern-shift.js';
 
-test('Lantern Shift clears three distinct courses and counts consecutive catches', () => {
+test('Lantern Shift clears three courses with separate best counts and streaks', () => {
   const game = createLanternShift({ reducedMotion: true });
   const courses = [['Blue Hour', 8], ['Dusk Market', 10], ['Midnight Loop', 12]];
   courses.forEach(([course, gates], index) => {
     assert.ok(game.hud().startsWith(course + ' · Lanterns 0/' + gates));
+    assert.doesNotMatch(game.hud(), /Course best/);
     assert.equal(game.canNext(), false);
     for (let frame = 0; frame < 1300 && !game.done(); frame++) {
       const upcoming = game.hud().match(/Next lantern \d+ in (inner|outer) lane/);
@@ -16,6 +17,7 @@ test('Lantern Shift clears three distinct courses and counts consecutive catches
     assert.equal(game.done(), true);
     assert.ok(game.hud().includes('Lanterns ' + gates + '/' + gates));
     assert.ok(game.hud().includes('Best streak ' + gates));
+    assert.ok(game.hud().includes('Course best ' + gates + '/' + gates + ' · New best'));
     assert.equal(game.message(), index === 2 ? 'All three courses cleared!' : 'Perfect course!');
     assert.equal(game.canNext(), index < 2);
     game.next();
@@ -36,6 +38,7 @@ test('Lantern Shift misses a wrong lane and restarts without advancing', () => {
   game.next();
   game.reset();
   assert.match(game.hud(), /^Blue Hour · Lanterns 0\/8.*Lane inner.*Next lantern 1/);
+  assert.match(game.hud(), /Course best 4\/8$/);
 });
 
 test('Lantern Shift accepts direct ring taps and retains a relaxed pace on restart', () => {

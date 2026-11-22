@@ -66,6 +66,34 @@ test('Web Search offers examples and keeps clearable recent queries across tabs'
   await expect(history).toHaveCount(0);
 });
 
+test('Search history can be paused and cleared for both Web and library searches', async ({ page }) => {
+  await page.goto('/#web-search');
+  await search(page, 'violin music');
+  await page.goto('/#discover');
+  const query = page.getByRole('searchbox', { name: 'Library query' });
+  await query.fill('classical music');
+  await query.press('Enter');
+  const history = () => page.evaluate(() => ['ffun.web-search.history', 'ffun.discovery.history']
+    .map(key => JSON.parse(localStorage.getItem(key))));
+  expect(await history()).toEqual([['violin music'], ['classical music']]);
+
+  await page.goto('/#settings');
+  await page.getByRole('checkbox', { name: 'Remember searches' }).uncheck();
+  await page.goto('/#web-search');
+  await expect(page.getByRole('region', { name: 'Try a search' })).toBeVisible();
+  await search(page, 'science lessons');
+  await page.goto('/#discover');
+  await query.fill('strategy games');
+  await query.press('Enter');
+  expect(await history()).toEqual([['violin music'], ['classical music']]);
+
+  await page.goto('/#settings');
+  await page.getByRole('button', { name: 'Clear search histories' }).click();
+  expect(await history()).toEqual([null, null]);
+  await page.reload();
+  await expect(page.getByRole('checkbox', { name: 'Remember searches' })).not.toBeChecked();
+});
+
 test('Web Search opens matching tracks and complete films from the real catalogs', async ({ page }) => {
   await page.goto('/#web-search');
   await search(page, 'Radioactive Imagine Dragons');
@@ -118,20 +146,30 @@ test('Clear search ignores late catalog work and trailer results remain labeled'
   await expect(films.getByRole('listitem')).toHaveCount(0);
 });
 
-test('connected Web Search deduplicates sources and passes their context to Blip', async ({ page }) => {
+test('connected Web Search retries a failed provider and passes deduplicated source context to Blip', async ({ page }) => {
   const headers = {
     'access-control-allow-origin': '*',
     'access-control-allow-headers': 'authorization, content-type',
     'access-control-allow-methods': 'POST, OPTIONS'
   };
   const source = 'https://developer.mozilla.org/en-US/docs/Web/HTML';
-  await page.route('https://gateway.example/api/search', route => route.request().method() === 'OPTIONS'
-    ? route.fulfill({ status: 204, headers }) : route.fulfill({ headers, json: { results: [
+  const offsets = [];
+  await page.route('https://gateway.example/api/search', route => {
+    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
+    const { offset = 0 } = route.request().postDataJSON();
+    offsets.push(offset);
+    if (offsets.length === 1) return route.fulfill({ status: 503, headers, json: { error: 'Search fixture temporarily unavailable.' } });
+    if (offset === 1) return route.fulfill({ headers, json: { results: [
+      { title: 'Duplicate from second page', description: 'The same page.', url: source },
+      { title: 'Learn web development', description: 'Build your first website.', url: 'https://developer.mozilla.org/en-US/docs/Learn_web_development' }
+    ] } });
+    return route.fulfill({ headers, json: { results: [
       { title: 'HTML reference', description: 'Publisher reference for HTML.', url: source },
       { title: 'Duplicate URL', description: 'The same page.', url: source },
       { title: 'Play on Coolmath', description: 'Portal game.', url: 'https://www.coolmathgames.com/0-unlisted-fixture-game' },
       { title: 'Retro Bowl publisher', description: 'External catalog source.', url: 'https://poki.com/en/g/retro-bowl' }
-    ] } }));
+    ], nextOffset: 1 } });
+  });
   await page.goto('/#web-search');
   await page.getByText('Connect a web search provider', { exact: true }).click();
   await page.getByLabel('Backend URL').fill('https://gateway.example');
@@ -140,12 +178,21 @@ test('connected Web Search deduplicates sources and passes their context to Blip
   await search(page, 'learn html');
   await category(page).getByRole('button', { name: 'Web', exact: true }).click();
   const web = panel(page, 'Web results');
+  await web.getByRole('button', { name: 'Retry web results' }).click();
   await expect(web.getByRole('listitem')).toHaveCount(3);
   await expect(web.getByRole('link', { name: 'HTML reference', exact: true })).toHaveAttribute('href', source);
   await expect(web.getByRole('link', { name: source, exact: true })).toHaveAttribute('href', source);
   await expect(web.locator('a[href*="coolmathgames.com"], a[href*="poki.com"]')).toHaveCount(0);
   await expect(web.getByRole('link', { name: 'Browse in-page games' })).toHaveAttribute('href', '#games?option=in-page');
   await expect(web.getByRole('link', { name: 'View game in the arcade' })).toHaveAttribute('href', '#play/retrobowl');
-  await web.getByRole('link', { name: 'Ask Blip', exact: true }).click();
+  const more = web.getByRole('button', { name: 'Load more web results' });
+  await expect(more).toBeVisible();
+  expect(offsets).toEqual([0, 0]);
+  await more.click();
+  await expect(web.getByRole('listitem')).toHaveCount(4);
+  await expect(more).toHaveCount(0);
+  await web.getByRole('listitem').filter({ hasText: 'HTML reference' }).getByRole('link', { name: 'Ask Blip', exact: true }).click();
   await expect(page.locator('#blip-prompt')).toHaveValue(`Help me understand this search result and clarify what the source supports.\n\nHTML reference\nPublisher reference for HTML.\n${source}`);
+  await expect(page.getByLabel('Web lookup phrase')).toHaveValue('learn html');
+  expect(offsets).toEqual([0, 0, 1]);
 });

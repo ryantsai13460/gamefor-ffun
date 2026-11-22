@@ -41,6 +41,15 @@ const gameEmbeds = new Map(
 const appEmbeds = new Map(browserApps.flatMap(app => [[app.embed, app], [app.url, app]]));
 const catalogGameTitles = new Map(games.map(game => [normalize(game.title), game]));
 const catalogGameAtAddress = createGameAddressLookup(games);
+const catalogAddressAliases = new Map();
+for (const game of games) {
+  const addresses = [...(game.legacyUrls || [])];
+  if (!game.url && game.relatedLabel?.endsWith("closure notice")) addresses.push(game.relatedUrl);
+  for (const address of addresses) {
+    const url = publicHttpsAddress(address);
+    if (url) catalogAddressAliases.set(catalogAddressKey(url), game);
+  }
+}
 const featuredAlternatives = ["ffun-circuit-v1", "ffun-skyline-v1", "2048"];
 
 function gameLaunchAddress(game) {
@@ -64,6 +73,34 @@ function catalogGameForQuery(query) {
 
 function externalPreviewSource(page) {
   return page.kind === "game" || page.kind === "local" ? "" : page.url;
+}
+
+function publicHttpsAddress(address) {
+  let url;
+  try {
+    url = new URL(address);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.username || url.password || url.port || /\s/.test(address)) return null;
+  if (!url.hostname.includes(".") || url.hostname.endsWith(".")) return null;
+  if (/^[\d.]+$/.test(url.hostname) || url.hostname.includes(":")) return null;
+  if (/\.(?:local|localhost|home|lan|internal|test|invalid|example|onion)$/i.test(url.hostname)) return null;
+  return url;
+}
+
+function catalogAddressKey(url) {
+  return url.origin + url.pathname.replace(/\/+$/, "");
+}
+
+function officialGameSource(page) {
+  const source = page.kind === "game" ? page.url : page.game?.url;
+  return source && publicHttpsAddress(source)?.href;
+}
+
+function relatedGameLink(game) {
+  const source = game?.relatedUrl && publicHttpsAddress(game.relatedUrl)?.href;
+  if (source && game.relatedLabel) return external(source, game.relatedLabel, "button");
 }
 
 export function youtubeVideoId(url) {
@@ -115,17 +152,8 @@ export function resolveBrowserAddress(input, pageUrl) {
     return { kind: "search", title: address, address, url: search.href };
   }
 
-  let url;
-  try {
-    url = new URL(hasScheme ? address : `https://${address}`);
-  } catch {
-    return null;
-  }
-
-  if (url.protocol !== "https:" || url.username || url.password || url.port || /\s/.test(address)) return null;
-  if (!url.hostname.includes(".") || url.hostname.endsWith(".")) return null;
-  if (/^[\d.]+$/.test(url.hostname) || url.hostname.includes(":")) return null;
-  if (/\.(?:local|localhost|home|lan|internal|test|invalid|example|onion)$/i.test(url.hostname)) return null;
+  const url = publicHttpsAddress(hasScheme ? address : `https://${address}`);
+  if (!url) return null;
 
   const videoId = youtubeVideoId(url);
   if (videoId) {
@@ -159,7 +187,7 @@ export function resolveBrowserAddress(input, pageUrl) {
     return { kind: "unavailable", title: "Base44 viewer", address: url.href };
   }
 
-  const knownGame = catalogGameAtAddress(url);
+  const knownGame = catalogGameAtAddress(url) || catalogAddressAliases.get(catalogAddressKey(url));
   if (knownGame || isGamePortalAddress(url)) {
     return { kind: "external-game", title: knownGame?.title || url.hostname, address: url.href, game: knownGame };
   }
@@ -416,28 +444,38 @@ function createBrowser() {
     const favorites = kind === "favorites";
     const title = favorites ? "Favorite pages" : "Browsing history";
     const contents = element("div", "proxy-saved-content");
+    const filter = element("input", "field proxy-saved-filter");
+    filter.type = "search";
+    filter.placeholder = favorites ? "Search saved pages" : "Search history";
+    filter.setAttribute("aria-label", filter.placeholder);
+    filter.maxLength = 150;
+    const results = element("div", "proxy-saved-results");
+    contents.append(filter, results);
     const { dialog, close } = createDialog(title, contents);
 
     function drawSaved() {
       const entries = browsing[kind];
+      filter.hidden = !entries.length;
       if (!entries.length) {
-        contents.replaceChildren(element("p", "proxy-saved-empty", favorites
+        results.replaceChildren(element("p", "proxy-saved-empty", favorites
           ? "You can save a page using the star beside the address bar."
           : "Addresses and searches you open appear here."));
       } else {
+        const query = filter.value.trim().toLowerCase();
         const list = element("ul", "proxy-saved-list");
         for (const value of entries) {
           const page = resolveBrowserAddress(value, window.location.href);
-          if (!page?.address) continue;
+          if (!page?.address || !`${page.title} ${value}`.toLowerCase().includes(query)) continue;
           const row = element("li");
-          const open = control(`Open ${value}`, "", () => {
+          const label = page.title === value ? value : `${page.title} ${value}`;
+          const open = control(`Open ${label}`, "", () => {
             dialog.close();
             submit(value);
             address.focus();
           });
           open.className = "proxy-saved-link";
           open.append(element("strong", "", page.title));
-          if (page.title !== value) open.append(element("small", "", value));
+          if (page.title !== value) open.append(" ", element("small", "", value));
           const remove = control(`Remove ${value}`, "×", () => {
             browsing[kind] = browsing[kind].filter(item => item !== value);
             storeBrowsing(favorites ? "Favorite removed." : "History entry removed.");
@@ -449,10 +487,11 @@ function createBrowser() {
           row.append(open, remove);
           list.append(row);
         }
-        contents.replaceChildren(list);
+        results.replaceChildren(list.childElementCount ? list
+          : element("p", "proxy-saved-empty", "No pages match your search."));
       }
       if (!favorites && (entries.length || closedTabs.length)) {
-        const clear = control("Clear browsing history and closed tabs", "Clear history and closed tabs", () => {
+        const clear = control("Clear browsing history and closed tabs", "Clear browsing history and closed tabs", () => {
           browsing.history = [];
           closedTabs.length = 0;
           saveClosedTabs();
@@ -462,10 +501,11 @@ function createBrowser() {
           close.focus();
         });
         clear.className = "button proxy-clear-history";
-        contents.append(clear);
+        results.append(clear);
       }
     }
 
+    filter.addEventListener("input", drawSaved);
     drawSaved();
     dialog.showModal();
   }
@@ -833,8 +873,13 @@ function createBrowser() {
         : page.kind === "unavailable" ? "This legacy viewer can’t open here" : "This game site isn’t available in-page";
       const actions = element("div", "proxy-direct-actions");
       actions.append(playHereAction());
-      content.append(element("h2", "", title),
-        element("p", "", "Try a game you can play inside the arcade."),
+      const publisher = officialGameSource(page);
+      if (publisher) actions.append(external(publisher, "Open game page", "button"));
+      const related = relatedGameLink(page.game);
+      if (related) actions.append(related);
+      const description = publisher ? "Open the game’s publisher page, or choose an in-page game below."
+        : (related && page.game?.description) || "Try a game you can play inside the arcade.";
+      content.append(element("h2", "", title), element("p", "", description),
         gameSuggestions(suggestedGames(page.game)), actions);
       return content;
     }
@@ -863,6 +908,8 @@ function createBrowser() {
     arcadeSearch.href = `#games?${gameParams}`;
     if (gameQuery) actions.append(arcadeSearch, webSearch);
     else actions.append(webSearch, arcadeSearch);
+    const related = relatedGameLink(externalGame);
+    if (related) actions.append(related);
     actions.append(external(page.url, "Search Google in new tab", "proxy-source"));
     content.append(actions);
     return content;
@@ -873,13 +920,21 @@ function createBrowser() {
     const controller = new AbortController();
     const statusText = element("p", "proxy-search-note");
     statusText.setAttribute("role", "status");
+    const retry = control("Retry web search", "Retry web search", () => {
+      refreshPage();
+      tab.panel.focus();
+    });
+    retry.className = "button proxy-search-retry";
+    retry.hidden = true;
     const section = element("section", "proxy-search-results");
     const list = element("ul", "proxy-search-result-list");
-    section.append(element("h3", "", "Web results"), statusText, list);
+    section.append(element("h3", "", "Web results"), statusText, retry, list);
 
     function draw(records) {
+      list.replaceChildren();
       const destinations = new Set();
       for (const result of records) {
+        if (typeof result?.title !== "string" || !result.title.trim()) continue;
         const destination = resolveBrowserAddress(result.url, window.location.href);
         if (!destination?.address.startsWith("https:")) continue;
         const destinationUrl = destination.url || destination.address;
@@ -921,17 +976,16 @@ function createBrowser() {
         : "The connected provider found no results that can be listed here.";
     }
 
-    const cached = !refresh && searchCache.get(page);
-    if (cached) {
-      preview.canRefresh = Boolean(searchWeb);
+    const provider = searchWeb;
+    const cached = provider && searchCache.get(page);
+    if (cached && !refresh) {
+      preview.canRefresh = true;
       show(cached);
       panel.append(section);
       return;
     }
     const shortQuery = page.title.length <= 200;
-    const request = shortQuery && searchWeb?.(page.title,
-      AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]));
-    if (!request) {
+    if (!provider || !shortQuery) {
       const note = element("p", "proxy-search-unconfigured");
       if (shortQuery) {
         const settings = element("a", "proxy-source", "Connect a provider in Web Search");
@@ -944,19 +998,23 @@ function createBrowser() {
       return;
     }
     preview.canRefresh = true;
-    statusText.textContent = "Searching the connected provider…";
+    const previousCount = cached ? draw(cached) : 0;
+    statusText.textContent = previousCount ? "Refreshing web results…" : "Searching the connected provider…";
     panel.append(section);
     preview.busy = true;
     preview.busyLabel = "Searching the web";
-    request.then(records => {
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]);
+    Promise.resolve().then(() => provider(page.title, signal)).then(records => {
       if (controller.signal.aborted) return;
+      if (!Array.isArray(records)) throw new TypeError("Invalid search response");
       const results = records.slice(0, 10);
-      searchCache.set(page, results);
       show(results);
+      searchCache.set(page, results);
     }).catch(error => {
       if (controller.signal.aborted) return;
-      statusText.textContent = error.name === "TimeoutError" ? "Web search timed out. Try Refresh or choose another search option above."
-        : "The connected search provider could not return results. Try Refresh or choose another search option above.";
+      const failure = error?.name === "TimeoutError" ? "Web search timed out." : "The connected search provider could not return results.";
+      statusText.textContent = previousCount ? `${failure} Showing results from the last successful search.` : failure;
+      retry.hidden = false;
     }).finally(() => {
       if (controller.signal.aborted) return;
       preview.busy = false;
@@ -971,7 +1029,7 @@ function createBrowser() {
     showPage(true, true);
   }
 
-  function previewRecovery(heading, message, retryLabel = "Retry preview") {
+  function previewRecovery(heading, message, retryLabel = "Retry preview", publisher = "") {
     const panel = element("div", "proxy-direct proxy-recovery");
     const actions = element("div", "proxy-direct-actions");
     const retry = control(retryLabel, retryLabel, () => {
@@ -980,6 +1038,7 @@ function createBrowser() {
     });
     retry.className = "button";
     actions.append(playHereAction(), retry);
+    if (publisher) actions.append(external(publisher, "Open game page", "button"));
     panel.append(element("h2", "", heading), element("p", "", message), actions);
     return panel;
   }
@@ -990,6 +1049,7 @@ function createBrowser() {
     const frame = element("iframe", "proxy-frame");
     const local = page.kind === "local";
     const youtube = page.kind === "youtube";
+    const publisher = officialGameSource(page);
     const controller = new window.AbortController();
     const listenerOptions = { signal: controller.signal, once: true };
     let player;
@@ -1035,14 +1095,15 @@ function createBrowser() {
       stopPlayer();
       preview.source = externalPreviewSource(page);
       preview.frame = null;
-      stage.replaceChildren(previewRecovery(heading, message));
+      stage.replaceChildren(previewRecovery(heading, message, "Retry preview", publisher));
       finish(heading);
     };
     const unverified = page.kind === "game"
       ? "Official game player preview. Playback depends on the publisher and your connection."
       : "Preview unverified. If it stays blank, the site may block embedding. Hide it for other options.";
     const retryMessage = preview.source ? "Retry the preview or open the original in a new tab."
-      : "Retry the player or choose another in-page game.";
+      : publisher ? "Retry the player, open the game page, or choose another in-page game."
+        : "Retry the player or choose another in-page game.";
     const timer = setTimeout(() => {
       if (frameResponded && youtube) finish("YouTube playback could not be verified. Open the video on YouTube if it does not play here.", true);
       else fail("Preview timed out", retryMessage);
@@ -1106,7 +1167,7 @@ function createBrowser() {
     progress.hidden = !preview?.busy;
     progress.setAttribute("aria-label", preview?.busyLabel || "Loading preview");
     if (page.kind === "search") refresh.disabled = !preview?.canRefresh;
-    const sourceUrl = preview?.source || (page.credit && page.url);
+    const sourceUrl = preview?.source || (page.credit && officialGameSource(page));
     source.hidden = !sourceUrl;
     dismissPreview.hidden = !preview?.dismissible;
     source.textContent = page.credit ? `Game from ${page.credit}` : "Open in new tab";
@@ -1127,9 +1188,12 @@ function createBrowser() {
     const page = current();
     unloadTab(tab);
     const original = externalPreviewSource(page);
+    const publisher = officialGameSource(page);
     tab.preview = { source: original };
-    const message = original ? "You can still open the original in a new tab." : "Retry the player or choose another in-page game.";
-    const panel = previewRecovery("Preview hidden", message);
+    const message = original ? "You can still open the original in a new tab."
+      : publisher ? "Retry the player, open the game page, or choose another in-page game."
+        : "Retry the player or choose another in-page game.";
+    const panel = previewRecovery("Preview hidden", message, "Retry preview", publisher);
     tab.panel.append(panel);
     syncPreview();
     panel.querySelector(".proxy-action").focus();

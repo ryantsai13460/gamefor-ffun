@@ -16,6 +16,11 @@ export function gatewayConnected() {
   return Boolean(connection);
 }
 
+export function gatewayCooldownSeconds(path = '/api/chat') {
+  const deadlines = connection?.retryAt;
+  return Math.max(0, Math.ceil((Math.max(deadlines?.get('*') || 0, deadlines?.get(path) || 0) - Date.now()) / 1000));
+}
+
 export function gatewayChatOptIn() {
   return connection?.chatOptIn === true;
 }
@@ -65,7 +70,7 @@ export function renderGatewaySettings(target, label = 'Connect an authorized bac
     try { localStorage.setItem(endpointKey, url); } catch {}
     field.value = url;
     connection?.controller.abort(new DOMException('The backend connection changed.', 'AbortError'));
-    connection = { url, accessCode: value, controller: new AbortController() };
+    connection = { url, accessCode: value, controller: new AbortController(), retryAt: new Map() };
     code.value = '';
     status.textContent = 'Backend configured for this tab. A request will check the connection.';
     onChange?.();
@@ -149,7 +154,12 @@ async function gatewayJson(response) {
 
 async function gatewayRequest(path, body, signal, timeout = 12_000) {
   if (!connection) throw new Error('Connect an authorized backend first.');
-  const { url, accessCode, controller } = connection;
+  const { url, accessCode, controller, retryAt } = connection;
+  if (path !== '/api/capabilities' && gatewayCooldownSeconds(path)) {
+    const error = new Error('The backend asked you to wait before trying again.');
+    error.status = 429;
+    throw error;
+  }
   const requestSignal = AbortSignal.any([controller.signal, AbortSignal.timeout(timeout), ...(signal ? [signal] : [])]);
   let response;
   try {
@@ -167,6 +177,14 @@ async function gatewayRequest(path, body, signal, timeout = 12_000) {
     throw new Error('The backend could not be reached. Check the URL and allowed website origin.');
   }
   if (!response.ok) {
+    if (response.status === 429 || response.status === 503) {
+      const retry = response.headers.get('Retry-After');
+      const seconds = /^\d{1,4}$/.test(retry || '') ? Number(retry) : (response.status === 429 ? 60 : 0);
+      if (seconds >= 1 && seconds <= 3600) {
+        const scope = response.status === 429 ? '*' : path;
+        retryAt.set(scope, Math.max(retryAt.get(scope) || 0, Date.now() + seconds * 1000));
+      }
+    }
     const body = await gatewayJson(response).catch(() => null);
     requestSignal.throwIfAborted();
     const error = new Error(typeof body?.error === 'string' ? body.error.slice(0, 180) : 'The backend did not return a result.');
@@ -191,6 +209,7 @@ export async function getGatewayCapabilities(signal) {
   }
   const available = Object.fromEntries(flags.map(flag => [flag, data[flag]]));
   if (available.chat && ['workers-ai', 'openai'].includes(data.chatProvider)) available.chatProvider = data.chatProvider;
+  if (available.research && data.customResearchQuery === true) available.customResearchQuery = true;
   for (const key of ['standardOutputTokens', 'maxStandardOutputTokens', 'advancedOutputTokens']) {
     if (Number.isInteger(data[key]) && data[key] > 0 && data[key] <= 2400) available[key] = data[key];
   }
@@ -200,10 +219,16 @@ export async function getGatewayCapabilities(signal) {
 }
 
 export async function searchGateway(q, signal) {
-  const response = await gatewayRequest('/api/search', { q }, signal);
+  return (await searchGatewayPage(q, 0, signal)).results;
+}
+
+export async function searchGatewayPage(q, offset, signal) {
+  if (!Number.isInteger(offset) || offset < 0 || offset > 9) throw new Error('The web search page is invalid.');
+  const response = await gatewayRequest('/api/search', offset ? { q, offset } : { q }, signal);
   const data = await gatewayJson(response);
   if (!Array.isArray(data?.results)) throw new Error('The backend returned invalid search results.');
-  return safeReferences(data.results, 10);
+  const nextOffset = offset < 9 && data.nextOffset === offset + 1 ? data.nextOffset : undefined;
+  return { results: safeReferences(data.results, 10), nextOffset };
 }
 
 function safeReferences(items, limit) {
@@ -220,13 +245,15 @@ function safeReferences(items, limit) {
   });
 }
 
-export async function hostedBlipReply({ text, history = [], mode, signal, onUpdate, onFinish, research = false, onSources, depth = 'standard' }) {
+export async function hostedBlipReply({ text, history = [], mode, signal, onUpdate, onFinish, research = false,
+  researchQuery, onSources, depth = 'standard' }) {
   const previous = Array.isArray(history) ? history : [];
   if (previous.some(message => message?.attachments?.length)) throw new Error('Use a local model for chats with attached files.');
   const content = typeof text === 'string' ? text.trim() : '';
   if (!content) throw new Error('Enter a message to send to the model.');
   if (content.length > maxChatChars) throw new Error('The message is too long for the connected model.');
-  if (research && content.length > 200) throw new Error('Web research is available for short questions of up to 200 characters.');
+  const query = typeof researchQuery === 'string' ? researchQuery.trim() : content;
+  if (research && (!query || query.length > 200)) throw new Error('Enter a web lookup phrase of up to 200 characters.');
   const context = previous.slice(-32).filter(message => message?.kind !== 'unavailable' &&
       ['user', 'assistant'].includes(message?.role) && typeof message.text === 'string' && message.text.trim())
     .map(message => ({ role: message.role, content: message.text.trim() }));
@@ -238,6 +265,7 @@ export async function hostedBlipReply({ text, history = [], mode, signal, onUpda
   const request = {
     messages, mode, stream: true,
     ...(research ? { research: true } : {}),
+    ...(research && query !== content ? { researchQuery: query } : {}),
     ...(depth === 'advanced' ? { depth: 'advanced' } : {})
   };
   while (encoder.encode(JSON.stringify(request)).byteLength > maxRequestBytes) {

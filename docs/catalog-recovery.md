@@ -39,7 +39,8 @@ The catalog combines the preserved records in `assets/catalog.js` with the suppo
 | Voxelia, Annex, PULSEGRID, and Rhythm Forge | 4 |
 | Lantern Shift | 1 |
 | Candy Box 2 and A Dark Room | 2 |
-| **Current searchable catalog** | **1,580** |
+| Afternoon Games, S7GS, and Yuzool | 5 |
+| **Current searchable catalog** | **1,585** |
 
 The GitHub source is commit [`4deda5c`](https://github.com/ryantsai13460/gamefor-ffun/tree/4deda5c1ce9058184123d85792198fee5bc09a7c). Memory Match came from commit [`41ea241`](https://github.com/ryantsai13460/gamefor-ffun/commit/41ea241). The [public Base44 library](https://proxy-arcade-play.base44.app/library/games) supplied 58 records, including six titles already in the GitHub catalog. Slither.io appears in both Base44 sources and counts once. The [Base44 homepage](https://proxy-arcade-play.base44.app/) also lists Minecraft Classic and Suika Game, which are absent from both main libraries. Suika Game is the commercial original, with a separate listing from Suika Game: Merge Fruits. Catch the Star is the standalone clicker, while Catch the Stars is the built-in falling-stars game.
 
@@ -47,13 +48,13 @@ The 548 entries from the GitHub and Base44 libraries form the recovered set with
 
 ## Links and artwork
 
-Catalog-only entries retain their HTTPS publisher or distributor records. Their detail pages and Play Hub point to in-page alternatives. Fancade and Stacktris use the documented embed where the publisher allows it. [Fancade player documentation](https://www.fancade.com/wiki/Fancade_Web#Embedding)
+Catalog-only entries retain their HTTPS publisher or distributor records where available. Their detail pages and Proxy Gemini provide an explicit link and point to in-page alternatives. Spinz.io preserves a historical record and points to its closure announcement. Fancade and Stacktris use the documented embed where the publisher allows it. [Fancade player documentation](https://www.fancade.com/wiki/Fancade_Web#Embedding)
 
 Territorial.io and HexGL open from their original HTTPS game addresses in a sandboxed frame. Territorial.io’s terms describe permitted fan sites, and HexGL’s author publishes the game under MIT terms with listed asset exceptions. These links use the original services. [Territorial.io terms](https://territorial.io/terms) · [HexGL source and license](https://github.com/BKcore/HexGL)
 
 Fancade documents embedding shared play links. GameLake, Tibo Games, 360 PlayZone, and Upload Arcade publish their own embed codes. Added entries use those exact players and preserve publisher branding and credits. The source check covered HTTPS, the publisher's title and player identity, and frame permissions. Individual gameplay checks covered representative titles. [Fancade embed documentation](https://www.fancade.com/wiki/Fancade_Web#Embedding) · [Fancade category catalog](https://www.fancade.com/wiki/List_of_games_by_category) · [GameLake](https://gamelake.com/developers/) · [Tibo Games](https://tibogames.com/free-games-for-websites/) · [360 PlayZone](https://360playzone.com/embed-games) · [Upload Arcade](https://www.uploadarcade.com/embeddable-games)
 
-The independent games use creator-hosted releases and keep their source and license credits. [Starter Kit Racing](https://github.com/mrdoob/Starter-Kit-Racing) · [Simon Tatham's Portable Puzzle Collection](https://www.chiark.greenend.org.uk/~sgtatham/puzzles/)
+The independent games use creator-hosted releases and keep their source and license credits. WordSash, Killer Sudoku, Pings Portal, Breachfield, and Pier Putt responded to game input in their original players on the development arcade. [Starter Kit Racing](https://github.com/mrdoob/Starter-Kit-Racing) · [Simon Tatham's Portable Puzzle Collection](https://www.chiark.greenend.org.uk/~sgtatham/puzzles/) · [Afternoon Games](https://afternoongames.com/free-games-for-your-website) · [S7GS](https://s7gs.com/Play/) · [Yuzool](https://www.yuzool.com/embed/)
 
 Lantern Shift is a built-in lane-switching game with three courses and a relaxed pace. The latest hosted additions include eight Tapamine originals, Candy Box 2, and A Dark Room. Each hosted player responded to gameplay input in a WebKit test using the arcade sandbox. [Tapamine embed terms](https://tapamine.com/terms/) · [Candy Box 2 source and license](https://candybox2.github.io/source_code.html) · [A Dark Room source and license](https://github.com/doublespeakgames/adarkroom)
 

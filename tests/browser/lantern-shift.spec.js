@@ -25,6 +25,37 @@ test('Lantern Shift plays offline with keyboard lane commands, live scoring and 
   await expect(game.getByRole('button', { name: 'Resume', exact: true })).toBeVisible();
 });
 
+test('Lantern Shift keeps the best completed score across retries and reloads', async ({ page }) => {
+  await page.clock.install();
+  const game = await startLanternShift(page);
+  const status = game.getByRole('status');
+  await page.clock.runFor(2500);
+  await expect(status).toContainText('Lanterns 1/8');
+  await game.getByRole('button', { name: 'Restart course' }).click();
+  await expect(status).not.toContainText('Course best');
+
+  await game.getByRole('button', { name: 'Start', exact: true }).click();
+  await page.clock.runFor(17_500);
+  await expect(status).toContainText('Course best 4/8 · New best');
+  await expect(status).toContainText('Try this course again');
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Play game', exact: true }).click();
+  await expect(status).toContainText('Lanterns 0/8');
+  await expect(status).toContainText('Course best 4/8');
+  await expect(status).not.toContainText('New best');
+
+  const canvas = game.getByLabel('Lantern Shift game');
+  await game.getByRole('button', { name: 'Start', exact: true }).click();
+  await canvas.press('ArrowRight');
+  await page.clock.runFor(2500);
+  await canvas.press('ArrowLeft');
+  await page.clock.runFor(15_000);
+  await expect(status).toContainText('Lanterns 3/8');
+  await expect(status).toContainText('Course best 4/8');
+  await expect(status).not.toContainText('New best');
+});
+
 test.describe('Lantern Shift on a narrow phone', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 320, height: 740 } });
 

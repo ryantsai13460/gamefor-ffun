@@ -6,20 +6,37 @@ const colors = {
   ink: '#10192b', paper: '#fff0d4', muted: '#bdc9de',
   inner: '#a2edcd', outer: '#ffd17d', violet: '#bfb4ff',
 };
+const bestKeyPrefix = 'ffun-lantern-shift-best-v1:';
 const courses = [
-  { name: 'Blue Hour', duration: 17, goal: 6, gates: [
+  { id: 'blue-hour', name: 'Blue Hour', duration: 17, goal: 6, gates: [
     [2.2, 'inner'], [4.2, 'outer'], [6.1, 'outer'], [8.0, 'inner'],
     [9.8, 'outer'], [11.6, 'inner'], [13.3, 'inner'], [15.1, 'outer'],
   ] },
-  { name: 'Dusk Market', duration: 18.5, goal: 8, gates: [
+  { id: 'dusk-market', name: 'Dusk Market', duration: 18.5, goal: 8, gates: [
     [2.0, 'outer'], [4.0, 'inner'], [5.7, 'outer'], [7.3, 'inner'], [8.7, 'inner'],
     [10.5, 'outer'], [12.5, 'inner'], [14.1, 'outer'], [15.2, 'inner'], [17.0, 'outer'],
   ] },
-  { name: 'Midnight Loop', duration: 19.5, goal: 9, gates: [
+  { id: 'midnight-loop', name: 'Midnight Loop', duration: 19.5, goal: 9, gates: [
     [1.9, 'inner'], [3.8, 'outer'], [5.2, 'inner'], [6.7, 'outer'], [7.8, 'inner'], [9.2, 'outer'],
     [11.1, 'outer'], [12.7, 'inner'], [14.1, 'outer'], [15.3, 'inner'], [16.7, 'inner'], [18.0, 'outer'],
   ] },
 ];
+
+function bestKey(course, score) {
+  return bestKeyPrefix + course.id + ':' + score;
+}
+
+function readCourseBest(course) {
+  try {
+    const storage = globalThis.localStorage;
+    for (let score = course.gates.length; score >= 0; score--) {
+      if (storage?.getItem(bestKey(course, score)) === '1') return score;
+    }
+  } catch {
+    // Browser settings can make storage inaccessible.
+  }
+  return -1;
+}
 
 function circle(c, x, y, radius, fill) {
   c.beginPath();
@@ -77,11 +94,14 @@ function lantern(c, x, y, lane, size, color) {
 export function createLanternShift({ reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches } = {}) {
   let stage = 0;
   let slower = false;
-  let course, elapsed, lane, shownRadius, passed, collected, streak, bestStreak, results;
+  let course, elapsed, lane, shownRadius, passed, collected, streak, bestStreak, results, courseBest, newBest;
 
   function reset() {
-    course = courses[stage];
+    const nextCourse = courses[stage];
+    courseBest = Math.max(course === nextCourse ? courseBest : -1, readCourseBest(nextCourse));
+    course = nextCourse;
     elapsed = passed = collected = streak = bestStreak = 0;
+    newBest = false;
     lane = 'inner';
     shownRadius = orbit.inner;
     results = [];
@@ -93,6 +113,19 @@ export function createLanternShift({ reducedMotion = globalThis.matchMedia?.('(p
 
   function cleared() {
     return done() && collected >= course.goal;
+  }
+
+  function recordCourseBest() {
+    courseBest = Math.max(courseBest, readCourseBest(course));
+    if (collected <= courseBest) return;
+    courseBest = collected;
+    newBest = true;
+    try {
+      // Separate marks keep a lower result from overwriting a better one in another tab.
+      globalThis.localStorage?.setItem(bestKey(course, courseBest), '1');
+    } catch {
+      // The current game still remembers the result.
+    }
   }
 
   function move(action) {
@@ -199,6 +232,10 @@ export function createLanternShift({ reducedMotion = globalThis.matchMedia?.('(p
     c.fillRect(529, 313, 220 * elapsed / course.duration, 6);
     text(c, slower ? 'Relaxed pace' : 'Normal pace', 529, 349, 15, colors.muted);
     text(c, 'Streak ' + streak, 749, 349, 15, colors.muted, 'right');
+    if (courseBest >= 0) {
+      text(c, (newBest ? 'New best ' : 'Course best ') + courseBest + '/' + course.gates.length,
+        529, 375, 14, newBest ? colors.inner : colors.muted);
+    }
     text(c, 'Match the next lantern’s lane before you reach it.', width / 2, 427, 17, colors.paper, 'center');
   }
 
@@ -230,12 +267,14 @@ export function createLanternShift({ reducedMotion = globalThis.matchMedia?.('(p
         bestStreak = Math.max(bestStreak, streak);
         passed++;
       }
+      if (done()) recordCourseBest();
     },
     hud() {
       const upcoming = course.gates[passed];
       const next = upcoming ? 'Next lantern ' + (passed + 1) + ' in ' + upcoming[1] + ' lane' : 'Best streak ' + bestStreak;
+      const best = courseBest < 0 ? '' : ' · Course best ' + courseBest + '/' + course.gates.length + (newBest ? ' · New best' : '');
       return course.name + ' · Lanterns ' + collected + '/' + course.gates.length + ' · Goal ' + course.goal +
-        ' · Lane ' + lane + ' · ' + next + ' · ' + (slower ? 'Relaxed pace' : 'Normal pace');
+        ' · Lane ' + lane + ' · ' + next + ' · ' + (slower ? 'Relaxed pace' : 'Normal pace') + best;
     },
     done,
     message() {

@@ -31,6 +31,27 @@ test('blocked catalog titles lead to related in-page games and the official Geom
   expect(page.context().pages()).toHaveLength(1);
 });
 
+test('an external game listing is available explicitly without navigating on Play', async ({ page }) => {
+  const visits = [];
+  await page.route('https://**/*', route => {
+    if (route.request().isNavigationRequest()) visits.push(route.request().url());
+    return route.abort();
+  });
+  await page.goto('/#play/bloxd-io?start=1');
+  const stage = page.getByRole('region', { name: 'Bloxd.io player' });
+  await expect(stage.getByRole('heading', { name: 'In-page play unavailable' })).toBeVisible();
+  const source = stage.getByRole('link', { name: 'Open game page', exact: true });
+  await expect(source).toHaveAttribute('href', 'https://bloxd.io/');
+  await expect(source).toHaveAttribute('target', '_blank');
+  await expect(source).toHaveAttribute('rel', 'noopener noreferrer');
+  await page.goto('/#play/spinz-io?start=1');
+  await expect(page.getByText('The publisher closed the browser game.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('link', { name: "Read the publisher's closure notice" })).toHaveAttribute('href', 'https://spinz.io/');
+  await expect(page.getByRole('link', { name: 'Open game page', exact: true })).toHaveCount(0);
+  expect(visits).toEqual([]);
+  expect(page.context().pages()).toHaveLength(1);
+});
+
 test('Territorial.io shares a direct game link, keeps the player in-page, and offers recovery', async ({ page }) => {
   await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
     writeText: async () => { throw new Error('Clipboard unavailable'); }

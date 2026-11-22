@@ -1,7 +1,7 @@
 import { createGameAddressLookup } from './game-play-policy.js';
 
 const version = new URL(import.meta.url).search;
-const [{ gameAvailability, normalize }, { filmPlayback }] = await Promise.all([
+const [{ discoverySearchHistoryKey: historyKey, gameAvailability, normalize }, { filmPlayback }] = await Promise.all([
   import(`./library.js${version}`), import(`./film-playback.js${version}`)
 ]);
 const kinds = [['all', 'All'], ['games', 'Games'], ['movies', 'Movies'], ['music', 'Music'], ['videos', 'Videos']];
@@ -24,7 +24,6 @@ const resultFilters = {
     matches: (item, value) => item.short === (value === 'shorts')
   }
 };
-const historyKey = 'ffun.discovery.history';
 const batch = 24;
 
 function element(tag, className, text) {
@@ -164,12 +163,12 @@ function prepare(records) {
   });
 }
 
-export function renderDiscovery(target, { params, games, showArtwork, onRouteChange }) {
+export function renderDiscovery(target, { params, games, showArtwork, rememberSearches = true, onRouteChange }) {
   let active = true;
   let prepared = prepare(games.map(game => gameItem(game, showArtwork)));
   const unavailable = new Set();
   let pending = true;
-  let cachedHistory = history();
+  let cachedHistory = rememberSearches ? history() : [];
   let selected = labels.has(params.get('type')) ? params.get('type') : 'all';
   let query = (params.get('q') || '').slice(0, 150);
   let limit = batch;
@@ -248,7 +247,7 @@ export function renderDiscovery(target, { params, games, showArtwork, onRouteCha
   }
 
   function rememberQuery() {
-    if (!query || /^https?:\/\//i.test(query) || matchingGame(query)) return;
+    if (!rememberSearches || !query || /^https?:\/\//i.test(query) || matchingGame(query)) return;
     const normalizedQuery = normalize(query);
     cachedHistory = [query, ...cachedHistory.filter(term => normalize(term) !== normalizedQuery)].slice(0, 8);
     saveHistory(cachedHistory);

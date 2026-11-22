@@ -67,6 +67,81 @@ test('Family films leads with complete features and keeps regional provider link
   await expect(player.locator('iframe')).toHaveAttribute('src', 'https://www.nfb.ca/film/tooth/embed/player/');
 });
 
+test('runtime filters handle catalog minutes, legacy durations, and missing runtimes', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 820 });
+  await page.goto('/#movies?collection=all&page=4');
+  const query = page.getByRole('searchbox', { name: 'Search films' });
+  const runtime = page.getByRole('combobox', { name: 'Film runtime' });
+  const pagination = page.getByRole('navigation', { name: 'Film pages' });
+  await expect(pagination).toContainText('Page 4 of');
+  await runtime.selectOption('under-20');
+  await expect(pagination).toContainText('Page 1 of');
+  await query.fill('The Daily Dweebs');
+  await expect(page.getByRole('link', { name: 'Open The Daily Dweebs film page' })).toContainText('50 sec');
+  await runtime.selectOption('20-59');
+  await expect(page.getByText('No films match your search.')).toBeVisible();
+  await query.fill('Paddle to the Sea');
+  await expect(page.getByRole('link', { name: 'Open Paddle to the Sea film page' })).toContainText('27 min');
+  await query.fill('Carnival of the Animals');
+  await expect(page.getByRole('link', { name: 'Open Carnival of the Animals film page' })).toContainText('Half-hour special');
+  await runtime.selectOption('60-plus');
+  await query.fill('The General');
+  await expect(page.getByRole('link', { name: 'Open The General film page' })).toContainText('76 min');
+  await runtime.selectOption('unknown');
+  await query.fill('A Minecraft Movie');
+  await expect(page.getByRole('link', { name: 'Open A Minecraft Movie film page' })).toBeVisible();
+});
+
+test('full-film playback and runtime selections survive details and both Back controls', async ({ page }) => {
+  await page.goto('/#movies?collection=all&runtime=under-20&playback=in-page&sort=title');
+  const query = page.getByRole('searchbox', { name: 'Search films' });
+  const runtime = page.getByRole('combobox', { name: 'Film runtime' });
+  const playback = page.getByRole('combobox', { name: 'Full-film playback' });
+  const details = page.getByRole('link', { name: 'Open Sintel film page', exact: true });
+  const back = page.getByRole('link', { name: 'Back to Movies', exact: true });
+  await expect(runtime).toHaveValue('under-20');
+  await expect(playback).toHaveValue('in-page');
+  await query.fill('Sintel');
+  await details.click();
+  await expect(back).toHaveAttribute('href', '#movies?collection=all&q=Sintel&runtime=under-20&playback=in-page&sort=title');
+  await expect(page.locator('.film-detail-play').getByRole('button', { name: 'Play full short' })).toBeVisible();
+  await page.goBack();
+  await expect(query).toHaveValue('Sintel');
+  await expect(runtime).toHaveValue('under-20');
+  await expect(playback).toHaveValue('in-page');
+  await details.click();
+  await back.click();
+  await expect(query).toHaveValue('Sintel');
+  await expect(runtime).toHaveValue('under-20');
+  await expect(playback).toHaveValue('in-page');
+
+  await runtime.selectOption('');
+  await playback.selectOption('provider');
+  await query.fill('The General');
+  const provider = page.getByRole('link', { name: 'Watch Full Movie', exact: true });
+  await expect(provider).toHaveAttribute('href', 'https://commons.wikimedia.org/wiki/File:The_General_(1926).webm');
+  await playback.selectOption('in-page');
+  await expect(provider).toHaveCount(0);
+  await expect(page.getByText('No films match your search.')).toBeVisible();
+});
+
+test('invalid movie filter values drop from detail links and leave default discovery intact', async ({ page }) => {
+  await page.goto('/#movies?film=sintel&runtime=anywhere&playback=embed-all');
+  const back = page.getByRole('link', { name: 'Back to Movies', exact: true });
+  const playback = page.getByRole('combobox', { name: 'Full-film playback' });
+  await expect(back).toHaveAttribute('href', '#movies');
+  await back.click();
+  await expect(page.getByRole('button', { name: 'Play featured film', exact: true })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Film runtime' })).toHaveValue('');
+  await expect(playback).toHaveValue('');
+  const detail = page.getByRole('link', { name: 'Open A Minecraft Movie film page', exact: true });
+  await page.getByRole('searchbox', { name: 'Search films' }).fill('A Minecraft Movie');
+  await expect(detail).toBeVisible();
+  await playback.selectOption('full');
+  await expect(detail).toHaveCount(0);
+  await expect(page.getByText('No films match your search.')).toBeVisible();
+});
+
 test('YouTube film progress starts on playback and resumes with working fullscreen controls', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 820 });
   await page.route('https://www.youtube-nocookie.com/embed/eRsGyueVLvQ?*', route => route.fulfill({

@@ -65,11 +65,16 @@ test('invalid shapes, oversized bodies, and unsupported methods stop before spen
     [post('/api/chat', { messages: [userMessage, { role: 'assistant', content: 'Guess' }] }), 400],
     [post('/api/chat', { messages: [userMessage], stream: 'true' }), 400],
     [post('/api/chat', { messages: [userMessage], research: 'true' }), 400],
+    [post('/api/chat', { messages: [userMessage], researchQuery: 'chess' }), 400],
+    [post('/api/chat', { messages: [userMessage], research: true, researchQuery: ' ' }), 400],
+    [post('/api/chat', { messages: [userMessage], research: true, researchQuery: 'q'.repeat(201) }), 400],
     [post('/api/chat', { messages: [userMessage], depth: 'max' }), 400],
     [post('/api/chat', { messages: [{ ...userMessage, content: 'a'.repeat(201) }], research: true }), 400],
     [post('/api/chat', { messages: [{ ...userMessage, content: 'a'.repeat(12_001) }] }), 413],
     [post('/api/chat', { messages: [{ ...userMessage, content: 'a'.repeat(32_769) }] }), 413],
     [post('/api/search', { q: 'a'.repeat(201) }), 400],
+    [post('/api/search', { q: 'chess', offset: '1' }), 400],
+    [post('/api/search', { q: 'chess', offset: 10 }), 400],
     [post('/api/search', { q: 'test' }, { 'Content-Type': 'text/plain' }), 415],
     [new Request(endpoint + '/api/search', { headers: { Origin: site } }), 405],
     [post('/somewhere-else', {}), 404],
@@ -197,6 +202,7 @@ test('Workers AI reports configured chat and uses the binding with bounded gener
   assert.equal(features.chatProvider, 'workers-ai');
   assert.equal(features.advanced, false);
   assert.equal(features.research, true);
+  assert.equal(features.customResearchQuery, true);
   assert.equal(features.standardOutputTokens, 512);
   assert.equal(features.maxStandardOutputTokens, 768);
   assert.equal(features.advancedOutputTokens, undefined);
@@ -414,6 +420,30 @@ test('Brave search sends a bounded strict search and returns normalized HTTPS re
   ] });
 });
 
+test('Brave pages request one provider offset and advertise only the next available page', async context => {
+  const offsets = [];
+  const result = { title: 'Chess guide', url: 'https://chess.example/guide', description: 'Learn chess.' };
+  const upstream = context.mock.method(globalThis, 'fetch', async url => {
+    assert.equal(url.origin, 'https://api.search.brave.com');
+    assert.equal(url.searchParams.get('count'), '8');
+    assert.equal(url.searchParams.get('q'), 'chess');
+    assert.equal(url.searchParams.get('result_filter'), 'query,web');
+    const offset = Number(url.searchParams.get('offset'));
+    offsets.push(offset);
+    return Response.json({ query: { more_results_available: offset !== 1 }, web: { results: [result] } });
+  });
+  const search = async offset => {
+    const response = await worker.fetch(post('/api/search', { q: 'chess', offset }), settings());
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+  assert.deepEqual(await search(0), { results: [result], nextOffset: 1 });
+  assert.deepEqual(await search(1), { results: [result] });
+  assert.deepEqual(await search(9), { results: [result] });
+  assert.deepEqual(offsets, [0, 1, 9]);
+  assert.equal(upstream.mock.callCount(), 3);
+});
+
 test('research searches only the latest question, grounds chat, and streams verified references', async context => {
   const previous = { role: 'user', content: 'Previous conversation context' };
   const reference = { title: 'Chess guide', url: 'https://chess.example/learn', description: 'Review finished games.' };
@@ -458,14 +488,40 @@ test('research without a provider or usable sources skips model generation', asy
   assert.equal(provider.mock.callCount(), 1);
 });
 
+test('detailed research sends only its proposed lookup phrase to web search', async context => {
+  const previous = { role: 'user', content: 'Previously we discussed chess openings.' };
+  const question = { role: 'user', content: 'Explain chess endgames with examples. '.repeat(9).trim() };
+  const phrase = 'beginner chess endgame examples';
+  const reference = { title: 'Chess endgame guide', description: 'Practical chess positions.', url: 'https://chess.example/endgames' };
+  const provider = context.mock.method(globalThis, 'fetch', async (url, options) => {
+    if (url instanceof URL) {
+      assert.equal(url.origin, 'https://api.search.brave.com');
+      assert.equal(url.searchParams.get('q'), phrase);
+      assert.ok(!String(url).includes(encodeURIComponent('Previously')));
+      return Response.json({ web: { results: [reference] } });
+    }
+    const body = JSON.parse(options.body);
+    assert.deepEqual(body.messages.slice(1), [previous, question]);
+    return Response.json({ choices: [{ message: { content: 'Try the king-and-pawn endgame. [1]' } }] });
+  });
+  const response = await worker.fetch(post('/api/chat', {
+    messages: [previous, question], research: true, researchQuery: phrase,
+  }), settings());
+  assert.equal(response.status, 200);
+  assert.equal(provider.mock.callCount(), 2);
+  assert.deepEqual(await response.json(), { text: 'Try the king-and-pawn endgame. [1]', sources: [reference] });
+});
+
 test('missing provider secrets and upstream failures return clear generic errors', async context => {
   const provider = context.mock.method(globalThis, 'fetch', async () =>
-    Response.json({ error: 'Internal provider information' }, { status: 429 }));
+    Response.json({ error: 'Internal provider information' }, { status: 429, headers: { 'Retry-After': '30' } }));
   const disabled = await worker.fetch(post('/api/search', { q: 'chess' }), settings({ BRAVE_SEARCH_API_KEY: '' }));
   assert.equal(disabled.status, 503);
   assert.equal(provider.mock.callCount(), 0);
   const limited = await worker.fetch(post('/api/chat', { messages: [userMessage] }), settings());
   assert.equal(limited.status, 503);
+  assert.equal(limited.headers.get('Retry-After'), '30');
+  assert.equal(limited.headers.get('Access-Control-Expose-Headers'), 'Retry-After');
   assert.deepEqual(await limited.json(), { error: 'The provider’s rate or usage limit has been reached.' });
 });
 

@@ -19,7 +19,7 @@ test('Proxy Gemini searches the connected provider and preserves the official fa
     requests++;
     if (requests === 2) return route.fulfill({ status: 503, headers });
     return route.fulfill({ headers, json: { results: [
-      { title: 'HTML reference', url: 'https://example.com/reference', description: 'Publisher documentation.' },
+      { title: requests === 3 ? 'Updated HTML reference' : 'HTML reference', url: 'https://example.com/reference', description: 'Publisher documentation.' },
       { title: 'Duplicate reference', url: 'https://example.com/reference', description: '' },
       { title: 'Eggy Car on Coolmath', url: 'https://www.coolmathgames.com/0-eggy-car', description: 'Portal result.' },
       { title: 'Local address', url: 'https://127.0.0.1/private', description: '' }
@@ -73,10 +73,17 @@ test('Proxy Gemini searches the connected provider and preserves the official fa
   expect(requests).toBe(1);
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(results.getByText(/provider could not return results/)).toBeVisible();
+  await expect(results.getByText(/Showing results from the last successful search/)).toBeVisible();
+  await expect(results.getByRole('heading', { name: 'HTML reference', exact: true })).toBeVisible();
   expect(requests).toBe(2);
   await expect(page.getByRole('link', { name: 'Search web and YouTube' })).toHaveAttribute('href', '#web-search?q=learn+about+html');
   await page.setViewportSize({ width: 320, height: 700 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  await results.getByRole('button', { name: 'Retry web search' }).click();
+  await expect(results.getByRole('heading', { name: 'Updated HTML reference', exact: true })).toBeVisible();
+  await expect(results.getByRole('heading', { name: 'HTML reference', exact: true })).toHaveCount(0);
+  await expect(results.getByRole('listitem')).toHaveCount(2);
+  expect(requests).toBe(3);
 
   await page.evaluate(() => { location.hash = '#web-search'; });
   await page.setViewportSize({ width: 1024, height: 768 });
@@ -90,7 +97,7 @@ test('Proxy Gemini searches the connected provider and preserves the official fa
   await expect(page).toHaveURL(/#web-search$/);
   await page.getByText('Connect a web search provider', { exact: true }).click();
   await expect(page.getByRole('button', { name: 'Connect backend' })).toBeVisible();
-  expect(requests).toBe(2);
+  expect(requests).toBe(3);
 });
 
 test('Proxy Gemini shares committed addresses and preserves YouTube timestamps', async ({ page }) => {
@@ -160,28 +167,82 @@ test('Proxy Gemini keeps address errors by tab and updates the recent pages on H
   await page.getByRole('button', { name: 'Home', exact: true }).click();
   await page.getByRole('button', { name: 'Show browsing history' }).click();
   const history = page.getByRole('dialog', { name: 'Browsing history' });
+  const historyFilter = history.getByRole('searchbox', { name: 'Search history' });
+  await historyFilter.fill('missing');
+  await expect(history.getByText('No pages match your search.')).toBeVisible();
+  await historyFilter.fill('LEARNING');
+  await expect(history.getByRole('button', { name: 'Open learning games' })).toBeVisible();
   await history.getByRole('button', { name: 'Clear browsing history and closed tabs' }).click();
   await history.getByRole('button', { name: 'Close browsing history' }).click();
   await expect(page.getByRole('heading', { name: 'Recent pages' })).toHaveCount(0);
 });
 
-test('Proxy Gemini offers an in-page alternative without requesting the game portal', async ({ page }) => {
-  const arcadeUrl = new URLSearchParams({ address: 'https://www.coolmathgames.com/0-eggy-car/?fixture=1' });
+test('Proxy Gemini opens a catalog source only when the visitor follows its link', async ({ page }) => {
+  const source = 'https://eggycarofficial.com/';
+  const arcadeUrl = new URLSearchParams({ address: 'https://www.coolmathgames.com/0-eggy-car/?redirect=https://example.com/unrelated' });
   const portalRequests = [];
-  page.on('request', request => {
-    if (new URL(request.url()).hostname.endsWith('coolmathgames.com')) portalRequests.push(request.url());
+  page.context().on('request', request => {
+    if (['eggycarofficial.com', 'www.coolmathgames.com'].includes(new URL(request.url()).hostname)) portalRequests.push(request.url());
   });
+  await page.context().route(source, route => route.fulfill({ contentType: 'text/html', body: '<h1>Publisher page</h1>' }));
   await page.goto(`/#browse?${arcadeUrl}`);
   const viewer = page.locator('.proxy-viewer');
   await expect(viewer.getByRole('heading', { name: 'Eggy Car isn’t available in-page' })).toBeVisible();
   await expect(viewer.locator('iframe')).toHaveCount(0);
-  await expect(viewer.getByRole('link')).toHaveCount(0);
+  const official = viewer.getByRole('link', { name: 'Open game page', exact: true });
+  await expect(official).toHaveAttribute('href', source);
+  await expect(official).toHaveAttribute('target', '_blank');
+  await expect(official).toHaveAttribute('rel', 'noopener noreferrer');
   await viewer.getByRole('button', { name: 'Play Pocket Circuit', exact: true }).click();
   await expect(viewerAddress(page)).toHaveValue('arcade:ffun-circuit-v1');
   await expect(viewer.locator('.local-game')).toBeVisible();
   await viewer.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(viewer.getByRole('heading', { name: 'Eggy Car isn’t available in-page' })).toBeVisible();
   expect(portalRequests).toEqual([]);
+  expect(page.context().pages()).toHaveLength(1);
+  const opened = page.waitForEvent('popup');
+  await official.click();
+  const publisher = await opened;
+  await expect(publisher.getByRole('heading', { name: 'Publisher page' })).toBeVisible();
+  expect(portalRequests).toEqual([source]);
+  await publisher.close();
+
+  const address = viewerAddress(page);
+  await address.fill('https://www.coolmathgames.com/unknown-unverified-game');
+  await address.press('Enter');
+  await expect(official).toHaveCount(0);
+  await expect(viewer.locator('iframe')).toHaveCount(0);
+
+  await address.fill('https://poki.com/en/g/drive-mad?ref=bookmark');
+  await address.press('Enter');
+  await expect(viewer.getByRole('heading', { name: 'Drive Mad isn’t available in-page' })).toBeVisible();
+  await expect(official).toHaveAttribute('href', 'https://www.drivemad.com/');
+  await expect(viewer.locator('iframe')).toHaveCount(0);
+
+  await address.fill('https://spinz.io/?ref=bookmark');
+  await address.press('Enter');
+  await expect(viewer.getByRole('heading', { name: 'Spinz.io isn’t available in-page' })).toBeVisible();
+  await expect(viewer.getByRole('link', { name: "Read the publisher's closure notice" })).toHaveAttribute('href', 'https://spinz.io/');
+  await expect(official).toHaveCount(0);
+  await expect(viewer.locator('iframe')).toHaveCount(0);
+});
+
+test('Proxy Gemini offers a publisher link when an approved game preview is hidden', async ({ page }) => {
+  const original = 'https://play.fancade.com/5BEC8352E4E078B1';
+  await page.route(original, route => route.fulfill({ contentType: 'text/html', body: '<h1>Publisher player</h1>' }));
+  await page.goto(`/#browse?${new URLSearchParams({ address: original })}`);
+  const frame = page.locator('.proxy-frame');
+  await expect(frame).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin allow-pointer-lock allow-presentation');
+  await expect(page.frameLocator('.proxy-frame').getByRole('heading', { name: 'Publisher player' })).toBeVisible();
+  const official = page.getByRole('link', { name: 'Open game page', exact: true });
+  await expect(official).toHaveCount(0);
+  await page.getByRole('button', { name: 'Hide preview' }).click();
+  await expect(frame).toHaveCount(0);
+  await expect(official).toHaveAttribute('href', original);
+  await expect(official).toHaveAttribute('target', '_blank');
+  await page.getByRole('button', { name: 'Retry preview' }).click();
+  await expect(frame).toHaveAttribute('src', original);
+  await expect(official).toHaveCount(0);
   expect(page.context().pages()).toHaveLength(1);
 });
 

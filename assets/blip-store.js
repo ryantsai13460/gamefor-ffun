@@ -88,6 +88,10 @@ function messageRecord(id, role, value, createdAt, details) {
   if (role === 'user') {
     const attachments = normalizeBlipAttachments(details?.attachments);
     if (attachments.length) message.attachments = attachments;
+    else if (text) {
+      const lookup = boundedText(details?.researchQuery, 200);
+      if (lookup) message.researchQuery = lookup;
+    }
   } else if (isObject(details)) {
     if (answerKinds.has(details.kind)) message.kind = details.kind;
     if (details.truncated === true && ['model', 'hosted'].includes(message.kind)) message.truncated = true;
