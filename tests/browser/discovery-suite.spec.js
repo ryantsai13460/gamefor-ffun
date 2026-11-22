@@ -42,7 +42,7 @@ test('universal search links real provider posts, product searches, and a Blip d
   await expect(page).toHaveURL(/#discover\?q=wireless\+controller/);
   await page.getByRole('link', { name: 'Search Shopping', exact: true }).click();
   await expect(page.getByRole('searchbox', { name: 'Search shopping', exact: true })).toHaveValue('wireless controller');
-  await expect(page.getByRole('link', { name: /Amazon/ }).first()).toHaveAttribute('href', /https:\/\/www\.amazon\.com\/s\?/);
+  await expect(page.getByRole('link', { name: 'Open Amazon results', exact: true })).toHaveAttribute('href', /https:\/\/www\.amazon\.com\/s\?/);
   expect(retailerRequests).toEqual([]);
 
   await page.goto('/#discover?q=How+do+I+make+a+platformer');

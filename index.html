@@ -9,9 +9,9 @@
   <meta name="description" content="Play arcade games, watch films, lyric videos and Shorts, and explore discoverable content on Gamefor Ffun.">
   <title>Gamefor Ffun · Proxy Arcade</title>
   <link rel="icon" href="./assets/arcade-mark.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./assets/arcade.css?v=20261122-2">
+  <link rel="stylesheet" href="./assets/arcade.css?v=20261122-4">
   <link rel="stylesheet" href="./assets/arcade-library-polish.css?v=20261121-4">
-  <link rel="stylesheet" href="./assets/home.css?v=20261122-3">
+  <link rel="stylesheet" href="./assets/home.css?v=20261122-4">
   <link rel="stylesheet" href="./assets/arcade-modes.css?v=20261121-4">
   <link rel="stylesheet" href="./assets/local-games.css?v=20261121-7">
   <link rel="stylesheet" href="./assets/media.css?v=20261122-2">
@@ -28,7 +28,7 @@
   <link rel="stylesheet" href="./assets/blip-music.css">
   <link rel="stylesheet" href="./assets/blip.css?v=20261122-3">
   <link rel="stylesheet" href="./assets/play-hub.css?v=20261121-4">
-  <script type="module" src="./assets/arcade.js?v=20261122-3"></script>
+  <script type="module" src="./assets/arcade.js?v=20261122-4"></script>
 </head>
 <body>
   <a class="skip-link" href="#arcade-content">Skip to content</a>
@@ -63,6 +63,7 @@
         <div class="nav-group">
           <p>Watch and listen</p>
           <a href="#shorts" data-page="shorts" data-icon="shorts">Short Videos</a>
+          <a href="#instagram" data-page="instagram" data-icon="camera">Instagram</a>
           <a href="#youtube" data-page="youtube" data-icon="video">YouTube</a>
           <a href="#movies" data-page="movies" data-icon="film">Movies</a>
           <a href="#music" data-page="music" data-icon="music">Music</a>
@@ -70,7 +71,9 @@
         <div class="nav-group">
           <p>Explore more</p>
           <a href="#community" data-page="community" data-icon="chat">Community</a>
+          <a href="#community?view=discord" data-page="discord" data-icon="chat">Discord</a>
           <a href="#shopping" data-page="shopping" data-icon="bag">Shopping</a>
+          <a href="#shopping?retailer=amazon" data-icon="bag">Amazon picks</a>
         </div>
         <div class="nav-group">
           <p>Search and tools</p>
@@ -102,6 +105,9 @@
         <button type="button" class="button random-top" id="random-game" data-icon="shuffle" aria-label="Random Game">
           <span>Random Game</span>
         </button>
+        <a class="button profile-link" id="arcade-profile" href="#settings?panel=profile" aria-label="Edit Gamffun profile user_12345">
+          <span class="profile-initial" aria-hidden="true">U</span><span class="profile-username">user_12345</span>
+        </a>
       </header>
       <main id="arcade-content" class="content" tabindex="-1">
         <p class="boot-note">Loading the arcade…</p>

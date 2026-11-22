@@ -4,6 +4,7 @@ import {
   isExcludedShoppingQuery, shoppingCategories, shoppingLink, shoppingQuery,
   shoppingQueryLimit, shoppingRetailerLink, shoppingSearchKey
 } from '../assets/shopping-data.js';
+import { amazonProduct, amazonProductUrl, amazonProducts, findAmazonProducts } from '../assets/shopping-products.js';
 
 test('retailer results use official U.S. marketplace URLs and encode the query', () => {
   const search = { query: 'C++ games & tag=affiliate #1', category: 'books' };
@@ -58,4 +59,24 @@ test('excluded search terms never generate retailer links', () => {
   }
   assert.equal(isExcludedShoppingQuery('shotgun microphone'), false);
   assert.equal(isExcludedShoppingQuery('puzzle games'), false);
+});
+
+test('catalog products point to exact official listings and support term and category filters', () => {
+  const categories = new Set(shoppingCategories.map(category => category.id));
+  assert.equal(new Set(amazonProducts.map(product => product.asin)).size, amazonProducts.length);
+  for (const product of amazonProducts) {
+    assert.match(product.asin, /^[A-Z0-9]{10}$/);
+    assert.ok(categories.has(product.category));
+    assert.ok(product.specs.length);
+    assert.equal(new URL(product.source).protocol, 'https:');
+    assert.equal(amazonProductUrl(product.asin), 'https://www.amazon.com/dp/' + product.asin);
+  }
+  const results = findAmazonProducts({ query: 'USB-C hubs & HDMI', category: 'computers' });
+  assert.deepEqual(results.map(item => item.asin), ['B0D9R5SNG1', 'B0CB95R3VM']);
+  assert.equal(findAmazonProducts({ query: 'USB-C hubs & HDMI', category: 'gaming' }).length, 0);
+  assert.equal(findAmazonProducts({ query: '///' }).length, 0);
+  assert.equal(amazonProduct('b0dm1wh5bv').asin, 'B0DM1WH5BV');
+  assert.equal(shoppingLink({ query: '8BitDo', product: 'B0DM1WH5BV' }), '#shopping?q=8BitDo&retailer=amazon&product=B0DM1WH5BV');
+  assert.equal(shoppingLink({ product: 'https://outside.example' }), '#shopping');
+  assert.equal(amazonProductUrl('B0DM1WH5BZ'), '');
 });

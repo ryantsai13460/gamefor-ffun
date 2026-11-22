@@ -1,5 +1,7 @@
 const assetVersion = new URL(import.meta.url).search;
-const { getCuratedVideos } = await import(`./media.js${assetVersion}`);
+const [{ getCuratedVideos }, { instagramPosts }] = await Promise.all([
+  import(`./media.js${assetVersion}`), import(`./instagram-catalog.js${assetVersion}`),
+]);
 
 export const shortProviders = {
   youtube: { label: 'YouTube', compactLabel: 'YT', discover: 'https://www.youtube.com/shorts/' },
@@ -49,16 +51,8 @@ const tiktok = [
   href: `https://www.tiktok.com/@${video.handle}/video/${video.videoId}`,
 }));
 
-// Exact public reels with creator and caption confirmed on each original, and content in Instagram's embed.
-const instagram = [
-  ['DUa5b_BDmmD', 'See that ice? That’s sea ice.', 'NASA Earth', 'How sea ice forms and why NASA observes it from space.', ['Education', 'Nature', 'Science']],
-  ['DeTUk4sDSp-', 'POV: you’re watching the Earth set', 'NASA', 'Artemis II footage of Earth setting beyond the Moon.', ['Education', 'Space', 'Science']],
-  ['DbL6n0ggXDZ', 'Sound on! The sonification of NGC 4736', 'NASA', 'This sonification translates an image of a spiral galaxy into sound.', ['Science', 'Space', 'Music']],
-  ['DfF3eqGSKKc', 'More power loading', 'NASA’s Johnson Space Center', 'Two astronauts install a roll-out solar array on the International Space Station.', ['Education', 'Space', 'Technology']],
-].map(([videoId, title, creator, description, tags]) => withCategories({
-  videoId, title, creator, description, tags, provider: 'instagram', id: `instagram-${videoId}`,
-  href: `https://www.instagram.com/reel/${videoId}/`,
-  embedUrl: `https://www.instagram.com/reel/${videoId}/embed/`,
+const instagram = instagramPosts.filter(post => post.kind === 'reel').map(post => withCategories({
+  ...post, provider: 'instagram', id: `instagram-${post.id}`, videoId: post.id,
 }));
 
 const featured = [];

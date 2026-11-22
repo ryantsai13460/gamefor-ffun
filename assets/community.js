@@ -3,6 +3,7 @@ const discordStorageKey = 'ffun-community-discord-v1';
 const discordAPI = 'https://discord.com/api';
 const discordReport = 'https://support.discord.com/hc/en-us/articles/22582288274071-Reporting-Abusive-Behavior-to-Discord';
 const discordServerHelp = 'https://support.discord.com/hc/en-us/articles/206346498-Where-can-I-find-my-User-Server-Message-ID';
+const channelPageSize = 36;
 
 const topics = [
   {
@@ -67,6 +68,33 @@ export function discordInviteCode(value) {
     if (url.hostname === 'discord.com') return /^\/invite\/([A-Za-z0-9_-]{2,64})\/?$/.exec(url.pathname)?.[1] || '';
   } catch {}
   return '';
+}
+
+function publicName(value) {
+  if (typeof value !== 'string') return '';
+  const name = value.trim();
+  return name.length <= 100 && !/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u.test(name) ? name : '';
+}
+
+function ageRestricted(discordRecord) {
+  return discordRecord?.nsfw === true || [1, 3].includes(discordRecord?.nsfw_level);
+}
+
+export function publicDiscordWidget(payload, serverId) {
+  if (!discordServerId(serverId) || payload?.id !== serverId || !Array.isArray(payload.channels) || ageRestricted(payload)) return null;
+  const name = publicName(payload.name);
+  if (!name) return null;
+  const channels = new Map();
+  // Discord's widget usually omits type. Its official channel list is limited to public voice and stage channels.
+  for (const channel of payload.channels.slice(0, 500)) {
+    const id = discordServerId(channel?.id);
+    const label = publicName(channel?.name);
+    if (!id || !label || channels.has(id) || ageRestricted(channel)) continue;
+    if (channel.type !== undefined && channel.type !== 2 && channel.type !== 13) continue;
+    const position = Number.isInteger(channel.position) && channel.position >= 0 ? channel.position : Infinity;
+    channels.set(id, { id, name: label, position });
+  }
+  return { name, channels: [...channels.values()].sort((first, second) => first.position - second.position) };
 }
 
 function readDiscordSettings() {
@@ -149,8 +177,123 @@ function guidelines() {
   return section;
 }
 
-function discordPanel() {
-  const section = panel('Discord', 'community-discord');
+function publicChannels(readServerId) {
+  const section = element('section', 'community-public-channels');
+  const heading = element('h3', '', 'Public channels');
+  const description = element('p', 'community-muted',
+    'Browse the voice and stage channels this server publishes in its widget. Open a channel in Discord to join.');
+  const load = action('Load public channels', request, 'button primary');
+  const status = element('p', 'community-status');
+  status.setAttribute('role', 'status');
+  const channelList = element('ul', 'community-channel-list');
+  channelList.setAttribute('aria-label', 'Public Discord channels');
+  const filter = element('input', 'field');
+  filter.type = 'search';
+  filter.maxLength = 100;
+  filter.placeholder = 'Filter channels';
+  filter.setAttribute('aria-label', 'Filter public channels');
+  const more = action('Show more channels', () => {
+    const pageStart = limit;
+    limit += channelPageSize;
+    draw();
+    channelList.children[pageStart]?.firstElementChild.focus();
+  });
+  const results = element('div', 'community-channel-results');
+  results.hidden = true;
+  results.append(filter, channelList, more);
+  section.append(heading, description, load, status, results);
+  let currentRequest;
+  let widget;
+  let limit = channelPageSize;
+
+  filter.addEventListener('input', () => {
+    limit = channelPageSize;
+    draw();
+  });
+
+  function clearResults() {
+    widget = null;
+    filter.value = '';
+    limit = channelPageSize;
+    results.hidden = true;
+    channelList.replaceChildren();
+  }
+
+  function reset() {
+    currentRequest?.abort();
+    currentRequest = undefined;
+    clearResults();
+    load.disabled = false;
+    load.textContent = 'Load public channels';
+    status.textContent = '';
+  }
+
+  function draw() {
+    if (!widget) return;
+    const needle = filter.value.trim().normalize('NFKC').toLowerCase();
+    const channels = widget.channels.filter(channel => channel.name.normalize('NFKC').toLowerCase().includes(needle));
+    const group = channels.slice(0, limit).map(channel => {
+      const row = element('li');
+      row.append(link(channel.name, `https://discord.com/channels/${readServerId()}/${channel.id}`, 'community-channel-link'));
+      return row;
+    });
+    channelList.replaceChildren(...group);
+    more.hidden = channels.length <= limit;
+    status.textContent = !channels.length
+      ? 'No public channels match that filter.'
+      : `${widget.name} · Showing ${group.length} of ${channels.length} public ${channels.length === 1 ? 'channel' : 'channels'}`;
+  }
+
+  async function request() {
+    const id = readServerId();
+    if (!id || currentRequest) return;
+    const controller = new AbortController();
+    currentRequest = controller;
+    clearResults();
+    load.disabled = true;
+    status.textContent = 'Loading public channels from Discord…';
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try {
+      const response = await fetch(`${discordAPI}/v10/guilds/${id}/widget.json`, {
+        signal: controller.signal, credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', cache: 'no-store'
+      });
+      if (currentRequest !== controller) return;
+      if (!response.ok) {
+        status.textContent = [403, 404].includes(response.status)
+          ? 'Discord’s public widget is unavailable. Ask the server administrator whether it is enabled.'
+          : 'Discord could not load public channels. Try again later.';
+        return;
+      }
+      const data = publicDiscordWidget(await response.json(), id);
+      if (currentRequest !== controller) return;
+      if (!data) {
+        status.textContent = 'Discord did not return a usable public widget for this server.';
+        return;
+      }
+      load.textContent = 'Reload public channels';
+      if (!data.channels.length) {
+        status.textContent = `${data.name} does not publish any voice or stage channels through its widget.`;
+        return;
+      }
+      widget = data;
+      results.hidden = false;
+      draw();
+    } catch {
+      if (currentRequest === controller) status.textContent = 'Discord could not load public channels. Try again later.';
+    } finally {
+      clearTimeout(timer);
+      if (currentRequest === controller) {
+        currentRequest = undefined;
+        load.disabled = false;
+      }
+    }
+  }
+
+  return { section, reset };
+}
+
+function discordPanel({ browseChannels }) {
+  const section = panel(browseChannels ? 'Server setup and status' : 'Discord', 'community-discord');
   const summary = element('p', 'community-muted');
   const preview = element('div', 'community-discord-preview');
   const inviteResult = element('div', 'community-discord-invite');
@@ -188,9 +331,10 @@ function discordPanel() {
   settings.append(form);
 
   const connected = element('div', 'community-discord-connected');
-  const connectionHelp = element('p', 'community-muted',
-    'Discord receives a request when you load its public status widget or check an invite. This page shows no member profiles or messages.');
-  const load = action('Load server widget', loadWidget, 'button primary');
+  const connectionHelp = element('p', 'community-muted', browseChannels
+    ? 'Discord receives a request only when you load public channels, load the widget, or check an invite.'
+    : 'Discord receives a request when you load its public status widget or check an invite. This page shows no member profiles or messages.');
+  const load = action('Load server widget', loadWidget, browseChannels ? 'button' : 'button primary');
   const verify = action('Check public invite', verifyInvite);
   const controls = element('div', 'community-actions');
   const widgetStatus = element('p', 'community-status');
@@ -198,11 +342,14 @@ function discordPanel() {
   const serverLink = link('Open server in Discord', 'https://discord.com/');
   widgetStatus.setAttribute('role', 'status');
   inviteStatus.setAttribute('role', 'status');
+  let saved = readDiscordSettings();
+  const channels = browseChannels ? publicChannels(() => saved?.id) : null;
   controls.append(load, verify);
-  connected.append(connectionHelp, controls, preview, widgetStatus, inviteResult, inviteStatus, serverLink);
+  connected.append(connectionHelp);
+  if (channels) connected.append(channels.section);
+  connected.append(controls, preview, widgetStatus, inviteResult, inviteStatus, serverLink);
   section.append(summary, settings, connected);
 
-  let saved = readDiscordSettings();
   let releaseWidget;
   let inviteRequest;
   displaySettings();
@@ -221,6 +368,7 @@ function discordPanel() {
   }
 
   function stopRequests() {
+    channels?.reset();
     releaseWidget?.();
     releaseWidget = undefined;
     inviteRequest?.abort();
@@ -339,7 +487,7 @@ function discordPanel() {
         inviteStatus.textContent = 'This invite does not match the configured Discord server.';
         return;
       }
-      if (result.guild.nsfw || [1, 3].includes(result.guild.nsfw_level) || result.channel?.nsfw === true) {
+      if (ageRestricted(result.guild) || ageRestricted(result.channel)) {
         inviteStatus.textContent = 'Discord marks this server or invite channel as age-restricted.';
         return;
       }
@@ -367,14 +515,25 @@ function discordPanel() {
   } };
 }
 
-export function renderCommunity(target) {
+export function renderCommunity(target, params = new URLSearchParams()) {
+  const browseChannels = params.get('view') === 'discord';
   const root = element('div', 'community-page');
   const header = element('header', 'community-header');
-  const discord = discordPanel();
+  const discord = discordPanel({ browseChannels });
   const actions = element('div', 'community-actions');
+  actions.append(browseChannels
+    ? link('Community overview', '#community', 'button')
+    : link('Browse Discord', '#community?view=discord', 'button primary'));
   actions.append(action('Discord settings', discord.configure));
-  header.append(element('h1', '', 'Community'),
-    element('p', '', 'Find games to try, follow project updates, and connect through an authorized Discord server.'), actions);
+  header.append(element('h1', '', browseChannels ? 'Discord' : 'Community'),
+    element('p', '', browseChannels
+      ? 'Browse public channels from a server you configure.'
+      : 'Find games to try, follow project updates, and connect through an authorized Discord server.'), actions);
+  if (browseChannels) {
+    root.append(header, discord.section, guidelines());
+    target.replaceChildren(root);
+    return discord.dispose;
+  }
   const content = element('div', 'community-main');
   content.append(gamesAndDiscussions(), projectUpdates());
   const aside = element('div', 'community-side');

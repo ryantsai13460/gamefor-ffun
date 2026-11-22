@@ -60,6 +60,10 @@ Proxy Gemini previews permitted public HTTPS pages in a browser sandbox and uses
 
 **Community** at `#community` links to project updates and has an optional public Discord widget and invite check. **Shopping** at `#shopping` offers curated categories and searches through official Amazon and eBay U.S. links. Shops handle current listings, prices, and checkout.
 
+The Gamffun profile starts as `user_12345`. Select the profile badge or open `#settings?panel=profile` to change the username. Gamffun stores it in your browser and keeps your existing saved items. Each external service manages its own accounts and sign-in.
+
+Open `#instagram` to browse selected public posts or paste an Instagram post or reel link for its official embed. Open `#community?view=discord` to browse the public voice and stage channels a configured server publishes through its Discord widget. Open `#shopping?retailer=amazon` to browse product picks, filter them, read specifications, and save picks to My library. Amazon shows live prices and handles checkout.
+
 ## Maintain the content
 
 - [Game catalog and recovery](docs/catalog-recovery.md) explains the 548 entries accounted for in the main libraries and the three additional games preserved from the homepage and repository history.
