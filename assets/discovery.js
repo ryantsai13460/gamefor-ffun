@@ -1,8 +1,7 @@
-import { createGameAddressLookup } from './game-play-policy.js';
-
 const version = new URL(import.meta.url).search;
-const [{ discoverySearchHistoryKey: historyKey, gameAvailability, normalize }, { filmPlayback }] = await Promise.all([
-  import(`./library.js${version}`), import(`./film-playback.js${version}`)
+const [{ discoverySearchHistoryKey: historyKey, gameAvailability, normalize }, { filmPlayback },
+  { createGameAddressLookup }] = await Promise.all([
+  import(`./library.js${version}`), import(`./film-playback.js${version}`), import(`./game-play-policy.js${version}`)
 ]);
 const kinds = [
   ['all', 'All'], ['games', 'Games'], ['movies', 'Movies'], ['music', 'Music'], ['videos', 'Videos'],

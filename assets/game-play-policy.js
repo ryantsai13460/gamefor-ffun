@@ -38,8 +38,10 @@ export function createGameAddressLookup(games) {
   }
 
   for (const game of games) {
-    const addresses = [game.url, game.embed, game.embedUrl, game.demo];
-    if (isGamePortalAddress(game.relatedUrl)) addresses.push(game.relatedUrl);
+    const addresses = [game.url, game.embed, game.embedUrl, game.demo, ...(game.legacyUrls || [])];
+    if (isGamePortalAddress(game.relatedUrl) || (!game.url && game.relatedLabel?.endsWith('closure notice'))) {
+      addresses.push(game.relatedUrl);
+    }
     if (game.id === 'paperio') addresses.push('https://voodoo.io/paper2');
     for (const value of addresses) {
       const address = key(value);

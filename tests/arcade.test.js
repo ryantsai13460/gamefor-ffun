@@ -197,7 +197,7 @@ test('catalog records have distinct sources, correct status, and safe relative a
   }
   assert.equal(statusCounts.local, 27);
   assert.ok(statusCounts.embed >= 975);
-  assert.equal(statusCounts.external, 531);
+  assert.equal(statusCounts.external, 523);
   assert.equal(statusCounts.unverified, 3);
 });
 
@@ -248,8 +248,6 @@ test('publisher destinations preserve recovered game identities and identify the
   const replacements = [
     ['eggy', 'https://eggycarofficial.com/', 'Beedo Games'],
     ['idlebreakout', 'https://kodiqi.itch.io/idle-breakout', 'Kodiqi'],
-    ['drivemad', 'https://www.drivemad.com/', 'Fancade'],
-    ['slope', 'https://www.y8.com/games/slope', 'Y8'],
     ['subway', 'https://poki.com/en/g/subway-surfers', 'SYBO'],
     ['suika-game', 'https://suikagame.jp/', 'Aladdin X']
   ];
@@ -264,6 +262,23 @@ test('publisher destinations preserve recovered game identities and identify the
   assert.equal(gameAvailability(spinz), 'unverified');
   assert.equal(spinz.relatedUrl, 'https://spinz.io/');
   assert.match(spinz.relatedLabel, /closure notice/i);
+});
+
+test('the promoted games retain their catalog identities and use official in-page players', () => {
+  const ovo = library.byId.get('ovo');
+  assert.equal(ovo.creator, 'Dedra Games');
+  assert.equal(arcadeEmbed(ovo), 'https://www.crazygames.com/embed/ovo');
+  assert.equal(arcadeEmbed(library.byId.get('slope')), 'https://y8.com/embed/slope');
+  assert.equal(arcadeEmbed(library.byId.get('drivemad')), 'https://play.fancade.com/5F084A0BCE06B710?max_w=2800&max_h=2800');
+  assert.equal(arcadeEmbed(library.byId.get('pack150-longcat')), 'https://play.fancade.com/5BFC1C2A246D67DD?max_w=2800&max_h=2800');
+  assert.equal(resolveBrowserAddress('https://poki.com/en/g/drive-mad?ref=bookmark', site).embed, arcadeEmbed(library.byId.get('drivemad')));
+  assert.equal(queryLibrary(library, { availability: 'in-page', search: 'OvO' })[0], ovo);
+  for (const address of [ovo.url, ovo.embed, 'https://www.coolmathgames.com/0-ovo?ref=bookmark']) {
+    const destination = resolveBrowserAddress(address, site);
+    assert.equal(destination.kind, 'game');
+    assert.equal(destination.embed, ovo.embed);
+    assert.equal(destination.gamepadAllow, 'gamepad https://games.crazygames.com https://ovo.game-files.crazygames.com');
+  }
 });
 
 test('search spans titles, punctuated names, legacy aliases, categories and availability', () => {

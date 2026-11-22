@@ -1,17 +1,17 @@
-import { arcadeEmbed } from './embedded-content.js';
 import { createSearchFullscreen } from './search-fullscreen.js';
-import { createGameAddressLookup, isGamePortalAddress } from './game-play-policy.js';
 
 const assetVersion = new URL(import.meta.url).search;
 const [{ games }, { createLibrary, defaultProfileName, discoverySearchHistoryKey, gameAvailability, normalize, queryLibrary, restorePreferences, themeOptions, validateProfileName },
   { gatewayConnected, renderGatewaySettings, searchGateway, searchGatewayPage },
   { gameBackgroundOptions, readGameBackground, saveGameBackground, showGameBackground, prepareGameBackground },
-  { arcadeModes }] = await Promise.all([
+  { arcadeModes }, { arcadeEmbed, gamepadPermission }, { createGameAddressLookup, isGamePortalAddress }] = await Promise.all([
   import(`./catalog.js${assetVersion}`),
   import(`./library.js${assetVersion}`),
   import(`./service-gateway.js${assetVersion}`),
   import(`./game-background.js${assetVersion}`),
-  import(`./arcade-modes.js${assetVersion}`)
+  import(`./arcade-modes.js${assetVersion}`),
+  import(`./embedded-content.js${assetVersion}`),
+  import(`./game-play-policy.js${assetVersion}`)
 ]);
 
 const storageKey = 'gamefor-ffun-complete-v2';
@@ -814,6 +814,8 @@ function renderLibrary(target, route) {
     });
     history.replaceState(null, '', hash);
     route.hash = hash;
+    route.params = readRoute().params;
+    updateActiveNavigation(route);
   }
 
   search.addEventListener('input', () => {
@@ -1910,7 +1912,7 @@ function renderGame(target, id, startFromLink) {
 
     const frame = element('iframe');
     frame.title = game.title;
-    frame.allow = 'fullscreen; autoplay; gamepad';
+    frame.allow = `fullscreen; autoplay; ${gamepadPermission(game)}`;
     frame.allowFullscreen = true;
     if (!game.local) frame.sandbox = 'allow-scripts allow-same-origin allow-pointer-lock allow-presentation';
     const timer = setTimeout(() => {
@@ -1986,6 +1988,20 @@ function randomGame() {
   navigate(gamePath(game));
 }
 
+function updateActiveNavigation(route) {
+  let active = route.name;
+  if (route.name === 'games') {
+    if (route.params.get('local') === '1') active = 'offline';
+    else if (route.params.get('option') === 'in-page') active = 'in-page';
+  }
+  if (route.name === 'web-search' && route.params.get('mode') === 'ai') active = 'ai-help';
+  if (route.name === 'community' && route.params.get('view') === 'discord') active = 'discord';
+  document.querySelectorAll('[data-page]').forEach(item => {
+    if (item.dataset.page === active) item.setAttribute('aria-current', 'page');
+    else item.removeAttribute('aria-current');
+  });
+}
+
 function updateGlobalSearchHint() {
   const name = current?.name;
   if (drawerMedia.matches) globalQuery.placeholder = 'Search…';
@@ -2012,14 +2028,7 @@ async function renderRoute(focus = true) {
   updateGlobalSearchHint();
   document.title = `${route.name === 'play' ? resolveGame(route.id)?.title || 'Game' : routeNames[route.name]} · Gamefor Ffun`;
 
-  let active = route.name;
-  if (route.name === 'games' && route.params.get('local') === '1') active = 'offline';
-  if (route.name === 'web-search' && route.params.get('mode') === 'ai') active = 'ai-help';
-  if (route.name === 'community' && route.params.get('view') === 'discord') active = 'discord';
-  document.querySelectorAll('[data-page]').forEach(item => {
-    if (item.dataset.page === active) item.setAttribute('aria-current', 'page');
-    else item.removeAttribute('aria-current');
-  });
+  updateActiveNavigation(route);
   setDrawer(false);
   window.scrollTo(0, 0);
   if (focus) content.focus({ preventScroll: true });
@@ -2193,7 +2202,8 @@ document.getElementById('global-search').addEventListener('submit', event => {
     navigate(hashFor('web-search', { q: search }));
     return;
   }
-  if (current?.name === 'home' && prefs.mode === 'gaming') {
+  if ((current?.name === 'home' && prefs.mode === 'gaming') ||
+      (current?.name === 'games' && current.params.get('option') === 'in-page')) {
     navigate(hashFor('games', { q: search, option: 'in-page' }));
     return;
   }

@@ -1,5 +1,43 @@
 import { expect, test } from '@playwright/test';
 
+test('Play Here keeps searches playable and opens OvO in the arcade and Proxy Gemini', async ({ page }) => {
+  const embed = 'https://www.crazygames.com/embed/ovo';
+  await page.route('https://**/*', route => route.abort());
+  await page.route(embed, route => route.fulfill({ contentType: 'text/html', body: '<button>Publisher start control</button>' }));
+
+  await page.goto('/#home');
+  const navigation = page.getByRole('navigation', { name: 'Arcade navigation' });
+  const playHere = navigation.getByRole('link', { name: 'Play Here', exact: true });
+  await playHere.click();
+  const option = page.getByRole('combobox', { name: 'Play option' });
+  await expect(playHere).toHaveAttribute('aria-current', 'page');
+  await expect(option).toHaveValue('in-page');
+
+  const search = page.getByRole('searchbox', { name: 'Search the arcade' });
+  await search.fill('OvO');
+  await search.press('Enter');
+  await expect(option).toHaveValue('in-page');
+  const card = page.locator('.game-card').filter({ has: page.getByRole('heading', { name: 'OvO', exact: true }) });
+  await card.getByRole('link').click();
+  await page.getByRole('button', { name: 'Play game', exact: true }).click();
+  const stage = page.getByRole('region', { name: 'OvO player' });
+  const frame = stage.locator('iframe');
+  await expect(frame).toHaveAttribute('src', embed);
+  await expect(frame).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin allow-pointer-lock allow-presentation');
+  await expect(frame).toHaveAttribute('allow', /gamepad https:\/\/games\.crazygames\.com https:\/\/ovo\.game-files\.crazygames\.com$/);
+  await expect(stage.frameLocator('iframe').getByRole('button', { name: 'Publisher start control' })).toBeVisible();
+  await page.getByRole('link', { name: 'Back to browsing', exact: true }).click();
+  await expect(option).toHaveValue('in-page');
+  await option.selectOption('');
+  await expect(navigation.getByRole('link', { name: 'All Games', exact: true })).toHaveAttribute('aria-current', 'page');
+
+  await page.goto(`/#browse?${new URLSearchParams({ address: 'https://www.coolmathgames.com/0-ovo?ref=bookmark' })}`);
+  await expect(page.locator('.proxy-frame')).toHaveAttribute('src', embed);
+  await expect(page.locator('.proxy-frame')).toHaveAttribute('allow', /gamepad https:\/\/games\.crazygames\.com https:\/\/ovo\.game-files\.crazygames\.com$/);
+  await expect(page.frameLocator('.proxy-frame').getByRole('button', { name: 'Publisher start control' })).toBeVisible();
+  expect(page.context().pages()).toHaveLength(1);
+});
+
 test('blocked catalog titles lead to related in-page games and the official Geometry Dash demo', async ({ page }) => {
   const demo = 'https://www.geometrydash.com/game/';
   const frames = [];

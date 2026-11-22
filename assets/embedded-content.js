@@ -28,3 +28,7 @@ export function arcadeEmbed(game) {
   const url = game.embedUrl ?? game.embed;
   return isMiniplayAddress(url) ? undefined : url;
 }
+
+export function gamepadPermission(game) {
+  return ['gamepad', ...(game.gamepadOrigins || [])].join(' ');
+}
