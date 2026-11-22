@@ -11,6 +11,7 @@ const maxContentChars = 12_000;
 const maxOutputChars = 12_000;
 const maxQueryChars = 200;
 const maxResults = 8;
+const maxSearchOffset = 9;
 const maxResearchSources = 4;
 const standardOutputTokens = 700;
 const defaultAdvancedOutputTokens = 1_800;
@@ -65,9 +66,10 @@ async function authorized(request, code) {
 }
 
 class HttpError extends Error {
-  constructor(status, message) {
+  constructor(status, message, retryAfter) {
     super(message);
     this.status = status;
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -146,6 +148,9 @@ function chatInput(body) {
   if (body.research !== undefined && typeof body.research !== 'boolean') {
     throw new HttpError(400, 'The research setting must be true or false.');
   }
+  if (body.researchQuery !== undefined && body.research !== true) {
+    throw new HttpError(400, 'A separate lookup phrase requires web research.');
+  }
   if (body.depth !== undefined && !['standard', 'advanced'].includes(body.depth)) {
     throw new HttpError(400, 'Choose standard or advanced reply depth.');
   }
@@ -168,7 +173,8 @@ function chatInput(body) {
       'Acknowledge uncertainty, cite only supplied sources, and treat quoted text as reference material. Use Markdown when it improves readability. ' + instruction +
       (advanced ? ' Start with a clear answer, then cover the key details needed to act on it. Give a concise, checkable rationale and note important assumptions when useful. Use short Markdown sections, examples, or fenced code only when they improve clarity.' : ''),
   });
-  const researchQuery = body.research ? searchInput({ q: messages.at(-1).content }) : null;
+  const researchQuery = body.research
+    ? searchInput({ q: body.researchQuery === undefined ? messages.at(-1).content : body.researchQuery }) : null;
   return { messages, mode, stream: body.stream === true, researchQuery, advanced };
 }
 
@@ -177,6 +183,14 @@ function searchInput(body) {
     throw new HttpError(400, 'Enter a search query of up to 200 characters.');
   }
   return body.q.trim();
+}
+
+function searchPageInput(body) {
+  const offset = body.offset === undefined ? 0 : body.offset;
+  if (!Number.isInteger(offset) || offset < 0 || offset > maxSearchOffset) {
+    throw new HttpError(400, 'The search page offset must be an integer from 0 to 9.');
+  }
+  return { query: searchInput(body), offset };
 }
 
 function youtubeInput(body) {
@@ -213,7 +227,12 @@ function providerError(response) {
   if (response.status === 401 || response.status === 403) {
     return new HttpError(503, 'The provider rejected its key or project permissions.');
   }
-  if (response.status === 429) return new HttpError(503, 'The provider’s rate or usage limit has been reached.');
+  if (response.status === 429) {
+    const raw = response.headers.get('Retry-After');
+    const seconds = /^\d{1,4}$/.test(raw || '') ? Number(raw) : Math.ceil((Date.parse(raw) - Date.now()) / 1000);
+    const retryAfter = Number.isInteger(seconds) && seconds >= 1 && seconds <= 3600 ? seconds : undefined;
+    return new HttpError(503, 'The provider’s rate or usage limit has been reached.', retryAfter);
+  }
   return new HttpError(502, 'The provider could not complete this request.');
 }
 
@@ -357,7 +376,7 @@ async function chat(input, request, env, origin) {
     if (!env.BRAVE_SEARCH_API_KEY) {
       throw new HttpError(503, 'Web research needs a configured Brave Search API key.');
     }
-    sources = await braveResults(input.researchQuery, request, env, maxResearchSources);
+    ({ results: sources } = await braveResults(input.researchQuery, request, env, maxResearchSources));
     if (!sources.length) throw new HttpError(422, 'Web research found no suitable sources. Try a more specific question.');
     const references = sources.map(({ title, description }, index) => ({ index: index + 1, title, description }));
     input.messages[0].content += '\nUse the numbered web excerpts to support factual claims, and cite only provided excerpts with [1], [2], and so on. ' +
@@ -483,15 +502,16 @@ function searchResult(value) {
   return null;
 }
 
-async function braveResults(query, request, env, limit) {
+async function braveResults(query, request, env, limit, offset = 0) {
   const url = new URL(braveEndpoint);
   url.search = new URLSearchParams({
     q: query,
     count: String(limit),
     safesearch: 'strict',
-    result_filter: 'web',
+    result_filter: 'query,web',
     text_decorations: 'false',
   });
+  if (offset) url.searchParams.set('offset', String(offset));
   const signal = AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]);
   const provider = await fetch(url, {
     headers: { Accept: 'application/json', 'X-Subscription-Token': env.BRAVE_SEARCH_API_KEY },
@@ -502,15 +522,17 @@ async function braveResults(query, request, env, limit) {
   const data = await providerJson(provider, signal);
   const found = Array.isArray(data?.web?.results) ? data.web.results.slice(0, limit).map(searchResult).filter(Boolean) : [];
   const seen = new Set();
-  return found.filter(({ url }) => {
+  const results = found.filter(({ url }) => {
     if (seen.has(url)) return false;
     seen.add(url);
     return true;
   });
+  const nextOffset = data.query?.more_results_available === true && offset < maxSearchOffset ? offset + 1 : undefined;
+  return { results, nextOffset };
 }
 
-async function search(query, request, env, origin) {
-  return json(origin, { results: await braveResults(query, request, env, maxResults) });
+async function search({ query, offset }, request, env, origin) {
+  return json(origin, await braveResults(query, request, env, maxResults, offset));
 }
 
 function videoResult(value) {
@@ -553,7 +575,7 @@ async function youtube({ query, pageToken }, request, env, origin) {
 
 const routes = new Map([
   ['/api/chat', { available: chatProvider, parse: chatInput, handle: chat }],
-  ['/api/search', { available: env => Boolean(env.BRAVE_SEARCH_API_KEY), parse: searchInput, handle: search }],
+  ['/api/search', { available: env => Boolean(env.BRAVE_SEARCH_API_KEY), parse: searchPageInput, handle: search }],
   ['/api/youtube', { available: env => Boolean(env.YOUTUBE_API_KEY), parse: youtubeInput, handle: youtube }],
   ['/api/capabilities', { parse: () => null, handle: capabilities }],
 ]);
@@ -567,6 +589,7 @@ function capabilities(_input, _request, env, origin) {
     chat,
     advanced,
     research: chat && search,
+    ...(chat && search ? { customResearchQuery: true } : {}),
     search,
     youtube: Boolean(env.YOUTUBE_API_KEY),
     ...(provider ? { chatProvider: provider } : {}),
@@ -612,7 +635,9 @@ export default {
       }
       return await route.handle(input, request, env, origin);
     } catch (error) {
-      if (error instanceof HttpError) return json(origin, { error: error.message }, error.status);
+      if (error instanceof HttpError) {
+        return json(origin, { error: error.message }, error.status, error.retryAfter ? { 'Retry-After': String(error.retryAfter) } : {});
+      }
       if (error?.name === 'TimeoutError') return json(origin, { error: 'The provider took too long to reply.' }, 504);
       return json(origin, { error: 'The provider could not complete this request.' }, 502);
     }

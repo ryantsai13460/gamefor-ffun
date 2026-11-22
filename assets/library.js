@@ -2,6 +2,7 @@ import { arcadeEmbed } from './embedded-content.js';
 import { arcadeModes } from './arcade-modes.js';
 
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+export const discoverySearchHistoryKey = 'ffun.discovery.history';
 
 export const themeOptions = [
   ['midnight', 'Midnight'],
@@ -29,17 +30,19 @@ export function createLibrary(games) {
   const byId = new Map();
   const categoryCounts = new Map();
   const searchTerms = new Map();
+  const availabilityById = new Map();
   for (const game of games) {
     byId.set(game.id, game);
     categoryCounts.set(game.category, (categoryCounts.get(game.category) || 0) + 1);
     searchTerms.set(game.id, normalize([game.title, game.category, game.id, ...(game.aliases || [])].join(' ')));
+    availabilityById.set(game.id, gameAvailability(game));
   }
   for (const game of games) {
     for (const alias of game.aliases || []) {
       if (!byId.has(alias)) byId.set(alias, game);
     }
   }
-  return { games, byId, categoryCounts, searchTerms };
+  return { games, byId, categoryCounts, searchTerms, availabilityById };
 }
 
 export function queryLibrary(library, settings) {
@@ -49,7 +52,7 @@ export function queryLibrary(library, settings) {
   const matches = source.filter(game => {
     const index = library.searchTerms.get(game.id);
     return (!category || game.category === category) &&
-      (!playOptions.length || playOptions.includes(gameAvailability(game))) &&
+      (!playOptions.length || playOptions.includes(library.availabilityById.get(game.id) ?? gameAvailability(game))) &&
       terms.every(term => index.includes(term));
   });
   switch (sort) {
@@ -84,6 +87,8 @@ export function restorePreferences(saved, byId) {
       }
     }
   }
+  const interest = typeof saved?.interest === 'string' && [...byId.values()].some(game => game.category === saved.interest)
+    ? saved.interest : '';
   return {
     favorites: ids(saved?.favorites),
     recent: ids(saved?.recent).slice(0, 30),
@@ -91,8 +96,10 @@ export function restorePreferences(saved, byId) {
     artwork: saved?.artwork !== false,
     theme: themeOptions.some(([id]) => id === saved?.theme) ? saved.theme : 'midnight',
     mode: arcadeModes.some(({ id }) => id === saved?.mode) ? saved.mode : 'arcade',
+    interest,
+    rememberSearches: saved?.rememberSearches !== false,
     hiddenHome: Array.isArray(saved?.hiddenHome) ? [...new Set(saved.hiddenHome
-      .filter(id => ['destinations', 'featured', 'racing', 'recent', 'popular', 'new', 'built-in', 'media'].includes(id)))] : [],
+      .filter(id => ['destinations', 'featured', 'racing', 'interest', 'recent', 'popular', 'new', 'built-in', 'media'].includes(id)))] : [],
     launches
   };
 }

@@ -21,8 +21,8 @@ const site = 'https://ryantsai13460.github.io/gamefor-ffun/#browse';
 
 test('the video expansions preserve the library and use unique official player IDs', () => {
   const library = getVideoCollections();
-  assert.equal(library.count, 1528);
-  assert.equal(library.added, 731);
+  assert.equal(library.count, 1546);
+  assert.equal(library.added, 749);
   assert.equal(expansionVideos.length, 500);
   assert.equal(expansionVideos.filter(({ short }) => short).length, 250);
   assert.equal(discoveryVideos.length, 100);
@@ -31,7 +31,7 @@ test('the video expansions preserve the library and use unique official player I
   assert.equal(entertainmentVideos.filter(({ short }) => short).length, 51);
   assert.equal(familyVideos.length, 44);
   assert.equal(familyVideos.filter(({ short }) => short).length, 24);
-  assert.equal(learningVideos.length, 131);
+  assert.equal(learningVideos.length, 149);
   assert.equal(learningVideos.filter(({ short }) => short).length, 57);
   for (const video of [...expansionVideos, ...discoveryVideos, ...entertainmentVideos, ...familyVideos, ...learningVideos]) {
     assert.match(video.id, /^[A-Za-z0-9_-]{11}$/);
@@ -137,7 +137,7 @@ test('catalog records have distinct sources, correct status, and safe relative a
     }
     const status = gameAvailability(game);
     statusCounts[status]++;
-    for (const source of [game.url, game.embed, game.embedUrl, game.demo, game.relatedUrl].filter(Boolean)) {
+    for (const source of [game.url, game.embed, game.embedUrl, game.demo, game.relatedUrl, ...(game.legacyUrls || [])].filter(Boolean)) {
       const url = new URL(source);
       assert.equal(url.protocol, 'https:');
       assert.equal(url.username, '');
@@ -161,8 +161,48 @@ test('catalog records have distinct sources, correct status, and safe relative a
   }
   assert.equal(statusCounts.local, 27);
   assert.ok(statusCounts.embed >= 975);
-  assert.equal(statusCounts.external, 532);
-  assert.equal(statusCounts.unverified, 2);
+  assert.equal(statusCounts.external, 531);
+  assert.equal(statusCounts.unverified, 3);
+});
+
+test('the independent games use their exact publisher-approved player URLs and credits', () => {
+  const approved = [
+    ['afternoon-wordsash', 'https://afternoongames.com/embed/word-sash', 'https://afternoongames.com/free-games-for-your-website', true],
+    ['afternoon-killer-sudoku', 'https://afternoongames.com/embed/killer-sudoku', 'https://afternoongames.com/free-games-for-your-website', true],
+    ['s7gs-pings-portal', 'https://s7gs.com/Play/pings-portal.html', 'https://s7gs.com/Play/', false],
+    ['s7gs-breachfield', 'https://s7gs.com/Play/breachfield.html', 'https://s7gs.com/Play/', false],
+    ['yuzool-pier-putt', 'https://www.yuzool.com/pier-putt/?embed=1', 'https://www.yuzool.com/embed/', true]
+  ];
+  for (const [id, embed, source, attribution] of approved) {
+    const game = library.byId.get(id);
+    assert.equal(gameAvailability(game), 'embed', id);
+    assert.equal(arcadeEmbed(game), embed);
+    assert.equal(game.source, source);
+    assert.equal(Boolean(game.attribution), attribution);
+    assert.ok(game.creator && game.isNew);
+  }
+});
+
+test('publisher destinations preserve recovered game identities and identify the closed Spinz.io service', () => {
+  const replacements = [
+    ['eggy', 'https://eggycarofficial.com/', 'Beedo Games'],
+    ['idlebreakout', 'https://kodiqi.itch.io/idle-breakout', 'Kodiqi'],
+    ['drivemad', 'https://www.drivemad.com/', 'Fancade'],
+    ['slope', 'https://www.y8.com/games/slope', 'Y8'],
+    ['subway', 'https://poki.com/en/g/subway-surfers', 'SYBO'],
+    ['suika-game', 'https://suikagame.jp/', 'Aladdin X']
+  ];
+  for (const [id, url, artCredit] of replacements) {
+    const game = library.byId.get(id);
+    assert.equal(gameAvailability(game), 'external', id);
+    assert.equal(game.url, url);
+    assert.equal(game.artCredit, artCredit);
+  }
+  const spinz = library.byId.get('spinz-io');
+  assert.equal(library.byId.get('6afe6f480567ca2910243b29'), spinz);
+  assert.equal(gameAvailability(spinz), 'unverified');
+  assert.equal(spinz.relatedUrl, 'https://spinz.io/');
+  assert.match(spinz.relatedLabel, /closure notice/i);
 });
 
 test('search spans titles, punctuated names, legacy aliases, categories and availability', () => {

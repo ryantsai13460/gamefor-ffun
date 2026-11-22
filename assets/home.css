@@ -11,12 +11,12 @@
 
 .hero-feature {
   display: grid;
-  grid-template-columns: minmax(0, .95fr) minmax(0, 1.15fr);
+  grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
   min-width: 0;
-  min-height: 255px;
+  min-height: 304px;
   border: 1px solid var(--line-soft);
   border-radius: 16px;
-  background: var(--panel-deep);
+  background: var(--panel);
   overflow: hidden;
 }
 .hero-feature:has(.hero-art.has-no-art) { grid-template-columns: minmax(0, 1fr); }
@@ -37,7 +37,9 @@
   position: relative;
   min-width: 0;
   min-height: 100%;
+  aspect-ratio: auto;
   border-inline-start: 1px solid var(--line-soft);
+  border-radius: 0;
   background: #101b23;
 }
 .hero-art.has-no-art, .hero-art .art-placeholder { display: none; }
@@ -47,6 +49,31 @@
   padding: 4px 6px; border-radius: 5px; max-width: 72%;
   font-size: .65rem; color: #eef3fc; background: #10171de8;
 }
+.hero-choices {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 7px;
+  border-block-start: 1px solid var(--line-soft);
+  background: var(--panel-deep);
+}
+.hero-choice {
+  flex: 1 1 9rem;
+  min-width: 0;
+  min-height: 40px;
+  padding: 7px 10px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: .82rem;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.hero-choice:hover { background: var(--panel-hover); color: var(--text); }
+.hero-choice[aria-pressed="true"] { background: var(--panel); color: var(--accent); border-color: var(--accent-border); }
 
 .home-play-panel {
   min-width: 0;
@@ -130,10 +157,11 @@
 }
 @container arcade-home (max-width: 28rem) {
   .hero-feature { min-height: 0; grid-template-columns: minmax(0, 1fr); border-radius: 13px; }
-  .hero-art { order: -1; aspect-ratio: 2.8; border: 0; border-block-end: 1px solid var(--line-soft); }
+  .hero-art { order: -1; aspect-ratio: 2.15; border: 0; border-block-end: 1px solid var(--line-soft); }
   .hero-copy { padding: 13px 16px 16px; gap: 7px; }
   .hero-copy h1 { font-size: clamp(1.95rem, 8.7cqi, 2.5rem); }
   .hero-copy p { font-size: .86rem; }
+  .hero-choice { flex-basis: 7rem; }
   .hero-credit { max-width: 100%; }
   .home-destinations .section-heading { align-items: flex-start; flex-wrap: wrap; gap: 6px; }
   .home-destination { align-items: flex-start; min-height: 77px; gap: 6px; }

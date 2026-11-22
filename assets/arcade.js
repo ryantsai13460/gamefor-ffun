@@ -3,8 +3,8 @@ import { createSearchFullscreen } from './search-fullscreen.js';
 import { createGameAddressLookup, isGamePortalAddress } from './game-play-policy.js';
 
 const assetVersion = new URL(import.meta.url).search;
-const [{ games }, { createLibrary, gameAvailability, normalize, queryLibrary, restorePreferences, themeOptions },
-  { gatewayConnected, renderGatewaySettings, searchGateway },
+const [{ games }, { createLibrary, discoverySearchHistoryKey, gameAvailability, normalize, queryLibrary, restorePreferences, themeOptions },
+  { gatewayConnected, renderGatewaySettings, searchGateway, searchGatewayPage },
   { gameBackgroundOptions, readGameBackground, saveGameBackground, showGameBackground, prepareGameBackground },
   { arcadeModes }] = await Promise.all([
   import(`./catalog.js${assetVersion}`),
@@ -43,7 +43,7 @@ const routeNames = {
 };
 const labels = { local: 'Built in', embed: 'In-page player', external: 'Catalog only', unverified: 'Play unavailable' };
 const learningGames = ['fraction-kitchen', 'clock-courier', 'memory-match', '2048'];
-const isPlayable = game => Boolean(game.local || arcadeEmbed(game));
+const isPlayable = game => ['local', 'embed'].includes(library.availabilityById.get(game.id));
 const playableCount = games.filter(isPlayable).length;
 const newestFirst = (first, second) => (second.addedOn || '').localeCompare(first.addedOn || '');
 
@@ -110,7 +110,11 @@ function action(text, fn, className = 'button', iconName = '') {
 function verifiedSource(raw) {
   try {
     const parsed = new URL(raw);
-    if (parsed.protocol === 'https:' && !parsed.username && !parsed.password) return parsed.href;
+    const host = parsed.hostname.replace(/\.$/, '');
+    if (parsed.protocol === 'https:' && !parsed.username && !parsed.password && !parsed.port &&
+        host.includes('.') && !/^[\d.]+$/.test(host) && !/\.(?:local|localhost|home|lan|internal|onion)$/i.test(host)) {
+      return parsed.href;
+    }
   } catch {}
   return '';
 }
@@ -376,7 +380,7 @@ function homePlayPanel() {
   title.prepend(icon('gamepad'));
   const picks = element('ul', 'home-play-picks');
   const latest = records(prefs.recent).find(isPlayable);
-  const suggestions = records([latest?.id || 'territorial', 'lantern-shift', 'terrace-workshop']);
+  const suggestions = distinct([...(latest ? [latest] : []), ...records(['lantern-shift', 'terrace-workshop', 'hexgl'])]).filter(isPlayable);
   for (const game of suggestions.slice(0, 2)) {
     const row = element('li');
     const play = link('', gameStartPath(game), 'home-play-pick');
@@ -492,6 +496,49 @@ function renderModeHome(target, mode) {
   if (picks) target.append(picks);
 }
 
+function homeSpotlight(featured) {
+  const banner = element('section', 'hero-feature');
+  const copy = element('div', 'hero-copy');
+  const kicker = element('span', 'hero-kicker');
+  const title = element('h1', 'heading-display');
+  const description = element('p');
+  const play = link('', gamePath(featured), 'button primary', 'play');
+  const playLabel = element('span');
+  play.append(playLabel);
+  copy.append(kicker, title, description, play);
+  const choices = element('div', 'hero-choices');
+  choices.setAttribute('role', 'group');
+  choices.setAttribute('aria-label', 'Featured games');
+  const descriptions = {
+    'ffun-circuit-v1': 'Race three courses, hit every checkpoint, and beat your best time.',
+    'lantern-shift': 'Switch lanes to collect lanterns as night falls across three courses.',
+    'terrace-workshop': 'Build a boardwalk through a hillside garden and find the spring.'
+  };
+  let art;
+  function choose(game) {
+    title.textContent = game.title;
+    kicker.textContent = `${game.category} · ${labels[gameAvailability(game)]}`;
+    description.textContent = descriptions[game.id] || `Explore this ${game.category.toLowerCase()} game in the arcade.`;
+    play.href = isPlayable(game) ? gameStartPath(game) : gamePath(game);
+    playLabel.textContent = isPlayable(game) ? 'Play game' : 'View game';
+    const nextArt = artwork(game, true);
+    nextArt.classList.add('hero-art');
+    if (game.artCredit && prefs.artwork) nextArt.append(element('span', 'hero-credit', game.artCredit));
+    if (art) art.replaceWith(nextArt);
+    else banner.insertBefore(nextArt, choices);
+    art = nextArt;
+    for (const item of choices.children) item.setAttribute('aria-pressed', String(item.dataset.game === game.id));
+  }
+  for (const game of distinct([featured, ...records(['lantern-shift', 'terrace-workshop'])])) {
+    const item = action(game.title, () => choose(game), 'hero-choice');
+    item.dataset.game = game.id;
+    choices.append(item);
+  }
+  banner.append(copy, choices);
+  choose(featured);
+  return banner;
+}
+
 function renderHome(target) {
   target.append(modeRibbon(target));
   const mode = arcadeModes.find(({ id }) => id === prefs.mode);
@@ -502,20 +549,8 @@ function renderHome(target) {
     return;
   }
 
-  const banner = element('section', 'hero-feature');
-  const copy = element('div', 'hero-copy');
-  const kicker = element('span', 'hero-kicker', 'Featured game');
-  const desc = hero.id === 'ffun-circuit-v1'
-    ? 'Race three courses, hit every checkpoint, and beat your best time.'
-    : `${hero.category} game in the arcade library.`;
-  copy.append(kicker, element('h1', 'heading-display', hero.title), element('p', '', desc),
-    link(hero.local ? 'Play game' : 'View game', gamePath(hero), 'button primary', 'play'));
-  const art = artwork(hero, true);
-  art.className = `hero-art${art.classList.contains('has-no-art') ? ' has-no-art' : ''}`;
-  if (hero.artCredit && prefs.artwork) art.append(element('span', 'hero-credit', hero.artCredit));
-  banner.append(copy, art);
   const top = element('div', 'home-feature-row');
-  top.append(banner, homePlayPanel());
+  top.append(homeSpotlight(hero), homePlayPanel());
   target.append(top);
   if (!prefs.hiddenHome.includes('destinations')) target.append(homeDestinations());
 
@@ -533,10 +568,14 @@ function renderHome(target) {
   const popular = queryLibrary(library, {
     source: games.filter(game => prefs.launches[game.id] > 0), sort: 'popularity', launches: prefs.launches
   });
+  const interestGames = prefs.interest ? queryLibrary(library, {
+    category: prefs.interest, availability: 'in-page', sort: 'popularity', launches: prefs.launches
+  }) : [];
   const media = element('div', 'home-media-shelves');
   const shelves = [
     ['recent', 'Recently played', records(prefs.recent), 'Play history', '#recent'],
     ['featured', 'Featured games', picks, 'All games', '#games'],
+    ['interest', `Your picks in ${prefs.interest}`, interestGames, 'More picks', hashFor('games', { category: prefs.interest, option: 'in-page' })],
     ['racing', 'In-page racing', distinct([
       ...records(['hexgl', 'playzone-velocity-rush', 'playzone-drift-track', 'ffun-circuit-v1']),
       ...games.filter(game => game.collection === 'indie-racing' && game.category === 'Racing'),
@@ -837,8 +876,11 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
     selectPanel('AI Mode');
     assistant?.prefillQuestion(query);
   }, 'button', 'spark');
+  const researchInBlip = link('Research with Blip', '#blip', 'button');
   const clear = action('Clear web search', () => {
     pending?.abort();
+    providerRequest = undefined;
+    retryProvider.hidden = true;
     closeVideo?.();
     closeVideo = undefined;
     input.value = '';
@@ -876,18 +918,21 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
     const query = input.value.trim();
     clear.hidden = !query;
     draftInAI.hidden = !isReusableWebQuery(query);
+    researchInBlip.hidden = draftInAI.hidden;
+    if (!researchInBlip.hidden) researchInBlip.href = hashFor('blip', { draft: query, research: query });
     const normalized = query.toLowerCase();
-    const titles = query.length < 2 ? [] : [...recentWebSearches,
+    const history = prefs.rememberSearches ? recentWebSearches : [];
+    const titles = query.length < 2 ? [] : [...history,
       ...queryLibrary(library, { search: query }).slice(0, 9).map(game => game.title)];
     const options = [...new Set(titles)].filter(title =>
       title.toLowerCase() !== normalized && title.toLowerCase().includes(normalized)).slice(0, 9);
     suggestions.replaceChildren(...options.map(title => new Option(title, title)));
     recentPanel.hidden = Boolean(query);
     if (query) return;
-    const hasHistory = recentWebSearches.length > 0;
+    const hasHistory = history.length > 0;
     recentHeading.textContent = hasHistory ? 'Recent searches' : 'Try a search';
     clearHistory.hidden = !hasHistory;
-    const picks = hasHistory ? recentWebSearches.slice(0, 6) : ['Territorial.io', 'MrBeast', 'Violin lessons'];
+    const picks = hasHistory ? history.slice(0, 6) : ['Territorial.io', 'MrBeast', 'Violin lessons'];
     recentActions.replaceChildren(...picks.map(term => action(term, () => {
       input.value = term;
       input.focus({ preventScroll: true });
@@ -917,7 +962,16 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   const providerList = element('ul', 'web-search-results');
   const providerStatus = element('p', 'muted');
   providerStatus.setAttribute('role', 'status');
-  providerPanel.append(element('h2', '', 'Web results'), providerStatus, providerList);
+  providerStatus.tabIndex = -1;
+  const retryProvider = action('Retry web results', () => {
+    if (providerRequest) void loadProviderResults(providerRequest, providerRequest.failedOffset);
+  });
+  const moreProvider = action('Load more web results', () => {
+    if (providerRequest) void loadProviderResults(providerRequest, providerRequest.nextOffset);
+  });
+  retryProvider.hidden = true;
+  moreProvider.hidden = true;
+  providerPanel.append(element('h2', '', 'Web results'), providerStatus, retryProvider, providerList, moreProvider);
   let showProvider = false;
   const groups = element('div', 'interaction-row search-result-groups');
   groups.setAttribute('role', 'group');
@@ -926,7 +980,7 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   const noResults = element('p', 'muted');
   noResults.setAttribute('role', 'status');
   noResults.hidden = true;
-  const musicResults = link('Search Music', '#music', 'button');
+  const musicResults = link('Search Music', '#music?view=videos', 'button');
   musicResults.hidden = true;
   const libraryPanels = new Map(['Music', 'Movies'].map(name => {
     const panel = element('section', 'web-search-videos');
@@ -959,7 +1013,7 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   videoPagination.append(previous, next);
   videosPanel.append(element('h2', '', 'YouTube'), videoTools, videoCount, list, videoPagination);
   const resultTools = element('div', 'interaction-row search-result-tools');
-  resultTools.append(groups, musicResults, draftInAI);
+  resultTools.append(groups, musicResults, draftInAI, researchInBlip);
   stage.append(answer, recentPanel, resultTools, noResults, gamePanel, webPanel, videosPanel,
     ...[...libraryPanels.values()].map(({ panel }) => panel), providerPanel);
   renderGatewaySettings(stage, 'Connect a web search provider', () => { webProviderEnabled = gatewayConnected(); });
@@ -969,6 +1023,7 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   target.append(windowPanel);
 
   let pending;
+  let providerRequest;
   let closeVideo;
   let disposeMap;
   let disposeGoogle;
@@ -1127,17 +1182,24 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
     if (!signal.aborted) showResults();
   }
 
-  async function loadProviderResults(query, signal) {
-    providerList.replaceChildren();
-    providerStatus.textContent = 'Searching the connected provider…';
+  async function loadProviderResults(request, offset = 0) {
+    const { query, signal, seen } = request;
+    if (signal.aborted) return;
+    if (request.loading) return;
+    request.loading = true;
+    const hadFocus = document.activeElement === moreProvider || document.activeElement === retryProvider;
+    retryProvider.hidden = true;
+    moreProvider.disabled = true;
+    providerStatus.textContent = offset ? 'Loading more web results…' : 'Searching the connected provider…';
     try {
-      const found = await searchGateway(query, AbortSignal.any([signal, AbortSignal.timeout(10000)]));
+      const { results, nextOffset } = await searchGatewayPage(query, offset, AbortSignal.any([signal, AbortSignal.timeout(10000)]));
       if (signal.aborted) return;
-      const unique = new Map();
-      for (const result of found) if (!unique.has(result.url)) unique.set(result.url, result);
-      const results = [...unique.values()];
-      providerStatus.textContent = results.length ? '' : 'The connected provider found no results.';
-      providerList.replaceChildren(...results.map(result => {
+      request.nextOffset = nextOffset;
+      moreProvider.hidden = nextOffset === undefined;
+      const items = [];
+      for (const result of results) {
+        if (seen.has(result.url)) continue;
+        seen.add(result.url);
         const item = element('li');
         const description = element('p', 'muted', result.description);
         const knownGame = lookupGameAddress(result.url);
@@ -1145,20 +1207,36 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
           item.append(element('strong', '', result.title), description,
             link(knownGame ? 'View game in the arcade' : 'Browse in-page games',
               knownGame ? gamePath(knownGame) : '#games?option=in-page', 'button'));
-          return item;
+        } else {
+          const destination = external(result.url, result.url, 'search-resource-source');
+          const actions = element('div', 'interaction-row');
+          actions.append(link('Preview website', hashFor('browse', { address: result.url }), 'button'),
+            external('Open website', result.url),
+            link('Ask Blip', hashFor('blip', {
+              draft: `Help me understand this search result and clarify what the source supports.\n\n${result.title}\n${result.description}\n${result.url}`.slice(0, 1500),
+              research: query.slice(0, 200)
+            }), 'button'));
+          item.append(external(result.title, result.url, 'text-action'), description, destination, actions);
         }
-        const destination = external(result.url, result.url, 'search-resource-source');
-        const actions = element('div', 'interaction-row');
-        actions.append(link('Preview website', hashFor('browse', { address: result.url }), 'button'),
-          external('Open website', result.url),
-          link('Ask Blip', hashFor('blip', {
-            draft: `Help me understand this search result and clarify what the source supports.\n\n${result.title}\n${result.description}\n${result.url}`.slice(0, 1500)
-          }), 'button'));
-        item.append(external(result.title, result.url, 'text-action'), description, destination, actions);
-        return item;
-      }));
+        items.push(item);
+      }
+      providerList.append(...items);
+      providerStatus.textContent = seen.size ? `${seen.size} web ${seen.size === 1 ? 'result' : 'results'}`
+        : 'The connected provider found no results.';
+      if (hadFocus && [document.body, retryProvider, moreProvider].includes(document.activeElement)) {
+        (items[0]?.querySelector('a') || providerStatus).focus({ preventScroll: true });
+      }
     } catch (error) {
-      if (!signal.aborted) providerStatus.textContent = error.message || 'The connected provider could not be reached.';
+      if (!signal.aborted) {
+        providerStatus.textContent = error.message || 'The connected provider could not be reached.';
+        request.failedOffset = offset;
+        retryProvider.hidden = false;
+        moreProvider.hidden = true;
+        if (hadFocus && [document.body, retryProvider, moreProvider].includes(document.activeElement)) retryProvider.focus({ preventScroll: true });
+      }
+    } finally {
+      request.loading = false;
+      if (!signal.aborted) moreProvider.disabled = false;
     }
   }
 
@@ -1216,7 +1294,7 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
       return;
     }
     setTitle(query);
-    if (!isReusableWebQuery(query)) updateSuggestions();
+    if (!prefs.rememberSearches || !isReusableWebQuery(query)) updateSuggestions();
     else {
       const key = query.toLowerCase();
       saveWebSearchHistory([query, ...recentWebSearches.filter(item => item.toLowerCase() !== key)].slice(0, 20));
@@ -1252,9 +1330,14 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
     }
     searched = true;
     showProvider = webProviderEnabled && gatewayConnected();
-    if (showProvider) void loadProviderResults(searchQuery, signal);
+    if (showProvider) {
+      providerList.replaceChildren();
+      moreProvider.hidden = true;
+      providerRequest = { query: searchQuery, signal, seen: new Set() };
+      void loadProviderResults(providerRequest);
+    }
     for (const name of libraryPanels.keys()) void loadLibraryResults(name, searchQuery, signal);
-    musicResults.href = hashFor('music', { q: searchQuery });
+    musicResults.href = hashFor('music', { view: 'videos', q: searchQuery });
     format = 'All';
     drawGames(matchingGames.map(({ game }) => game));
     drawReferences(references);
@@ -1375,9 +1458,14 @@ function renderSettings(target, params) {
     visuals.append(choice);
   }
   const home = element('section', 'info-panel');
-  home.append(element('h2', '', 'Home sections'));
+  const interest = selectField('Recommended game category', [['', 'No category preference'], ...categories.map(name => [name, name])], prefs.interest);
+  interest.field.addEventListener('change', () => {
+    prefs.interest = interest.field.value;
+    savePreferences();
+  });
+  home.append(element('h2', '', 'Home sections'), interest.wrapper);
   for (const [key, title] of [
-    ['destinations', 'Home shortcuts'], ['featured', 'Featured games'], ['racing', 'In-page racing'], ['recent', 'Recently played'],
+    ['destinations', 'Home shortcuts'], ['featured', 'Featured games'], ['racing', 'In-page racing'], ['interest', 'Picks in your chosen category'], ['recent', 'Recently played'],
     ['popular', 'Popular on this device'], ['new', 'New games'], ['built-in', 'Built-in arcade'], ['media', 'Film, music, and video picks']
   ]) {
     const choice = element('label', 'settings-option', title);
@@ -1396,6 +1484,25 @@ function renderSettings(target, params) {
       confirmDialog.returnValue = '';
       confirmDialog.showModal();
     }));
+  const saveSearches = element('label', 'settings-option', 'Remember searches');
+  const remember = element('input');
+  remember.type = 'checkbox';
+  remember.checked = prefs.rememberSearches;
+  remember.addEventListener('change', () => {
+    prefs.rememberSearches = remember.checked;
+    savePreferences();
+    announce(`Search history ${remember.checked ? 'enabled' : 'paused'}`);
+  });
+  saveSearches.prepend(remember);
+  privacy.append(element('h3', '', 'Search history'), saveSearches, action('Clear search histories', () => {
+    saveWebSearchHistory([]);
+    try {
+      localStorage.removeItem(discoverySearchHistoryKey);
+      announce('Web and library search histories cleared.');
+    } catch {
+      announce('Browser storage could not clear the library search history.');
+    }
+  }));
   row.append(visuals, home, privacy);
   target.append(row);
   const panel = gameBackgroundSettings();
@@ -1510,6 +1617,8 @@ function renderGame(target, id, startFromLink) {
 
   const availability = gameAvailability(game);
   const embedUrl = verifiedSource(arcadeEmbed(game));
+  const sourceUrl = verifiedSource(game.url);
+  const relatedUrl = !sourceUrl && game.relatedLabel && verifiedSource(game.relatedUrl);
   const localFile = typeof game.local === 'string' && game.local.match(/^(?:\.\/)?([\w.-]+\.html)$/)?.[1];
   const header = element('header', 'player-heading game-backdrop');
   showGameBackground(header, gameBackground);
@@ -1537,11 +1646,12 @@ function renderGame(target, id, startFromLink) {
   if (embedUrl) {
     embedHelp.append(element('span', '', 'Player blank or blocked? Try Restart or choose another game.'),
       link('Browse in-page games', '#games?option=in-page', 'button'));
+    if (sourceUrl) embedHelp.append(external('Open game page', sourceUrl));
     target.append(embedHelp);
   }
-  if (game.attribution && verifiedSource(game.url)) {
+  if (game.attribution && sourceUrl) {
     const credit = element('p', 'player-note');
-    credit.append(external(`Game from ${game.creator}`, game.url, 'text-action'));
+    credit.append(external(`Game from ${game.creator}`, sourceUrl, 'text-action'));
     target.append(credit);
   }
   if (game.artCredit && prefs.artwork) target.append(element('p', 'player-note', `Artwork: ${game.artCredit}`));
@@ -1558,8 +1668,14 @@ function renderGame(target, id, startFromLink) {
   let revision = 0;
 
   if (game.local !== true && !localFile && !embedUrl) {
-    const unavailable = empty('In-page play unavailable', 'You can still find videos about this title or try another game here.');
-    unavailable.append(link('Browse in-page games', '#games?option=in-page', 'button primary'));
+    const unavailable = empty('In-page play unavailable', sourceUrl || demo
+      ? 'Open the game on its source site or choose a related game you can play here.'
+      : 'You can still find videos about this title or try another game here.');
+    const actions = element('div', 'interaction-row');
+    if (sourceUrl && !demo) actions.append(external('Open game page', sourceUrl, 'button primary'));
+    if (relatedUrl) actions.append(external(game.relatedLabel, relatedUrl));
+    actions.append(link('Browse in-page games', '#games?option=in-page', 'button'));
+    unavailable.append(actions);
     stage.append(unavailable);
     return () => scope.abort();
   }
@@ -1667,10 +1783,14 @@ function renderGame(target, id, startFromLink) {
       const restoreFocus = stage.contains(document.activeElement);
       dispose();
       embedHelp.hidden = true;
+      fullscreen.disabled = true;
       stage.removeAttribute('aria-busy');
       status.textContent = message;
       showStart('Game could not load', 'Try opening the game again or browse another game you can play here.');
-      stage.firstElementChild.append(link('Browse in-page games', '#games?option=in-page', 'button'));
+      const options = element('div', 'interaction-row');
+      if (sourceUrl) options.append(external('Open game page', sourceUrl));
+      options.append(link('Browse in-page games', '#games?option=in-page', 'button'));
+      stage.firstElementChild.append(options);
       if (restoreFocus) stage.querySelector('.start-game')?.focus({ preventScroll: true });
     }
     dispose = () => {
@@ -1769,7 +1889,7 @@ async function renderRoute(focus = true) {
         target.append(element('p', 'boot-note', 'Loading the library…'));
         const { renderDiscovery, renderSavedLibrary } = await import(`./discovery.js${assetVersion}`);
         if (token === version) cleanup = route.name === 'discover'
-          ? renderDiscovery(target, { params: route.params, games, showArtwork: prefs.artwork, onRouteChange(hash, query) {
+          ? renderDiscovery(target, { params: route.params, games, showArtwork: prefs.artwork, rememberSearches: prefs.rememberSearches, onRouteChange(hash, query) {
             route.hash = hash;
             globalQuery.value = query;
           } })
@@ -1825,7 +1945,10 @@ async function renderRoute(focus = true) {
       case 'blip': {
         target.append(element('p', 'boot-note', 'Loading blip.ai…'));
         const { renderBlip } = await import(`./blip.js${assetVersion}`);
-        if (token === version) cleanup = renderBlip(target, { draft: route.params.get('draft') || '', chat: route.params.get('chat') || '' });
+        if (token === version) cleanup = renderBlip(target, {
+          draft: route.params.get('draft') || '', research: route.params.get('research') || '', chat: route.params.get('chat') || '',
+          onDraftUsed: id => history.replaceState(history.state, '', hashFor('blip', { chat: id }))
+        });
         break;
       }
       case 'web-search': {

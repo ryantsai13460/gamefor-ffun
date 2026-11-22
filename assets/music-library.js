@@ -32,6 +32,7 @@ for (const track of musicCatalog) {
 }
 const featuredArtists = [...artistTracks].filter(([, tracks]) => tracks.length >= 2)
   .sort((first, second) => second[1].length - first[1].length || alpha.compare(first[0], second[0])).slice(0, 8);
+const latestAddition = musicCatalog.reduce((latest, track) => track.addedAt > latest ? track.addedAt : latest, '');
 const hasChart = track => /^\d{4}-\d{2}-\d{2}$/.test(track.chart?.date || '') && Number.isSafeInteger(track.chart.rank) && track.chart.rank > 0;
 const chartDate = musicCatalog.filter(hasChart)
   .map(track => track.chart.date).sort().at(-1);
@@ -113,9 +114,9 @@ function action(label, activate, primary = false) {
   return node;
 }
 
-function artwork(track, feature = false) {
+function artwork(track, feature = false, fallback = track.title) {
   const art = element('span', feature ? 'music-art music-feature-art' : 'music-art');
-  const placeholder = element('span', 'music-art-title', track.title);
+  const placeholder = element('span', 'music-art-title', fallback);
   placeholder.setAttribute('aria-hidden', 'true');
   const picture = element('img', feature ? 'music-feature-cover' : '');
   picture.alt = '';
@@ -165,7 +166,7 @@ export function renderMusic(target, params) {
   const uploadsLink = element('a', 'button', '7clouds uploads');
   uploadsLink.href = '#music?lyrics=7clouds';
   const headingCopy = element('div');
-  headingCopy.append(element('h1', '', 'Music'), element('p', '', 'Find songs by title or artist and play official uploads here.'));
+  headingCopy.append(element('h1', '', 'Music'), element('p', '', `Discover ${musicCatalog.length.toLocaleString()} official uploads by song, artist, or style.`));
   const musicViews = element('div', 'interaction-row');
   musicViews.append(lyricsLink, uploadsLink);
   heading.append(headingCopy, musicViews);
@@ -183,12 +184,17 @@ export function renderMusic(target, params) {
   artists.append(element('h2', '', 'Featured artists'));
   const artistButtons = element('div', 'music-artist-list');
   for (const [name, tracks] of featuredArtists) {
-    const artistButton = action(name, () => {
+    const artistButton = action('', () => {
       artist.value = name;
       draw();
-      count.focus({preventScroll: true});
+      count.focus();
     });
-    artistButton.append(element('small', 'music-meta', `${tracks.length} tracks`));
+    artistButton.setAttribute('aria-label', `Browse ${name}, ${tracks.length} tracks`);
+    const artistCopy = element('span', 'music-artist-copy');
+    artistCopy.append(element('strong', '', name), element('small', 'music-meta', `${tracks.length} tracks`));
+    const artistArt = artwork(tracks[0], false, name);
+    artistArt.classList.add('music-artist-art');
+    artistButton.append(artistArt, artistCopy);
     artistButtons.append(artistButton);
   }
   artists.append(artistButtons);
@@ -468,6 +474,7 @@ export function renderMusic(target, params) {
     const playlist = activePlaylist();
     if (['discover', 'new', 'chart'].includes(section)) {
       matches = results.filter(track => (category === 'All music' || track.category === category) &&
+        (section !== 'new' || !latestAddition || track.addedAt === latestAddition) &&
         (section !== 'chart' || (hasChart(track) && track.chart.date === chartDate)));
     } else {
       const matchedIds = new Set(results.map(track => track.id));
@@ -492,6 +499,7 @@ export function renderMusic(target, params) {
       renameList.disabled = removeList.disabled = !playlist;
     }
     playlistPlay.hidden = !matches.length;
+    playlistPlay.textContent = section === 'playlists' ? 'Play playlist' : 'Play results';
     list.hidden = !matches.length;
     empty.hidden = matches.length > 0;
     empty.textContent = query.value.trim() || artist.value ? SECTIONS[0].empty

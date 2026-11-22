@@ -316,19 +316,23 @@
 
 .music-artist-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 132px), 1fr));
   gap: .45rem;
 }
 
 .music-artist-list .button {
   min-width: 0;
   display: grid;
-  justify-items: start;
-  gap: .1rem;
+  align-content: start;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
   text-align: start;
   overflow-wrap: anywhere;
 }
 
+.music-artist-art .music-art-title { padding: .5rem; font-size: .78rem; }
+.music-artist-copy { display: grid; gap: .15rem; padding: .6rem .65rem; }
 .music-artist-list .music-meta { font-size: .8rem; }
 
 .music-filter-fields {

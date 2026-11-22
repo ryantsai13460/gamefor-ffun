@@ -688,7 +688,11 @@ async function fetchConnectedVideoPage(endpoint, query, signal, pageToken) {
     signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     headers: {Accept: 'application/json'}
   });
-  if (!response.ok) throw new Error('The connected search service is unavailable.');
+  if (!response.ok) {
+    const error = new Error('The connected search service is unavailable.');
+    error.status = response.status;
+    throw error;
+  }
   return sanitizeVideoPage(await response.json());
 }
 
@@ -1256,7 +1260,8 @@ function youtubePage(target, params) {
       for (const item of related) recommendations.append(button(`Watch ${item.title}`, () => showVideo(item)));
       details.append(recommendations);
     }
-    closeDialog = watchDialog(root, {
+    const opener = document.activeElement;
+    const closeWatch = watchDialog(root, {
       title: video.title,
       subtitle: video.creator,
       video,
@@ -1266,10 +1271,15 @@ function youtubePage(target, params) {
       details,
       onPlaying: () => rememberWatched(video),
     });
-    const updateNavigation = updateQueuePlayer;
+    closeDialog = closeWatch;
     root.querySelector('dialog[open]')?.addEventListener('close', () => {
-      if (updateQueuePlayer === updateNavigation) updateQueuePlayer = undefined;
-      if (active && view === queueView && !root.querySelector('dialog[open]') && (fromQueue || !queuePanel.contains(document.activeElement))) {
+      if (closeDialog !== closeWatch) return;
+      closeDialog = undefined;
+      updateQueuePlayer = undefined;
+      const focused = document.activeElement;
+      const focusWasLost = !focused?.isConnected || focused === document.body;
+      // A queued close event can follow a new action on the watch queue.
+      if (active && view === queueView && (focusWasLost || (fromQueue && focused === opener))) {
         focusQueueEntry({id: fromQueue ? video.id : queue.last, command: 'play'});
       }
     }, {once: true});
@@ -1425,6 +1435,12 @@ function youtubePage(target, params) {
       return;
     }
     resetOnlineSearch();
+    if (view === 'Connected search') {
+      view = lastLocalView;
+      page = 0;
+      visiblePages = 1;
+      draw();
+    }
     onlineSearch = { query, endpoint: state.endpoint, nextPageToken: undefined, used: new Set() };
     void loadConnectedPage(onlineSearch, false);
   }
@@ -1462,9 +1478,12 @@ function youtubePage(target, params) {
       draw();
       if (append && additions.length) grid.querySelectorAll('.media-card-launch')[shownUntil - page * PAGE_SIZE]?.focus();
     } catch (error) {
-      if (!signal.aborted) message.textContent = error.name === 'TimeoutError'
-        ? 'The search service timed out. Try again or search on YouTube.'
-        : error.message || 'The connected search service could not be reached.';
+      if (!signal.aborted) {
+        const fallback = append ? 'Videos already loaded are still available.' : 'You can keep browsing the curated library.';
+        if (error.status === 429) message.textContent = `Connected YouTube search reached its request limit. ${fallback}`;
+        else if (error.name === 'TimeoutError') message.textContent = `Connected YouTube search timed out. ${fallback}`;
+        else message.textContent = error.message || 'The connected search service could not be reached.';
+      }
     } finally {
       if (onlineRequest === request) {
         onlineRequest = undefined;

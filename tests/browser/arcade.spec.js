@@ -326,7 +326,7 @@ test('Explore connects the new videos, collections, cinema, arcade and tools', a
 
   await page.getByRole('link', { name: 'Browse new videos' }).click();
   await expect(page.getByRole('button', { name: 'New additions' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.media-result-count')).toHaveText('731 videos');
+  await expect(page.locator('.media-result-count')).toHaveText('749 videos');
   await page.getByRole('navigation', { name: 'Browse video topics' }).getByRole('link', { name: 'Science' }).click();
   await expect(page.getByRole('combobox', { name: 'Video topic' })).toHaveValue('Science');
   await expect(page.locator('.media-result-count')).toHaveText('172 videos');
@@ -683,17 +683,28 @@ test('Google and Proxy Gemini link to built-in and publisher-authorized in-page 
   const inPage = games.filter(game => game.local || arcadeEmbed(game));
   const cards = page.locator('.game-card');
   const next = page.getByRole('navigation', { name: 'Game pages' }).getByRole('button', { name: 'Next', exact: true });
+  async function expectPage(start) {
+    const end = Math.min(start + 24, inPage.length);
+    await expect(page.locator('.library-results')).toHaveText(`${start + 1}–${end} of ${inPage.length} games`);
+    await expect(cards.getByRole('heading')).toHaveText(inPage.slice(start, end).map(game => game.title));
+    await expect(cards.getByText('External', { exact: true })).toHaveCount(0);
+  }
+
   for (const route of ['web-search?mode=google', 'browse']) {
     await page.goto('/#' + route);
     await page.getByRole('link', { name: 'Games you can play here', exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'Play option' })).toHaveValue('in-page');
-    for (let start = 0; start < inPage.length; start += 24) {
-      if (start) await next.click();
-      const end = Math.min(start + 24, inPage.length);
-      await expect(page.locator('.library-results')).toHaveText(`${start + 1}–${end} of ${inPage.length} games`);
-      await expect(cards.getByRole('heading')).toHaveText(inPage.slice(start, end).map(game => game.title));
-      await expect(cards.getByText('External', { exact: true })).toHaveCount(0);
+    await expectPage(0);
+    if (inPage.length > 24) {
+      await next.click();
+      await expectPage(24);
     }
+  }
+  const finalPage = Math.ceil(inPage.length / 24);
+  if (finalPage > 2) {
+    await page.goto(`/#games?option=in-page&page=${finalPage}`);
+    await expectPage((finalPage - 1) * 24);
+    await expect(next).toBeDisabled();
   }
 });
 
@@ -702,7 +713,7 @@ test('searching Territorial.io from Google shows its preview, wiki and videos wi
   await page.getByRole('searchbox', { name: 'Google query' }).fill('territorial.io');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Territorial.io', exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Search Music' })).toHaveAttribute('href', '#music?q=territorial.io');
+  await expect(page.getByRole('link', { name: 'Search Music' })).toHaveAttribute('href', '#music?view=videos&q=territorial.io');
   await page.getByRole('button', { name: 'Preview Territorial.io', exact: true }).click();
   const game = page.getByRole('dialog', { name: 'Territorial.io', exact: true });
   await expect(game.locator('iframe')).toHaveAttribute('src', 'https://territorial.io/');

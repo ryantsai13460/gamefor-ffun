@@ -68,6 +68,29 @@ test('the watch queue combines Shorts and videos, preserves order and continuati
   await expect(page.getByText('Add a video or Short to build your watch queue.')).toBeVisible();
 });
 
+test('removing a queue item keeps focus when the player close event is still pending', async ({ page }) => {
+  const video = { id: '5OLs1GWB4OA', title: 'I Built 10 Schools Around The World' };
+  const short = { id: '80VtSQHvWBo', title: 'Minecraft, But I Shrunk' };
+  await page.route(/^https:\/\//, route => route.abort());
+  await page.addInitScript(items => localStorage.setItem('ffun-video-watch-queue-v1', JSON.stringify({items})), [video, short]);
+  await page.goto('/#youtube?format=queue');
+  const list = page.getByRole('list', { name: 'Queued videos' });
+  await button(list, `Watch ${video.title} from queue`).press('Enter');
+  await expect(page.getByRole('dialog', { name: video.title, exact: true })).toBeVisible();
+
+  await page.evaluate(id => new Promise(resolve => {
+    const player = document.querySelector('dialog[open]');
+    player.addEventListener('close', () => resolve(), {once: true});
+    player.querySelector('header button').click();
+    const remove = document.querySelector(`[data-queue-item="${id}"] [data-queue-command="remove"]`);
+    remove.focus();
+    remove.click();
+  }), video.id);
+
+  await expect(list.locator('strong')).toHaveText([short.title]);
+  await expect(button(list, `Remove ${short.title} from queue`)).toBeFocused();
+});
+
 test('connected results stay queued across tabs without a second search', async ({ context, page }) => {
   const source = { id: 'yi24DPRG0Sg', title: 'Tate McRae - Housewife (Lyric Video)', creator: 'Tate McRae' };
   let requests = 0;

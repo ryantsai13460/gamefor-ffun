@@ -613,8 +613,9 @@ test('Blip research saves source links and keeps file chats local', async ({ pag
   await page.getByLabel('Backend access code').fill('fixture-access');
   await page.getByRole('button', { name: 'Connect backend' }).click();
   await page.getByRole('checkbox', { name: 'Use the connected model for chats without files' }).check();
-  await page.getByRole('checkbox', { name: 'Research current question with Brave Search' }).check();
   await settings.click();
+  await page.locator('.blip-research > summary').click();
+  await page.getByRole('checkbox', { name: 'Research current question with Brave Search' }).check();
 
   const input = page.getByRole('textbox', { name: 'Message blip.ai' });
   await input.fill('Which planet has the longest day?');

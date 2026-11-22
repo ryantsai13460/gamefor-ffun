@@ -5,7 +5,7 @@ const [{ BLIP_FILE_ACCEPT, BLIP_FILE_LIMITS, normalizeBlipAttachments, readBlipF
   answerBlip, blipModelAvailability, blipModes, cpuBlipAvailability, portableBlipAvailability,
   prepareBlipModel, prepareCpuBlipModel, preparePortableBlipModel,
   releaseCpuBlipModel, releasePortableBlipModel
-}, { formatBlipReply }, { gatewayChatOptIn, gatewayConnected, getGatewayCapabilities, hostedBlipReply,
+}, { formatBlipReply }, { gatewayChatOptIn, gatewayConnected, gatewayCooldownSeconds, getGatewayCapabilities, hostedBlipReply,
   renderGatewaySettings, setGatewayChatOptIn }, { mountBlipMusic }] = await Promise.all([
   import(`./blip-files.js${assetVersion}`),
   import(`./blip-store.js${assetVersion}`),
@@ -78,6 +78,7 @@ function downloadBlipFile(contents, name, type) {
 function downloadTranscript(chat) {
   const entries = chat.messages.map(message => {
     const parts = [message.role === 'user' ? 'You' : 'blip.ai', message.text];
+    if (message.researchQuery) parts.push('Web lookup phrase · ' + message.researchQuery);
     for (const file of message.attachments || []) {
       parts.push(`${file.name}${file.truncated ? ' (loaded excerpt)' : ''}`, file.text);
     }
@@ -102,6 +103,7 @@ function messageView(message, { onEdit, onRetry, onContinue } = {}) {
     else body.textContent = message.text;
     item.append(body);
   }
+  if (message.researchQuery) item.append(element('p', 'blip-answer-source', 'Web lookup phrase · ' + message.researchQuery));
   for (const file of message.attachments || []) {
     const preview = element('details', 'blip-file-preview');
     preview.append(
@@ -176,7 +178,7 @@ export function getBlipChatSummary() {
   return createBlipStore().getState().chats.map(({ id, title, mode }) => ({ id, title, mode }));
 }
 
-export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}) {
+export function renderBlip(target, { draft = '', research: requestedResearch = '', chat: requestedChat = '', onDraftUsed } = {}) {
   const root = element('section', 'blip');
   root.innerHTML = `
     <header class="blip-header">
@@ -199,8 +201,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
             <p>Online replies send your current question and recent messages to the selected provider through the backend. Chats with attachments stay on your device.</p>
             <p data-blip="gateway-capabilities" role="status"></p>
             <label class="blip-check"><input type="checkbox" data-blip="advanced" disabled> Use Advanced replies</label>
-            <label class="blip-check"><input type="checkbox" data-blip="research" disabled> Research current question with Brave Search</label>
-            <p>With the connected model enabled, questions up to 200 characters go to Brave Search through your backend and use its search quota.</p>
+            <p data-blip="reply-budget" hidden></p>
             <h2>On-device AI</h2>
             <p data-blip="model-status" role="status">Checking this browser for a model…</p>
             <button class="blip-button blip-button--primary" type="button" data-blip="enable" hidden>Enable on-device AI</button>
@@ -278,6 +279,18 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
             <div class="blip-mode-choices" data-blip="modes"></div>
             <p class="blip-mode-description" id="blip-mode-description" data-blip="mode-description"></p>
           </fieldset>
+          <details class="blip-research" data-blip="research-panel">
+            <summary>Blip Search <span data-blip="research-badge" hidden>· On for next reply</span></summary>
+            <div class="blip-research-controls">
+              <label class="blip-check"><input type="checkbox" data-blip="research"> Research current question with Brave Search</label>
+              <div class="blip-research-phrase" data-blip="research-phrase" hidden>
+                <label for="blip-research-query">Web lookup phrase</label>
+                <input id="blip-research-query" data-blip="research-query" type="search" maxlength="200" autocomplete="off" placeholder="Use the question if it is short">
+              </div>
+              <p data-blip="research-note"></p>
+              <button class="blip-button" type="button" data-blip="research-settings" hidden>Set up online research</button>
+            </div>
+          </details>
           <div class="blip-editing-note" data-blip="revising" hidden>
             <span>Resending starts a new chat from this message and keeps the original.</span>
             <button class="blip-button" type="button" data-blip="cancel-revision">Cancel edit</button>
@@ -294,6 +307,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
             <button class="blip-button" data-blip="stop" type="button" hidden>Stop</button>
           </div>
           <p class="blip-engine-state" data-blip="engine-state">Reply engine · Checking local AI</p>
+          <p class="blip-compose-status" data-blip="gateway-wait" role="status"></p>
           <p class="blip-compose-status" data-blip="status" role="status"></p>
         </form>
       </section>
@@ -350,6 +364,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
   const pending = new Map();
   const drafts = new Map();
   const draftFiles = new Map();
+  const researchDrafts = new Map();
   const fileNotices = new Map();
   const readingFiles = new Set();
   const revisions = new Map();
@@ -367,6 +382,11 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
   const dialog = part('chat-dialog');
   const attachmentDialog = part('attachment-dialog');
   const shortcutsDialog = part('shortcuts-dialog');
+  const researchPanel = part('research-panel');
+  const researchChoice = part('research');
+  const researchInput = part('research-query');
+  let cooldownTimer;
+  let linkedDraft = false;
   const backupDialog = part('backup-dialog');
   const backupFile = element('input');
   backupFile.type = 'file';
@@ -413,9 +433,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
     const hosted = optIn.checked && !optIn.disabled;
     const advanced = part('advanced');
     advanced.disabled = !hosted || capabilities?.advanced !== true;
-    part('research').disabled = !hosted || capabilities?.research === false;
     if (advanced.disabled) advanced.checked = false;
-    if (part('research').disabled) part('research').checked = false;
     const notice = part('gateway-capabilities');
     notice.textContent = !gatewayConnected() ? 'Connect a backend to use online chat.'
       : capabilityRequest ? 'Checking the connected gateway…'
@@ -426,6 +444,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
       : 'This gateway’s Advanced replies are unavailable.';
     drawEngineState(currentChat());
     drawRecovery(currentChat());
+    drawResearch(currentChat());
   }
 
   async function refreshGatewayCapabilities() {
@@ -537,6 +556,33 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
     drawRecovery(chat);
   }
 
+  function drawResearch(chat) {
+    const selected = researchDrafts.has(chat?.id);
+    const canSearch = hostedFor(chat) && capabilities?.research !== false;
+    const attached = chatHasFiles(chat);
+    researchChoice.checked = selected;
+    researchChoice.disabled = !chat || pending.has(chat.id);
+    part('research-badge').hidden = !selected;
+    part('research-phrase').hidden = !selected;
+    researchInput.value = researchDrafts.get(chat?.id) || '';
+    researchInput.readOnly = canSearch && !capabilities?.customResearchQuery;
+    part('research-settings').hidden = canSearch || attached;
+    part('research-note').textContent = attached ? 'Chats with files stay on this device. Turn off Blip Search to send here.'
+      : !canSearch ? 'Connect an online model and a Brave Search-enabled backend to use Blip Search.'
+      : researchInput.readOnly ? 'This backend searches the question itself. Keep it within 200 characters.'
+      : 'Brave receives the lookup phrase. The connected model receives your question, recent chat, and up to four excerpts.';
+  }
+
+  function researchProblem(chat, text, query) {
+    if (!text) return 'Enter a question to ask Blip Search.';
+    if (chatHasFiles(chat)) return 'Chats with files stay on this device. Turn off Blip Search to send here.';
+    if (!hostedFor(chat) || capabilities?.research === false) return 'Set up online research before sending this question.';
+    if (gatewayCooldownSeconds()) return 'Online AI is waiting before trying again. Your draft is ready to send after the wait.';
+    if (query.length > 200) return 'Enter a web lookup phrase of up to 200 characters.';
+    if (query !== text && !capabilities?.customResearchQuery) return 'This backend searches the message itself. Use that as the lookup phrase or update the Worker.';
+    return '';
+  }
+
   function drawDraftFiles(id) {
     const files = draftFiles.get(id) || [];
     const reading = readingFiles.has(id);
@@ -564,6 +610,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
     part('attach').disabled = !id || reading || files.length >= BLIP_FILE_LIMITS.count;
     part('file-status').textContent = fileNotices.get(id) || '';
     drawEngineState(currentChat());
+    drawResearch(currentChat());
   }
 
   function showAttachment(file) {
@@ -582,11 +629,15 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
       return;
     }
     const original = revisions.get(chat.id) || {
-      draft: drafts.get(chat.id), files: draftFiles.get(chat.id), notice: fileNotices.get(chat.id)
+      draft: drafts.get(chat.id), files: draftFiles.get(chat.id), notice: fileNotices.get(chat.id), lookup: researchDrafts.get(chat.id)
     };
     revisions.set(chat.id, { ...original, messageId: message.id });
     drafts.set(chat.id, message.text);
     draftFiles.set(chat.id, message.attachments || []);
+    if (message.researchQuery) {
+      researchDrafts.set(chat.id, message.researchQuery);
+      researchPanel.open = true;
+    } else researchDrafts.delete(chat.id);
     fileNotices.delete(chat.id);
     input.value = message.text;
     drawComposer(chat);
@@ -596,7 +647,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
   function restoreDraft(id) {
     const revision = revisions.get(id);
     if (!revision) return;
-    for (const [map, value] of [[drafts, revision.draft], [draftFiles, revision.files], [fileNotices, revision.notice]]) {
+    for (const [map, value] of [[drafts, revision.draft], [draftFiles, revision.files], [fileNotices, revision.notice], [researchDrafts, revision.lookup]]) {
       if (value === undefined) map.delete(id);
       else map.set(id, value);
     }
@@ -759,6 +810,18 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
     updateHostedOptions();
   });
   part('advanced').addEventListener('change', () => drawEngineState(currentChat()));
+  researchChoice.addEventListener('change', () => {
+    const chat = currentChat();
+    if (!chat) return;
+    if (researchChoice.checked) researchDrafts.set(chat.id, '');
+    else researchDrafts.delete(chat.id);
+    drawResearch(chat);
+  });
+  researchInput.addEventListener('input', () => {
+    const chat = currentChat();
+    if (chat && researchDrafts.has(chat.id)) researchDrafts.set(chat.id, researchInput.value);
+  });
+  part('research-settings').addEventListener('click', showOnlineSettings);
   part('pin').addEventListener('click', () => {
     const chat = currentChat();
     if (chat && store.setPinned(chat.id, !chat.pinned)) {
@@ -895,6 +958,15 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
       return;
     }
     const originalId = chat.id;
+    const researchQuery = researchDrafts.has(originalId) ? researchDrafts.get(originalId).trim() || text : undefined;
+    if (researchDrafts.has(originalId)) {
+      const problem = researchProblem(chat, text, researchQuery);
+      if (problem) {
+        status.textContent = problem;
+        researchPanel.open = true;
+        return;
+      }
+    }
     const revision = revisions.get(originalId);
     if (revision) {
       const fork = store.forkChatBefore(originalId, revision.messageId);
@@ -906,7 +978,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
       }
       chat = revision.mode ? store.setMode(fork.id, revision.mode) || fork : fork;
     }
-    if (!store.addMessage(chat.id, 'user', text, { attachments })) {
+    if (!store.addMessage(chat.id, 'user', text, { attachments, researchQuery })) {
       if (revision) {
         store.deleteChat(chat.id);
         store.selectChat(originalId);
@@ -926,9 +998,14 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
       drafts.delete(chat.id);
       draftFiles.delete(chat.id);
       fileNotices.delete(chat.id);
+      researchDrafts.delete(chat.id);
+    }
+    if (linkedDraft) {
+      linkedDraft = false;
+      onDraftUsed?.(chat.id);
     }
     input.focus({ preventScroll: true });
-    await runReply(chat, text, attachments);
+    await runReply(chat, text, attachments, { researchQuery });
   });
 
   function lastTurn(chat) {
@@ -945,7 +1022,9 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
     const latest = lastTurn(chat);
     if (!latest || latest.userId !== turn.userId || latest.replyId !== turn.replyId) return false;
     const user = chat.messages[latest.index];
-    void runReply({ ...chat, messages: chat.messages.slice(0, latest.index) }, user.text, user.attachments || [], turn.replyId, localOnly);
+    void runReply({ ...chat, messages: chat.messages.slice(0, latest.index) }, user.text, user.attachments || [], {
+      replaceId: turn.replyId, localOnly, researchQuery: user.researchQuery,
+    });
     return true;
   }
 
@@ -954,7 +1033,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
     if (turn?.replyId === messageId) retryTurn(turn);
   }
 
-  async function runReply(chat, text, attachments, replaceId, localOnly = false) {
+  async function runReply(chat, text, attachments, { replaceId, localOnly = false, researchQuery } = {}) {
     const request = { controller: new AbortController(), label: stages.checking };
     pending.set(chat.id, request);
     draw();
@@ -969,9 +1048,11 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
     try {
       const contextFiles = attachments.length ? attachments :
         chat.messages.findLast(message => message.attachments?.length)?.attachments || [];
-      const useHosted = !localOnly && !contextFiles.length && hostedFor(chat);
+      const research = Boolean(researchQuery && !localOnly);
+      const problem = research && researchProblem(chat, text, researchQuery);
+      if (problem) reply = { kind: 'unavailable', text: problem };
+      const useHosted = !reply && !localOnly && !contextFiles.length && hostedFor(chat);
       if (useHosted) {
-        const research = part('research').checked;
         const advanced = part('advanced').checked;
         let sources = [];
         let truncated = false;
@@ -987,6 +1068,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
             text, history: chat.messages,
             mode: capabilities?.modes?.includes(chat.mode) ? chat.mode : legacyHostedModes[chat.mode] || chat.mode,
             research,
+            researchQuery,
             depth: advanced ? 'advanced' : undefined,
             signal: AbortSignal.any([request.controller.signal, AbortSignal.timeout(advanced ? 95_000 : 65_000)]),
             onSources(value) { sources = value; },
@@ -998,6 +1080,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
           request.controller.signal.throwIfAborted();
           if (error?.name === 'AbortError') throw error;
           connectedError = error?.message || 'The connected model could not complete the reply.';
+          if (research) reply = { kind: 'unavailable', text: connectedError };
         }
       }
       if (!reply) {
@@ -1046,8 +1129,12 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
       : store.addMessage(chat.id, 'assistant', bounded, reply);
     if (active) {
       draw({ follow: nearTranscriptEnd() });
-      status.textContent = saved ? connectedError ? 'Connected AI was unavailable. Blip answered on this device.' : 'Reply added.'
-        : reply.kind === 'unavailable' ? bounded : 'The reply could not be saved.';
+      if (saved) {
+        status.textContent = reply.kind === 'unavailable' ? 'Reply unavailable.'
+          : connectedError ? 'Connected AI was unavailable. Blip answered on this device.' : 'Reply added.';
+      } else {
+        status.textContent = reply.kind === 'unavailable' ? bounded : 'The reply could not be saved.';
+      }
     } else if (saved) drawRail();
   }
 
@@ -1104,6 +1191,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
       drafts.delete(edit.id);
       draftFiles.delete(edit.id);
       fileNotices.delete(edit.id);
+      researchDrafts.delete(edit.id);
       revisions.delete(edit.id);
       store.deleteChat(edit.id);
       if (!currentChat()) store.createChat();
@@ -1160,6 +1248,16 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
     modelSettings.dataset.ready = String(engineReady);
     part('settings-label').textContent = !engineReady && localModels.some(canPrepare) ? 'Set up AI' : 'AI settings';
     part('welcome-online').hidden = online || chatHasFiles(chat);
+    const limit = part('reply-budget');
+    const basic = capabilities?.chat && (capabilities.maxStandardOutputTokens || capabilities.standardOutputTokens);
+    const advanced = capabilities?.advancedOutputTokens;
+    limit.hidden = !basic;
+    limit.textContent = basic ? `Online replies use up to ${basic.toLocaleString()} tokens${advanced ? `, or ${advanced.toLocaleString()} with Advanced replies` : ''}.` : '';
+    const wait = gatewayCooldownSeconds();
+    const note = part('gateway-wait');
+    note.textContent = wait ? `Online AI is waiting before another try. About ${wait} ${wait === 1 ? 'second' : 'seconds'} remain.` : '';
+    clearTimeout(cooldownTimer);
+    if (wait) cooldownTimer = setTimeout(() => drawEngineState(currentChat()), wait * 1000);
   }
 
   function drawRecovery(chat) {
@@ -1322,13 +1420,22 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
   const initialDraft = typeof draft === 'string' ? draft.trim().slice(0, input.maxLength) : '';
   const chat = initialDraft && !selectedChat && currentChat()?.messages.length ? store.createChat() : null;
   const initialChat = chat || currentChat() || store.createChat();
-  if (initialChat && initialDraft) drafts.set(initialChat.id, initialDraft);
+  if (initialChat && initialDraft) {
+    linkedDraft = true;
+    drafts.set(initialChat.id, initialDraft);
+    const phrase = typeof requestedResearch === 'string' ? requestedResearch.trim() : '';
+    if (phrase && phrase.length <= 200) {
+      researchDrafts.set(initialChat.id, phrase);
+      researchPanel.open = true;
+    }
+  }
   draw();
   if (initialChat && initialDraft) input.focus({ preventScroll: true });
   void refreshGatewayCapabilities();
 
   return () => {
     lifetime.abort();
+    clearTimeout(cooldownTimer);
     layoutObserver.disconnect();
     for (const id of pending.keys()) stopReply(id);
     if (dialog.open) dialog.close();

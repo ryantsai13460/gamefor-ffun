@@ -525,6 +525,22 @@
 .blip-mode input:checked + span { border-color: var(--blip-focus); color: var(--blip-key); background: var(--blip-tint); }
 .blip-mode input:focus-visible + span { outline: 2px solid var(--blip-key); outline-offset: 2px; }
 .blip-mode-description { margin-top: 7px; color: var(--blip-faint); font-size: .78rem; line-height: 1.3; }
+.blip-research { min-width: 0; color: var(--blip-ink); font-size: .84rem; }
+.blip-research > summary { width: fit-content; padding-block: 4px; cursor: pointer; }
+.blip-research > summary span { color: var(--blip-key); }
+.blip-research-controls { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--blip-line); border-radius: 8px; }
+.blip-research-controls > p { color: var(--blip-faint); font-size: .78rem; }
+.blip-research-controls > button { justify-self: start; }
+.blip-research-phrase { display: grid; gap: 5px; min-width: 0; }
+.blip-research-phrase input {
+  min-width: 0;
+  min-height: 38px;
+  padding: 5px 8px;
+  border: 1px solid var(--blip-line);
+  border-radius: 7px;
+  color: var(--blip-ink);
+  background: var(--blip-background);
+}
 
 .blip-attachments {
   display: flex;
