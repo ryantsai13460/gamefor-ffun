@@ -20,6 +20,7 @@ export function isGamePortalAddress(value) {
   if (onDomain(host, 'geometrydash.com')) return /^\/game(?:\/|$)/.test(path);
   if (onDomain(host, 'miniclip.com')) return /^\/games(?:\/|$)/.test(path);
   if (onDomain(host, 'yandex.com')) return /^\/games(?:\/|$)/.test(path);
+  if (host === 'lexaloffle.com' || host === 'www.lexaloffle.com') return path === '/bbs/widget.php';
   return false;
 }
 
@@ -31,7 +32,12 @@ export function createGameAddressLookup(games) {
       const address = new URL(value);
       if (address.protocol !== 'https:' && address.protocol !== 'http:') return '';
       const host = address.hostname.replace(/^(?:www|m)\./, '').replace(/\.$/, '');
-      return host + address.pathname.replace(/\/+$/, '');
+      const path = address.pathname.replace(/\/+$/, '');
+      if (host === 'lexaloffle.com' && (path === '/bbs' || path === '/bbs/widget.php')) {
+        const cartridge = address.searchParams.get('pid');
+        return cartridge ? `${host}${path}?pid=${cartridge}` : '';
+      }
+      return host + path;
     } catch {
       return '';
     }

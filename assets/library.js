@@ -33,6 +33,23 @@ export function normalize(value) {
     .trim();
 }
 
+const isPlatformer = game => game.category === 'Platformer' || game.category === 'Parkour';
+const hasPlatformerTag = (game, tag) => game.platformerTags?.includes(tag) === true;
+
+export const platformerCollections = Object.freeze([
+  { id: 'like-ovo', title: 'Games Like OvO', description: 'Precision jumps, wall climbs, obstacle courses, and timed runs.',
+    matches: game => isPlatformer(game) && Boolean(game.platformerTags?.length) },
+  { id: 'platformers', title: 'Platformers', description: 'Jump through action, exploration, and puzzle games.', matches: isPlatformer },
+  { id: 'speedrun', title: 'Speedrun Games', description: 'Improve your time in games with timed runs or quick restarts.',
+    matches: game => hasPlatformerTag(game, 'speedrun') },
+  { id: 'parkour', title: 'Parkour Games', description: 'Cross gaps, climb walls, and clear obstacle courses.',
+    matches: game => game.category === 'Parkour' || hasPlatformerTag(game, 'parkour') },
+  { id: 'puzzle-platformers', title: 'Puzzle Platformers', description: 'Solve switches, traps, and platform puzzles as you move.',
+    matches: game => hasPlatformerTag(game, 'puzzle') },
+  { id: 'hard-platformers', title: 'Hard Platformers', description: 'Practice precise timing and demanding movement.',
+    matches: game => hasPlatformerTag(game, 'hard') }
+]);
+
 export function createLibrary(games) {
   const byId = new Map();
   const categoryCounts = new Map();
@@ -41,7 +58,8 @@ export function createLibrary(games) {
   for (const game of games) {
     byId.set(game.id, game);
     categoryCounts.set(game.category, (categoryCounts.get(game.category) || 0) + 1);
-    searchTerms.set(game.id, normalize([game.title, game.category, game.id, ...(game.aliases || [])].join(' ')));
+    searchTerms.set(game.id, normalize([game.title, game.category, game.id, ...(game.aliases || []), ...(game.platformerTags || []),
+      isPlatformer(game) ? 'platformer' : ''].join(' ')));
     availabilityById.set(game.id, gameAvailability(game));
   }
   for (const game of games) {
@@ -69,6 +87,10 @@ export function queryLibrary(library, settings) {
       return matches.sort((a, b) => (launches[b.id] || 0) - (launches[a.id] || 0) || collator.compare(a.title, b.title));
     case 'name':
       return matches.sort((a, b) => collator.compare(a.title, b.title));
+    case 'newest':
+      return matches.sort((a, b) => (b.addedOn || '').localeCompare(a.addedOn || ''));
+    case 'challenge':
+      return matches.sort((a, b) => Number(hasPlatformerTag(b, 'hard')) - Number(hasPlatformerTag(a, 'hard')));
     default:
       return matches;
   }

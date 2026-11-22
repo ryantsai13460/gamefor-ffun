@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { games } from '../assets/catalog.js';
-import { createLibrary, gameAvailability, normalize, queryLibrary, restorePreferences } from '../assets/library.js';
+import { createLibrary, gameAvailability, normalize, platformerCollections, queryLibrary, restorePreferences } from '../assets/library.js';
 import { resolveBrowserAddress } from '../assets/browser.js';
 import { arcadeEmbed } from '../assets/embedded-content.js';
 import { findCuratedVideos, getVideoCollections, parseYouTubeVideo } from '../assets/media.js';
@@ -154,7 +154,7 @@ test('the catalog preserves the earlier library and exposes at least 1,000 disti
   assert.equal(games.filter(({ collection }) => collection === 'github' || collection === 'base44-library').length, 548);
   assert.equal(games.filter(({ collection }) => collection === 'base44-home').length, 2);
   assert.equal(games.filter(({ collection }) => collection === 'history').length, 1);
-  assert.equal(games.filter(({ collection }) => collection === 'original').length, 14);
+  assert.equal(games.filter(({ collection }) => collection === 'original').length, 15);
   assert.equal(new Set(games.map(({ id }) => id)).size, games.length);
   assert.equal(new Set(games.map(({ title }) => normalize(title))).size, games.length);
   assert.equal([...library.categoryCounts.values()].reduce((sum, count) => sum + count, 0), games.length);
@@ -195,9 +195,9 @@ test('catalog records have distinct sources, correct status, and safe relative a
     }
     if (typeof game.local === 'string') await readFile(new URL(game.local, new URL('../', import.meta.url)));
   }
-  assert.equal(statusCounts.local, 27);
+  assert.equal(statusCounts.local, 28);
   assert.ok(statusCounts.embed >= 975);
-  assert.equal(statusCounts.external, 523);
+  assert.equal(statusCounts.external, 531);
   assert.equal(statusCounts.unverified, 3);
 });
 
@@ -294,6 +294,28 @@ test('search spans titles, punctuated names, legacy aliases, categories and avai
   const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
   const alphabetical = queryLibrary(library, { sort: 'category' });
   assert.ok(alphabetical.every(({ category }, index) => index === 0 || collator.compare(category, alphabetical[index - 1].category) >= 0));
+});
+
+test('platformer collections share searchable tags and preserve exact author-approved widget destinations', () => {
+  const collection = (id) => games.filter(platformerCollections.find(group => group.id === id).matches);
+  const movement = collection('like-ovo');
+  const beacon = library.byId.get('beacon-ascent');
+  const celeste = library.byId.get('celeste-classic');
+  assert.ok(movement.includes(beacon));
+  assert.ok(movement.includes(celeste));
+  assert.equal(gameAvailability(beacon), 'local');
+  assert.equal(gameAvailability(celeste), 'external');
+  assert.ok(queryLibrary(library, { source: movement, search: 'speedrun beacon' }).includes(beacon));
+  assert.ok(collection('puzzle-platformers').includes(library.byId.get('onoff')));
+  assert.ok(collection('hard-platformers').includes(celeste));
+  assert.ok(queryLibrary(library, { source: movement, availability: 'in-page' }).every(game => gameAvailability(game) !== 'external'));
+  for (const id of ['moss-moss', 'to-a-starling']) {
+    const game = library.byId.get(id);
+    assert.ok(game.controls);
+    assert.equal(resolveBrowserAddress(game.url, site).embed, game.embed);
+    assert.equal(resolveBrowserAddress(game.embed, site).title, game.title);
+  }
+  assert.equal(resolveBrowserAddress('https://www.lexaloffle.com/bbs/widget.php?pid=unlisted', site).kind, 'external-game');
 });
 
 test('legacy preferences migrate IDs, discard malformed data and sort by actual local launches', () => {

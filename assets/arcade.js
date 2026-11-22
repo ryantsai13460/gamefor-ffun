@@ -1,7 +1,8 @@
 import { createSearchFullscreen } from './search-fullscreen.js';
 
 const assetVersion = new URL(import.meta.url).search;
-const [{ games }, { createLibrary, defaultProfileName, discoverySearchHistoryKey, gameAvailability, normalize, queryLibrary, restorePreferences, themeOptions, validateProfileName },
+const [{ games }, { createLibrary, defaultProfileName, discoverySearchHistoryKey, gameAvailability, normalize, platformerCollections,
+  queryLibrary, restorePreferences, themeOptions, validateProfileName },
   { gatewayConnected, renderGatewaySettings, searchGateway, searchGatewayPage },
   { gameBackgroundOptions, readGameBackground, saveGameBackground, showGameBackground, prepareGameBackground },
   { arcadeModes }, { arcadeEmbed, gamepadPermission }, { createGameAddressLookup, isGamePortalAddress }] = await Promise.all([
@@ -326,24 +327,27 @@ function artwork(game, eager = false) {
   return visual;
 }
 
-function gameCard(game, afterChange) {
+function gameCard(game, afterChange, quickPlay = false) {
   const card = element('article', 'game-card');
-  const open = link('', gamePath(game), 'card-link');
+  const start = quickPlay && isPlayable(game);
+  const open = link('', start ? gameStartPath(game) : gamePath(game), 'card-link');
+  if (start) open.setAttribute('aria-label', `Play ${game.title}`);
   const copy = element('div', 'card-copy');
   const name = element('h3', '', game.title);
   name.title = game.title;
   const meta = element('div', 'card-meta');
   const availability = gameAvailability(game);
   meta.append(element('span', '', game.category), element('span', availability === 'local' ? 'local-label' : '', labels[availability]));
+  if (quickPlay && game.platformerTags?.includes('hard')) meta.append(element('span', '', 'Challenging'));
   copy.append(name, meta);
   open.append(artwork(game), copy);
   card.append(open, favoriteButton(game, true, afterChange));
   return card;
 }
 
-function grid(items, className = '', afterChange) {
+function grid(items, className = '', afterChange, quickPlay) {
   const list = element('div', `game-grid ${className}`.trim());
-  list.replaceChildren(...items.map(game => gameCard(game, afterChange)));
+  list.replaceChildren(...items.map(game => gameCard(game, afterChange, quickPlay)));
   return list;
 }
 
@@ -436,6 +440,7 @@ function homePlayPanel() {
   }
   const actions = element('div', 'home-play-actions');
   actions.append(link('In-page games', '#games?option=in-page', 'button'),
+    link('Games Like OvO', '#games?collection=like-ovo', 'button'),
     link('Built-in only', '#games?local=1', 'button'));
   panel.append(title, element('p', '', `${playableCount.toLocaleString('en-US')} playable games`), picks, actions);
   return panel;
@@ -688,10 +693,13 @@ function selectField(label, values, selected = '') {
 function renderLibrary(target, route) {
   const { name, params } = route;
   const isLocal = params.get('local') === '1';
-  let source = games;
-  let description = isLocal
+  const collection = gameCollection(route);
+  let source = collection
+    ? games.filter(collection.matches).sort((first, second) => Number(isPlayable(second)) - Number(isPlayable(first)))
+    : games;
+  let description = collection?.description || (isLocal
     ? 'These games run directly in the arcade.'
-    : 'Find games by title, category, or play option.';
+    : 'Find games by title, category, or play option.');
   if (name === 'favorites') {
     source = records(prefs.favorites);
     description = 'Games you have saved in this browser.';
@@ -708,13 +716,23 @@ function renderLibrary(target, route) {
     source = games.filter(game => prefs.launches[game.id] > 0);
     description = 'Ranked by game launches in this browser.';
   }
-  const title = heading(isLocal ? 'Built-in Games' : routeNames[name], description);
+  const title = heading(collection?.title || (isLocal ? 'Built-in Games' : routeNames[name]), description);
   const fullscreen = name === 'games' ? createSearchFullscreen(target, { label: 'Game library' }) : null;
   if (fullscreen) {
     title.classList.add('game-library-heading');
     title.append(fullscreen.controls);
   }
   target.append(title);
+  if (collection) {
+    const links = element('nav', 'interaction-row game-collection-links');
+    links.setAttribute('aria-label', 'Platformer collections');
+    for (const group of platformerCollections) {
+      const shortcut = link(group.title, hashFor('games', { collection: group.id }), 'button');
+      if (group === collection) shortcut.setAttribute('aria-current', 'page');
+      links.append(shortcut);
+    }
+    target.append(links);
+  }
 
   function libraryEmptyState() {
     const details = {
@@ -738,15 +756,18 @@ function renderLibrary(target, route) {
   search.type = 'search';
   search.maxLength = 150;
   search.value = (params.get('q') || '').slice(0, 150);
-  search.placeholder = 'Find a title…';
+  search.placeholder = collection ? 'Find a title or tag…' : 'Find a title, category, or tag…';
   inputLabel.append(search);
-  const category = selectField('Category', [['', 'All categories'], ...categories.map(value => [value, value])], params.get('category') || '');
+  const categoryChoices = collection ? [...new Set(source.map(game => game.category))].sort() : categories;
+  const category = selectField('Category', [['', 'All categories'], ...categoryChoices.map(value => [value, value])], params.get('category') || '');
   const availability = selectField('Play option', [['', 'Any option'], ['in-page', 'Playable here'], ...Object.entries(labels)],
     isLocal ? 'local' : params.get('option') || '');
   const hasLaunches = Object.values(prefs.launches).some(count => count > 0);
   const sort = selectField('Sort by', [
     ['', name === 'favorites' ? 'Recently saved' : name === 'new' ? 'Newest added' : name === 'recent' ? 'Recently opened' : 'Catalog order'],
-    ['name', 'Name A–Z'], ['category', 'Category'], ...(hasLaunches ? [['popularity', 'Most opened on this browser']] : [])
+    ['name', 'Name A–Z'], ['category', 'Category'], ['newest', 'Recently added'],
+    ...(collection && source.some(game => game.platformerTags?.includes('hard')) ? [['challenge', 'Challenging first']] : []),
+    ...(hasLaunches ? [['popularity', 'Most opened on this browser']] : [])
   ], params.get('sort') || (name === 'trending' ? 'popularity' : ''));
   controls.append(inputLabel, category.wrapper);
   if (!isLocal) controls.append(availability.wrapper);
@@ -760,7 +781,18 @@ function renderLibrary(target, route) {
   const next = action('Next', () => changePage(1));
   const pageOutput = element('span', 'pagination-output');
   pagination.append(previous, pageOutput, next);
-  target.append(controls, results, listing, pagination);
+  let randomChoices = [];
+  const pickPlatformer = collection && action('Random Platformer', () => {
+    const game = randomChoices[Math.floor(Math.random() * randomChoices.length)];
+    if (game) navigate(gameStartPath(game));
+  }, 'button', 'shuffle');
+  target.append(controls);
+  if (pickPlatformer) {
+    const actions = element('div', 'interaction-row');
+    actions.append(pickPlatformer);
+    target.append(actions);
+  }
+  target.append(results, listing, pagination);
 
   let page = Math.max(1, Number.parseInt(params.get('page'), 10) || 1);
   let pageCount = 1;
@@ -775,6 +807,10 @@ function renderLibrary(target, route) {
       source, search: search.value, category: category.field.value,
       availability: availability.field.value, sort: sort.field.value, launches: prefs.launches
     });
+    if (pickPlatformer) {
+      randomChoices = filtered.filter(isPlayable);
+      pickPlatformer.disabled = !randomChoices.length;
+    }
     pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
     page = Math.min(page, pageCount);
     const start = (page - 1) * pageSize;
@@ -782,7 +818,7 @@ function renderLibrary(target, route) {
     results.textContent = filtered.length ? `${start + 1}–${end} of ${filtered.length} games` : '0 games found';
     const onFavorite = name === 'favorites' ? () => draw().focus({ preventScroll: true }) : undefined;
     listing.replaceChildren(filtered.length
-      ? grid(filtered.slice(start, end), '', onFavorite)
+      ? grid(filtered.slice(start, end), '', onFavorite, Boolean(collection))
       : empty('No matching games', 'Try a shorter search or reset the category and play option.'));
     previous.disabled = page <= 1;
     next.disabled = page >= pageCount;
@@ -810,7 +846,7 @@ function renderLibrary(target, route) {
     const hash = hashFor(name, {
       q: search.value.trim(), category: category.field.value,
       local: isLocal ? '1' : '', option: isLocal ? '' : availability.field.value,
-      sort: sort.field.value, page: page > 1 ? page : ''
+      collection: collection?.id, sort: sort.field.value, page: page > 1 ? page : ''
     });
     history.replaceState(null, '', hash);
     route.hash = hash;
@@ -827,8 +863,25 @@ function renderLibrary(target, route) {
   return fullscreen?.dispose;
 }
 
+function gameCollection(route) {
+  if (route?.name !== 'games') return undefined;
+  return platformerCollections.find(group => group.id === route.params.get('collection'));
+}
+
 function renderCategories(target) {
   target.append(heading('Categories', 'Browse the arcade by genre.'));
+  const platformers = element('section', 'section-block');
+  const platformerList = element('div', 'category-grid');
+  const header = element('div', 'section-heading');
+  header.append(element('h2', '', 'Platformer collections'));
+  platformers.append(header, platformerList);
+  for (const collection of platformerCollections) {
+    const count = games.filter(collection.matches).length;
+    const card = link('', hashFor('games', { collection: collection.id }), 'category-card');
+    card.append(icon('activity'), element('strong', '', collection.title), element('span', '', `${count} ${count === 1 ? 'game' : 'games'}`));
+    platformerList.append(card);
+  }
+  target.append(platformers);
   const list = element('div', 'category-grid');
   const map = { Arcade: 'gamepad', Puzzle: 'grid', Racing: 'activity', Sports: 'trend', Multiplayer: 'globe', Strategy: 'layers' };
   for (const category of categories) {
@@ -837,7 +890,9 @@ function renderCategories(target) {
     card.append(icon(map[category] || 'gamepad'), element('strong', '', category), element('span', '', `${count} ${count === 1 ? 'game' : 'games'}`));
     list.append(card);
   }
-  target.append(list);
+  const genres = element('section', 'section-block');
+  genres.append(list);
+  target.append(genres);
 }
 
 const webSearchHistoryKey = 'ffun.web-search.history';
@@ -1748,7 +1803,11 @@ function renderCredits(target) {
 
 function renderGame(target, id, startFromLink) {
   const game = resolveGame(id);
-  const back = link('Back to browsing', previousLibrary, 'button player-back');
+  const back = element('div', 'player-back interaction-row');
+  back.append(link('Back to browsing', previousLibrary, 'button'));
+  if (!/^#games(?:$|\?)/.test(previousLibrary)) {
+    back.append(link('Back to Games', '#games?option=in-page', 'button'));
+  }
   target.append(back);
   if (!game) {
     target.append(heading('Game unavailable'), empty('This entry could not be found', 'Try opening the game from All Games.'));
@@ -1780,7 +1839,16 @@ function renderGame(target, id, startFromLink) {
   stage.tabIndex = -1;
   stage.setAttribute('role', 'region');
   stage.setAttribute('aria-label', `${game.title} player`);
-  target.append(controls, status, stage);
+  target.append(controls);
+  if (typeof game.controls === 'string' && game.controls.trim()) {
+    const instructions = element('section', 'player-instructions');
+    const instructionText = element('p', '', game.controls);
+    instructionText.id = 'player-controls-description';
+    instructions.append(element('h2', '', 'Controls'), instructionText);
+    stage.setAttribute('aria-describedby', instructionText.id);
+    target.append(instructions);
+  }
+  target.append(status, stage);
   const embedHelp = element('div', 'player-note interaction-row');
   embedHelp.hidden = true;
   if (embedUrl) {
@@ -1795,13 +1863,20 @@ function renderGame(target, id, startFromLink) {
     target.append(credit);
   }
   if (game.artCredit && prefs.artwork) target.append(element('p', 'player-note', `Artwork: ${game.artCredit}`));
-  const similar = games.filter(candidate => candidate !== game && candidate.category === game.category && isPlayable(candidate))
-    .sort((first, second) => Number(Boolean(second.local)) - Number(Boolean(first.local)));
+  const movementGame = candidate => candidate.platformerTags?.length || ['Platformer', 'Parkour'].includes(candidate.category);
+  const movement = movementGame(game);
+  const sharedTags = candidate => (candidate.platformerTags || []).filter(tag => game.platformerTags?.includes(tag)).length;
+  const similar = games.filter(candidate => candidate !== game && isPlayable(candidate) &&
+    (candidate.category === game.category || (movement && movementGame(candidate))))
+    .sort((first, second) => sharedTags(second) - sharedTags(first) ||
+      Number(second.category === game.category) - Number(first.category === game.category) ||
+      Number(Boolean(second.local)) - Number(Boolean(first.local)));
   const alternatives = records(game.playAlternatives || []).filter(isPlayable);
   const related = distinct([...alternatives, ...similar]);
   const browseCategory = similar.length ? game.category : '';
   const recommendations = shelf('Related games you can play here', related,
-    browseCategory ? `More ${browseCategory} games` : 'All playable games', hashFor('games', { category: browseCategory, option: 'in-page' }));
+    movement ? 'More games like OvO' : browseCategory ? `More ${browseCategory} games` : 'All playable games',
+    movement ? '#games?collection=like-ovo' : hashFor('games', { category: browseCategory, option: 'in-page' }));
   if (recommendations) target.append(recommendations);
   let dispose = () => {};
   const scope = new AbortController();
@@ -1875,11 +1950,11 @@ function renderGame(target, id, startFromLink) {
 
   showStart('Ready to play', game.local ? 'Start the built-in game to activate its controls.' : 'Open the publisher’s embedded player.');
 
-  function showStart(title, text) {
+  function showStart(title, text, buttonText = 'Play game') {
     const welcome = empty(title, text);
     welcome.classList.add('game-backdrop');
     showGameBackground(welcome, gameBackground);
-    welcome.append(action('Play game', () => start(true), 'button primary start-game', 'play'));
+    welcome.append(action(buttonText, () => start(true), 'button primary start-game', 'play'));
     stage.replaceChildren(welcome);
   }
 
@@ -1891,6 +1966,7 @@ function renderGame(target, id, startFromLink) {
     fullscreen.disabled = true;
     stage.setAttribute('aria-busy', 'true');
     status.textContent = 'Opening game…';
+    if (record) stage.focus({ preventScroll: true });
     if (game.local === true) {
       try {
         const { mountLocalGame } = await import(`./local-games.js${assetVersion}`);
@@ -1905,7 +1981,9 @@ function renderGame(target, id, startFromLink) {
         if (token !== revision) return;
         stage.removeAttribute('aria-busy');
         status.textContent = 'This game could not start.';
-        showStart('Game could not load', 'Try opening the game again.');
+        const restoreFocus = stage.contains(document.activeElement);
+        showStart('Game could not load', 'Try opening the game again.', 'Retry game');
+        if (restoreFocus) stage.querySelector('.start-game')?.focus({ preventScroll: true });
       }
       return;
     }
@@ -1928,10 +2006,11 @@ function renderGame(target, id, startFromLink) {
       const restoreFocus = stage.contains(document.activeElement);
       dispose();
       embedHelp.hidden = true;
+      restart.disabled = true;
       fullscreen.disabled = true;
       stage.removeAttribute('aria-busy');
       status.textContent = message;
-      showStart('Game could not load', 'Try opening the game again or browse another game you can play here.');
+      showStart('Game could not load', 'Try opening the game again or browse another game you can play here.', 'Retry game');
       const options = element('div', 'interaction-row');
       if (sourceUrl) options.append(external('Open game page', sourceUrl));
       options.append(link('Browse in-page games', '#games?option=in-page', 'button'));
@@ -1966,7 +2045,6 @@ function renderGame(target, id, startFromLink) {
       restart.disabled = false;
       fullscreen.disabled = !canFullscreen;
     }
-    if (record) stage.focus({ preventScroll: true });
   }
 
   if (startFromLink) void start(true);
@@ -1991,7 +2069,8 @@ function randomGame() {
 function updateActiveNavigation(route) {
   let active = route.name;
   if (route.name === 'games') {
-    if (route.params.get('local') === '1') active = 'offline';
+    if (gameCollection(route)?.id === 'like-ovo') active = 'like-ovo';
+    else if (route.params.get('local') === '1') active = 'offline';
     else if (route.params.get('option') === 'in-page') active = 'in-page';
   }
   if (route.name === 'web-search' && route.params.get('mode') === 'ai') active = 'ai-help';
@@ -2026,7 +2105,8 @@ async function renderRoute(focus = true) {
   content.replaceChildren(target);
   globalQuery.value = ['games', 'discover', 'web-search'].includes(route.name) ? route.params.get('q') || '' : '';
   updateGlobalSearchHint();
-  document.title = `${route.name === 'play' ? resolveGame(route.id)?.title || 'Game' : routeNames[route.name]} · Gamefor Ffun`;
+  const pageTitle = route.name === 'play' ? resolveGame(route.id)?.title || 'Game' : gameCollection(route)?.title || routeNames[route.name];
+  document.title = `${pageTitle} · Gamefor Ffun`;
 
   updateActiveNavigation(route);
   setDrawer(false);
@@ -2200,6 +2280,15 @@ document.getElementById('global-search').addEventListener('submit', event => {
   const search = globalQuery.value.trim();
   if (current?.name === 'home' && prefs.mode === 'school') {
     navigate(hashFor('web-search', { q: search }));
+    return;
+  }
+  const collection = gameCollection(current);
+  if (collection) {
+    const params = new URLSearchParams(current.params);
+    params.delete('page');
+    if (search) params.set('q', search);
+    else params.delete('q');
+    navigate(hashFor('games', Object.fromEntries(params)));
     return;
   }
   if ((current?.name === 'home' && prefs.mode === 'gaming') ||
