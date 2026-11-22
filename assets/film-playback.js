@@ -34,6 +34,12 @@ export function filmPlayback(film, trailer = false) {
     if (source && ['www.nfb.ca', 'nfb.ca'].includes(url.hostname) && /^\/film\/[\w-]+\/embed\/player\/$/.test(url.pathname)) {
       return { provider: 'NFB', external: source, embed };
     }
+    const vimeoId = /^\/video\/([1-9]\d{0,11})$/.exec(url.pathname)?.[1];
+    if (url.hostname === 'player.vimeo.com' && !url.hash && vimeoId && external === `https://vimeo.com/${vimeoId}` &&
+        (!url.search || (url.searchParams.size === 1 && /^\d{1,10}$/.test(url.searchParams.get('app_id'))))) {
+      url.searchParams.set('dnt', '1');
+      return { provider: 'Vimeo', external, embed: url.href };
+    }
   }
   return external ? { provider: film.provider || new URL(external).hostname.replace(/^www\./, ''), external } : null;
 }

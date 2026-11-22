@@ -4,7 +4,10 @@ const version = new URL(import.meta.url).search;
 const [{ discoverySearchHistoryKey: historyKey, gameAvailability, normalize }, { filmPlayback }] = await Promise.all([
   import(`./library.js${version}`), import(`./film-playback.js${version}`)
 ]);
-const kinds = [['all', 'All'], ['games', 'Games'], ['movies', 'Movies'], ['music', 'Music'], ['videos', 'Videos']];
+const kinds = [
+  ['all', 'All'], ['games', 'Games'], ['movies', 'Movies'], ['music', 'Music'], ['videos', 'Videos'],
+  ['products', 'Products'], ['bookmarks', 'Bookmarks']
+];
 const labels = new Map(kinds);
 const playLabels = { local: 'Built in', embed: 'In-page player', external: 'Catalog only', unverified: 'Play unavailable' };
 const resultFilters = {
@@ -117,7 +120,7 @@ function saveHistory(list) {
   try { localStorage.setItem(historyKey, JSON.stringify(list)); } catch {}
 }
 
-function card(record) {
+function card(record, exactMatch = false) {
   const anchor = link('', record.href, 'discovery-card');
   anchor.dataset.type = record.type;
   const artwork = element('div', 'discovery-art');
@@ -137,6 +140,7 @@ function card(record) {
   info.append(element('p', 'discovery-kind', labels.get(record.type)), element('h3', '', record.title));
   const subtitle = [record.subtitle, playLabels[record.availability]].filter(Boolean).join(' · ');
   if (subtitle) info.append(element('p', 'muted', subtitle));
+  if (exactMatch === true) info.append(element('p', 'discovery-exact', 'Exact match'));
   anchor.append(artwork, info);
   return anchor;
 }
@@ -165,29 +169,47 @@ const filmData = () => import(`./film-catalog.js${version}`);
 const musicData = () => import(`./lyrics-library.js${version}`);
 const videoData = () => import(`./media.js${version}`);
 const shortData = () => import(`./shorts-catalog.js${version}`);
+const searchData = () => import(`./search-catalog.js${version}`);
+const domainAddress = /^(?:[\p{L}\p{N}-]+\.)+[\p{L}\p{N}-]+(?::\d+)?(?:[/?#]\S*)?$/u;
 
 const isSearchText = query => Boolean(query && !/^(?:[a-z][a-z\d+.-]*:)?\/\//i.test(query)
   && !/^[\w-]+(?:\.[\w-]+)+[/?#]\S*$/u.test(query));
+
+function productItem(product) {
+  return {
+    ...item('products', product.title, [product.retailer, product.categoryName].filter(Boolean).join(' · '),
+      product.image, product.link, [product.description, product.terms, ...product.specs.flat()].join(' ')),
+    aliases: product.aliases
+  };
+}
+
+function bookmarkItem(bookmark) {
+  return {
+    ...item('bookmarks', bookmark.title, bookmark.address, '', bookmark.link),
+    aliases: [bookmark.address]
+  };
+}
 
 function prepare(records) {
   return records.map(record => {
     const title = normalize(record.title);
     return {
       record, title, aliases: (record.aliases || []).map(normalize),
-      searchable: normalize([record.title, record.subtitle, record.terms].join(' '))
+      searchable: normalize([record.title, record.subtitle, record.terms, ...(record.aliases || [])].join(' '))
     };
   });
 }
 
 let mediaIndex;
 function prepareMedia() {
-  const types = ['movies', 'music', 'videos', 'videos'];
+  const types = ['movies', 'music', 'videos', 'videos', 'products'];
   mediaIndex ??= Promise.allSettled([
     filmData().then(({ filmCatalog }) => filmCatalog.map(filmItem)),
     musicData().then(async ({ findLyricVideos }) => (await findLyricVideos('')).map(songItem)),
     videoData().then(({ getCuratedVideos }) => getCuratedVideos().map(videoItem)),
     shortData().then(({ getShortCatalog, shortsLink, shortProviders }) => getShortCatalog().filter(video => video.provider !== 'youtube')
-      .map(video => shortItem(video, shortProviders[video.provider].label, shortsLink(video))))
+      .map(video => shortItem(video, shortProviders[video.provider].label, shortsLink(video)))),
+    searchData().then(async ({ searchProducts }) => (await searchProducts()).map(productItem))
   ]).then(results => {
     const unavailable = [...new Set(types.filter((type, index) => results[index].status === 'rejected'))];
     if (unavailable.length) mediaIndex = undefined;
@@ -199,6 +221,7 @@ function prepareMedia() {
 export function renderDiscovery(target, { params, games, showArtwork, rememberSearches = true, onRouteChange }) {
   let active = true;
   let prepared = prepare(games.map(game => gameItem(game, showArtwork)));
+  let bookmarks = [];
   let unavailable = [];
   let pending = true;
   let cachedHistory = rememberSearches ? history() : [];
@@ -207,14 +230,14 @@ export function renderDiscovery(target, { params, games, showArtwork, rememberSe
   let limit = batch;
   const gameAtAddress = createGameAddressLookup(games);
 
-  const header = heading('Search the library', 'Find games, movies, songs, and videos from the arcade catalogs.');
+  const header = heading('Search the library', 'Find games, movies, lyric videos, shorts, products, and your saved bookmarks.');
   const form = element('form', 'discovery-form');
   form.setAttribute('role', 'search');
   form.setAttribute('aria-label', 'Library search');
   const input = element('input', 'field');
   input.type = 'search';
   input.maxLength = 150;
-  input.placeholder = 'Search titles, artists, or topics';
+  input.placeholder = 'Search titles, artists, products, or bookmarks';
   input.setAttribute('aria-label', 'Library query');
   input.value = query;
   const submit = element('button', 'button primary', 'Search');
@@ -256,19 +279,20 @@ export function renderDiscovery(target, { params, games, showArtwork, rememberSe
   const recent = element('div', 'interaction-row discovery-recent');
   const status = element('p', 'muted discovery-status');
   status.setAttribute('role', 'status');
-  const listing = element('div', 'discovery-grid');
+  const listing = element('div', 'discovery-results');
   const more = button('Load more results', () => {
-    const first = listing.childElementCount;
+    const first = listing.querySelectorAll('.discovery-card').length;
     limit += batch;
     draw();
-    listing.children[first]?.focus({ preventScroll: true });
+    [...listing.querySelectorAll('.discovery-card')].find(node => Number(node.dataset.resultIndex) >= first)?.focus();
   });
   const web = link('Search the web', '#web-search', 'button');
+  const proxy = link('Open in Proxy Gemini', '#browse', 'button');
   const shopping = link('Search Shopping', '#shopping', 'button');
   const blip = link('Ask Blip', '#blip', 'button');
   const shorts = link('Browse Short Videos', '#shorts', 'button');
   const actions = element('div', 'interaction-row discovery-actions');
-  actions.append(more, web, shopping, shorts, blip);
+  actions.append(more, web, proxy, shopping, shorts, blip);
   target.replaceChildren(header, form, filters, recent, status, listing, actions);
 
   function saveRoute() {
@@ -283,7 +307,7 @@ export function renderDiscovery(target, { params, games, showArtwork, rememberSe
   }
 
   function rememberQuery() {
-    if (!rememberSearches || !query || /^https?:\/\//i.test(query) || matchingGame(query)) return;
+    if (!rememberSearches || selected === 'bookmarks' || !isSearchText(query) || domainAddress.test(query) || matchingGame(query)) return;
     const normalizedQuery = normalize(query);
     cachedHistory = [query, ...cachedHistory.filter(term => normalize(term) !== normalizedQuery)].slice(0, 8);
     saveHistory(cachedHistory);
@@ -308,10 +332,13 @@ export function renderDiscovery(target, { params, games, showArtwork, rememberSe
     const addressMatch = matchingGame(query);
     const filter = filterControls.get(selected);
     const filterValue = filter?.field.value;
-    const matches = prepared.filter(({ record, searchable }) =>
+    const matches = (selected === 'all' || selected === 'bookmarks' ? [...prepared, ...bookmarks] : prepared).filter(({ record, searchable }) =>
       (selected === 'all' || selected === record.type) && (!filterValue || filter.matches(record, filterValue)) &&
       ((addressMatch && record.id === addressMatch.id) || terms.every(term => searchable.includes(term))));
     if (text) matches.sort((left, right) => score(right) - score(left));
+    function isExact({ record, title, aliases }) {
+      return Boolean(text && (title === text || aliases.includes(text) || (addressMatch && record.id === addressMatch.id)));
+    }
     function score({ record, title, aliases }) {
       if (addressMatch && record.id === addressMatch.id) return 80;
       return (title === text ? 40 : aliases.includes(text) ? 32 : title.startsWith(text) ? 22 : title.includes(text) ? 12 : 0)
@@ -337,17 +364,41 @@ export function renderDiscovery(target, { params, games, showArtwork, rememberSe
       }));
     }
     const incomplete = unavailable.filter(key => selected === 'all' || selected === key).map(key => labels.get(key));
-    const total = matches.length
-      ? `Showing ${Math.min(limit, matches.length)} of ${matches.length} results`
+    const seen = new Set();
+    const distinct = matches.filter(({ record }) => {
+      if (seen.has(record.href)) return false;
+      seen.add(record.href);
+      return true;
+    });
+    const total = distinct.length
+      ? `Showing ${Math.min(limit, distinct.length)} of ${distinct.length} results`
       : 'No matching titles';
     status.textContent = pending && selected !== 'games' && !addressMatch
-      ? 'Loading media catalogs…'
+      ? 'Loading catalogs and bookmarks…'
       : total + (incomplete.length ? `. Unavailable catalogs include ${incomplete.join(', ')}.` : '');
     const focusedHref = listing.contains(document.activeElement) && document.activeElement.getAttribute('href');
-    listing.replaceChildren(...matches.slice(0, limit).map(({ record }) => card(record)));
-    if (focusedHref) [...listing.children].find(node => node.getAttribute('href') === focusedHref)?.focus({ preventScroll: true });
-    more.hidden = limit >= matches.length;
+    const groups = new Map();
+    const grouped = Boolean(text && selected === 'all');
+    distinct.slice(0, limit).forEach((entry, index) => {
+      const key = grouped ? entry.record.type : selected;
+      if (!groups.has(key)) groups.set(key, element('div', 'discovery-grid'));
+      const result = card(entry.record, isExact(entry));
+      result.dataset.resultIndex = index;
+      groups.get(key).append(result);
+    });
+    listing.replaceChildren(...[...groups].map(([key, grid]) => {
+      if (!grouped) return grid;
+      const section = element('section', 'discovery-result-group');
+      section.setAttribute('aria-label', labels.get(key));
+      section.append(element('h2', '', labels.get(key)), grid);
+      return section;
+    }));
+    if (focusedHref) [...listing.querySelectorAll('.discovery-card')]
+      .find(node => node.getAttribute('href') === focusedHref)?.focus({ preventScroll: true });
+    more.hidden = limit >= distinct.length;
     web.href = query ? route('web-search', { q: query }) : '#web-search';
+    proxy.hidden = !(domainAddress.test(query) || /^https:\/\/\S+$/i.test(query));
+    proxy.href = proxy.hidden ? '#browse' : route('browse', { address: query });
     const canDraft = isSearchText(query);
     blip.hidden = !canDraft;
     blip.href = canDraft ? route('blip', { draft: query, research: query }) : '#blip';
@@ -363,10 +414,16 @@ export function renderDiscovery(target, { params, games, showArtwork, rememberSe
   rememberQuery();
   draw();
 
-  prepareMedia().then(result => {
+  Promise.allSettled([prepareMedia(), searchData().then(({ searchBookmarks }) => searchBookmarks())]).then(([media, saved]) => {
     if (!active) return;
-    unavailable = result.unavailable;
-    prepared = [...prepared, ...result.index];
+    if (media.status === 'fulfilled') {
+      unavailable = media.value.unavailable;
+      prepared = [...prepared, ...media.value.index];
+    } else {
+      unavailable = ['movies', 'music', 'videos', 'products'];
+    }
+    if (saved.status === 'fulfilled') bookmarks = prepare(saved.value.map(bookmarkItem));
+    else unavailable.push('bookmarks');
     pending = false;
     draw();
   });

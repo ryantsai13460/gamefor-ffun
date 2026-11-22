@@ -228,6 +228,23 @@
   font-size: clamp(1.1rem, 1.9vw, 1.35rem);
 }
 
+.shopping-catalog-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: .65rem 1rem;
+  min-width: 0;
+}
+
+.shopping-sort {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: .5rem;
+  width: min(100%, 19rem);
+}
+
 .shopping-catalog-note,
 .shopping-empty-state {
   color: var(--muted);

@@ -971,7 +971,12 @@ const tapamineTitles = [
   ["orbit","Orbit","Arcade","Release from one planet at the right angle to catch the next orbit."],
   ["rail","Rail","Puzzle","Flip one switch to send each train down the correct track."],
   ["cookie","Cookie","Arcade","Carve a shape out of candy by timing when to press and release."],
-  ["lander","Lander","Simulation","Use short engine bursts to touch down gently on the landing pad."]
+  ["lander","Lander","Simulation","Use short engine bursts to touch down gently on the landing pad."],
+  ["rally","Rally","Arcade","Reverse your paddle around the ring to keep the ball from escaping.","2026-11-22"],
+  ["vault","Vault","Sports","Hold to run, release to plant the pole, and tap again to clear the bar.","2026-11-22"],
+  ["ski","Ski","Sports","Carve around trees and through gates as you ski downhill.","2026-11-22"],
+  ["skate","Skate","Sports","Tap to hop over cones and hold to grind rails.","2026-11-22"],
+  ["kart","Kart","Racing","Hold to drift through corners and release to use your boost.","2026-11-22"]
 ];
 
 export const publisherGames = [

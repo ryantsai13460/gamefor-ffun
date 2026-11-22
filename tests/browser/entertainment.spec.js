@@ -212,7 +212,7 @@ test('every game card points to its preserved catalog route', async ({ page }) =
       title: card.querySelector('h3').textContent.trim()
     }))));
     if (await next.isDisabled()) break;
-    await next.click();
+    await next.press('Enter');
   }
   expect(entries).toEqual(games.map(({ id, title }) => ({ id, title })));
 });

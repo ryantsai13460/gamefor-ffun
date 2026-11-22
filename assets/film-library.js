@@ -9,6 +9,8 @@ const COLLECTIONS = [
   { id: 'full', title: 'Full films' },
   { id: 'features', title: 'Feature films' },
   { id: 'family', title: 'Family films' },
+  { id: 'classics', title: 'Classic films' },
+  { id: 'documentaries', title: 'Documentaries' },
   { id: 'additions', title: 'Recently added' },
   { id: 'open', title: 'Open films' },
   { id: 'shorts', title: 'Animated shorts' },
@@ -596,6 +598,10 @@ export function renderFilms(target, { collection, params = new URLSearchParams(l
     if (id === 'features') return filmCatalog.filter(film => fullSources.get(film.id) && filmFormat(film) === 'feature');
     if (id === 'family') return filmCatalog.filter(film => film.genres.includes('Family') && fullSources.get(film.id))
       .sort((first, second) => Number(filmFormat(second) === 'feature') - Number(filmFormat(first) === 'feature'));
+    if (id === 'classics' || id === 'documentaries') {
+      const genre = id === 'classics' ? 'Classic' : 'Documentary';
+      return filmCatalog.filter(film => fullSources.get(film.id) && film.genres.includes(genre));
+    }
     if (id === 'additions') return filmCatalog.filter(film => fullSources.get(film.id) && addedDates.has(film.id))
       .sort((first, second) => addedDates.get(second.id) - addedDates.get(first.id));
     if (id === 'shorts') return filmCatalog.filter(film => filmFormat(film) === 'short' && fullSources.get(film.id) && film.genres.includes('Animation'));
@@ -634,7 +640,7 @@ export function renderFilms(target, { collection, params = new URLSearchParams(l
       if (additions.length) results.append(section('Recently added', additions.slice(0, SHELF_SIZE), 'additions'));
       const opened = openHistory(state).sort(([, first], [, second]) => second.opens - first.opens);
       if (opened.length) results.append(section('Most opened on this device', opened.slice(0, SHELF_SIZE).map(([id]) => getFilm(id))));
-      for (const id of ['family', 'features', 'open', 'shorts', 'trailers']) {
+      for (const id of ['family', 'features', 'classics', 'documentaries', 'open', 'shorts', 'trailers']) {
         const { title } = COLLECTIONS.find(value => value.id === id);
         const entries = collectionFilms(id, state);
         if (entries.length) results.append(section(title, entries.slice(0, SHELF_SIZE), id));

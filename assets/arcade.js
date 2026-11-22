@@ -1043,6 +1043,16 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
     'Short Videos': {
       catalog: 'short video', empty: 'short videos', find: 'searchShorts',
       detail: item => item.link, metadata: item => [item.creator, item.source], browse: q => hashFor('shorts', { q })
+    },
+    Products: {
+      catalog: 'product', empty: 'authorized listings', find: 'searchProducts',
+      detail: item => item.link, metadata: item => [item.retailer, item.categoryName],
+      browse: q => hashFor('discover', { q, type: 'products' }), browseLabel: 'See all matching products'
+    },
+    Bookmarks: {
+      catalog: 'bookmark', empty: 'saved bookmarks', find: 'searchBookmarks',
+      detail: item => item.link, metadata: item => [item.address],
+      browse: q => hashFor('discover', { q, type: 'bookmarks' }), browseLabel: 'See all matching bookmarks'
     }
   };
   const libraryPanels = new Map(Object.keys(librarySearches).map(name => {
@@ -1050,7 +1060,7 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
     const status = element('p', 'muted');
     status.setAttribute('role', 'status');
     const entries = element('ul', 'web-search-results');
-    const browse = link(`Search ${name} library`, '', 'button');
+    const browse = link(librarySearches[name].browseLabel || `Search ${name} library`, '', 'button');
     browse.hidden = true;
     panel.hidden = true;
     panel.append(element('h2', '', name), status, entries, browse);
@@ -1353,6 +1363,10 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
     const query = input.value.trim();
     if (!query) {
       drawAnswer('Search', 'Enter a search term.');
+      return;
+    }
+    if (group === 'Bookmarks') {
+      navigate(hashFor('discover', { q: query, type: 'bookmarks' }));
       return;
     }
     setTitle(query);
@@ -1901,7 +1915,12 @@ function renderGame(target, id, startFromLink) {
     if (!game.local) frame.sandbox = 'allow-scripts allow-same-origin allow-pointer-lock allow-presentation';
     const timer = setTimeout(() => {
       if (token !== revision) return;
-      showFrameError('The player did not respond.');
+      if (localFile) {
+        showFrameError('The built-in game file did not respond.');
+      } else {
+        stage.removeAttribute('aria-busy');
+        status.textContent = 'The official player is still loading. Use its controls as soon as they appear.';
+      }
     }, 10000);
     function showFrameError(message) {
       const restoreFocus = stage.contains(document.activeElement);
@@ -1943,6 +1962,7 @@ function renderGame(target, id, startFromLink) {
     if (embedUrl) {
       embedHelp.hidden = false;
       restart.disabled = false;
+      fullscreen.disabled = !canFullscreen;
     }
     if (record) stage.focus({ preventScroll: true });
   }
@@ -2057,15 +2077,16 @@ async function renderRoute(focus = true) {
       }
       case 'movies': {
         target.append(element('p', 'boot-note', 'Loading movies…'));
-        const { renderFilms } = await import(`./film-library.js${assetVersion}`);
+        const [{ renderFilms }] = await Promise.all([import(`./film-library.js${assetVersion}`), loadFeatureStyles('films')]);
         if (token === version) cleanup = renderFilms(target, { params: route.params });
         break;
       }
       case 'music': {
         target.append(element('p', 'boot-note', 'Loading music…'));
-        const render = route.params.has('view')
-          ? (await import(`./music-library.js${assetVersion}`)).renderMusic
-          : (await import(`./lyrics-library.js${assetVersion}`)).renderLyrics;
+        const archive = route.params.has('view');
+        const feature = archive ? 'music-library' : 'lyrics-library';
+        const [music] = await Promise.all([import(`./${feature}.js${assetVersion}`), loadFeatureStyles(feature)]);
+        const render = archive ? music.renderMusic : music.renderLyrics;
         if (token === version) cleanup = render(target, route.params);
         break;
       }
@@ -2081,7 +2102,9 @@ async function renderRoute(focus = true) {
       }
       case 'blip': {
         target.append(element('p', 'boot-note', 'Loading blip.ai…'));
-        const { renderBlip } = await import(`./blip.js${assetVersion}`);
+        const [{ renderBlip }] = await Promise.all([
+          import(`./blip.js${assetVersion}`), loadFeatureStyles('blip-music'), loadFeatureStyles('blip')
+        ]);
         if (token === version) cleanup = renderBlip(target, {
           draft: route.params.get('draft') || '', research: route.params.get('research') || '', chat: route.params.get('chat') || '',
           onDraftUsed: id => history.replaceState(history.state, '', hashFor('blip', { chat: id }))
@@ -2089,14 +2112,16 @@ async function renderRoute(focus = true) {
         break;
       }
       case 'web-search': {
+        target.append(element('p', 'boot-note', 'Loading Web Search…'));
         const [media, { searchWikipedia, findSearchReferences }, { renderGoogleSearch }, { renderSearchMaps }, { renderAssistantPanel, releaseCpuBlipModel }, { renderSearchTabs },
           { gameSearchSources }, { openSearchResource }] = await Promise.all([
           import(`./media.js${assetVersion}`), import(`./search-answer.js${assetVersion}`), import(`./search-google.js${assetVersion}`),
           import('./search-map.js'), import(`./assistant-panel.js${assetVersion}`), import('./search-tabs.js'),
-          import(`./search-game-sources.js${assetVersion}`), import(`./search-resource.js${assetVersion}`)
+          import(`./search-game-sources.js${assetVersion}`), import(`./search-resource.js${assetVersion}`),
+          ...['browser', 'search-tabs', 'search-fullscreen', 'assistant-panel', 'search-essay', 'blip'].map(loadFeatureStyles)
         ]);
         if (token === version) {
-          target.append(heading('Web Search', 'Search, watch, and ask questions in separate tabs.'));
+          target.replaceChildren(heading('Web Search', 'Search, watch, and ask questions in separate tabs.'));
           const modules = { media, searchWikipedia, findSearchReferences, renderGoogleSearch, renderSearchMaps, renderAssistantPanel, gameSearchSources, openSearchResource };
           let firstMode = route.params.get('mode');
           let firstQuery = route.params.get('q')?.trim();
@@ -2118,7 +2143,7 @@ async function renderRoute(focus = true) {
       }
       case 'browse': {
         if (!browserModule) target.append(element('p', 'boot-note', 'Loading Proxy Gemini…'));
-        browserModule = await import(`./browser.js${assetVersion}`);
+        [browserModule] = await Promise.all([import(`./browser.js${assetVersion}`), loadFeatureStyles('browser')]);
         if (token === version) {
           browserModule.renderBrowser(target, route.params.get('address') || '', {
             searchWeb: webProviderEnabled && gatewayConnected() ? searchGateway : undefined,
@@ -2129,7 +2154,7 @@ async function renderRoute(focus = true) {
       }
       case 'play-hub': {
         target.append(element('p', 'boot-note', 'Loading Play Hub…'));
-        const { renderPlayHub } = await import(`./play-hub.js${assetVersion}`);
+        const [{ renderPlayHub }] = await Promise.all([import(`./play-hub.js${assetVersion}`), loadFeatureStyles('play-hub')]);
         if (token === version) {
           target.replaceChildren();
           renderPlayHub(target, games, {

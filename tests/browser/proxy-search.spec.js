@@ -268,10 +268,12 @@ test('Proxy Gemini recovers from a blocked preview and finds in-page games on mo
   await expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
   await expect(frame).toHaveAttribute('src', original);
   const hide = page.getByRole('button', { name: 'Hide preview' });
+  await expect.poll(() => requests).toBe(1);
   await hide.click();
   await expect(frame).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Open in new tab', exact: true })).toHaveAttribute('href', original);
   await page.getByRole('button', { name: 'Retry preview' }).click();
+  await expect.poll(() => requests).toBe(2);
   await hide.click();
   expect(requests).toBe(2);
   await page.getByRole('button', { name: 'Choose an in-page game' }).click();
@@ -287,6 +289,84 @@ test('Proxy Gemini recovers from a blocked preview and finds in-page games on mo
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(filter).toHaveValue('2048');
   expect(requests).toBe(2);
+});
+
+test('Proxy Gemini cancels a loading preview and restores the hidden state through navigation', async ({ page }) => {
+  const original = 'https://example.com/slow-reference';
+  let release;
+  const firstResponse = new Promise(resolve => { release = resolve; });
+  let requests = 0;
+  await page.route(original, async route => {
+    if (++requests === 1) await firstResponse;
+    await route.fulfill({ contentType: 'text/html', body: '<h1>Allowed publisher preview</h1>' }).catch(() => {});
+  });
+  await page.goto('/#browse');
+  const address = viewerAddress(page);
+  await address.fill(original);
+  await address.press('Enter');
+  const progress = page.getByRole('progressbar', { name: 'Loading preview' });
+  const panel = page.getByRole('tabpanel');
+  const hidden = panel.getByRole('heading', { name: 'Preview hidden', exact: true });
+  try {
+    await expect.poll(() => requests).toBe(1);
+    await expect(progress).toBeVisible();
+    await page.getByRole('button', { name: 'Hide preview', exact: true }).click();
+    await expect(progress).toHaveCount(0);
+    await expect(panel.locator('iframe')).toHaveCount(0);
+    const originalLink = panel.getByRole('link', { name: 'Open original site', exact: true });
+    await expect(originalLink).toHaveAttribute('href', original);
+    await expect(originalLink).toHaveAttribute('target', '_blank');
+    await expect(originalLink).toBeFocused();
+  } finally {
+    release();
+  }
+
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(panel.getByRole('heading', { name: 'Start browsing' })).toBeVisible();
+  await page.getByRole('button', { name: 'Forward', exact: true }).click();
+  await expect(hidden).toBeVisible();
+  await page.goto('/#home');
+  await expect(page.locator('.proxy-viewer')).toHaveCount(0);
+  await page.goto('/#browse');
+  await expect(hidden).toBeVisible();
+  await page.getByRole('button', { name: 'Close example.com tab', exact: true }).click();
+  await page.reload();
+  await page.getByRole('button', { name: 'Reopen closed tab', exact: true }).click();
+  await expect(hidden).toBeVisible();
+  await expect(panel.locator('iframe')).toHaveCount(0);
+  expect(requests).toBe(1);
+
+  await panel.getByRole('button', { name: 'Retry preview', exact: true }).click();
+  const frame = page.locator('.proxy-frame');
+  await expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
+  await expect(page.frameLocator('.proxy-frame').getByRole('heading', { name: 'Allowed publisher preview' })).toBeVisible();
+  expect(requests).toBe(2);
+});
+
+test('Proxy Gemini names older saved pages and exposes their titles to the shared bookmark library', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  const original = 'https://example.com/library/reference';
+  await page.addInitScript(({ original }) => {
+    const key = 'gamefor-ffun-proxy-v1';
+    if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ favorites: [original], history: [original] }));
+  }, { original });
+  await page.goto('/#browse?panel=favorites');
+  const dialog = page.getByRole('dialog', { name: 'Favorite pages' });
+  await dialog.getByRole('button', { name: 'Rename example.com', exact: true }).click();
+  const name = dialog.getByRole('textbox', { name: 'Bookmark name', exact: true });
+  await expect(name).toBeFocused();
+  await name.fill('  Astronomy   reference  ');
+  await name.press('Enter');
+  await expect(dialog.getByRole('button', { name: 'Rename Astronomy reference', exact: true })).toBeFocused();
+  await dialog.getByRole('searchbox', { name: 'Search saved pages' }).fill('ASTRONOMY');
+  await expect(dialog.getByRole('button', { name: /^Open Astronomy reference/ })).toBeVisible();
+  await page.reload();
+  await expect(dialog.getByRole('button', { name: /^Open Astronomy reference/ })).toBeVisible();
+  const library = await page.evaluate(async () => (await import('./assets/browser.js')).getBrowserLibraryState());
+  expect(library).toEqual({ favorites: [{ address: original, title: 'Astronomy reference' }], history: [{ address: original, title: 'example.com' }] });
+  await dialog.getByRole('button', { name: 'Close favorite pages', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Open saved page Astronomy reference', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
 });
 
 test('Proxy Gemini keeps game filters and expanded results with their viewer tab', async ({ page }) => {

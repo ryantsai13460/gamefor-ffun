@@ -43,7 +43,12 @@ test('Music opens directly to sourced lyric videos and offers instrumental visua
   await expect(page.locator('main iframe')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
 
-  await button(page, 'Instrumental visualizers').click();
+  await page.getByRole('searchbox', {name: 'Search music by title, artist, or style'}).fill('Minecraft');
+  await expect(list).toBeHidden();
+  await button(page, 'Show matching instrumentals').press('Enter');
+  await expect(button(page, 'Instrumental visualizers')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('searchbox', {name: 'Search music by title, artist, or style'})).toHaveValue('Minecraft');
+  await expect(button(page, 'Show matching instrumentals')).toBeHidden();
   await expect(button(list, `Play ${lyric.title}`)).toHaveCount(0);
   await expect(button(list, `Play ${visualizer.title}`)).toBeVisible();
   await page.goto(`/${visualizer.href}`);
@@ -90,4 +95,53 @@ test('lyric favorites, playlists, recent playback and fullscreen work apart from
   await expect(list).toBeHidden();
   await page.getByRole('link', {name: 'Chart lyrics', exact: true}).click();
   await expect(page.getByText('Showing 25 of 550 chart songs')).toBeVisible();
+});
+
+test('lyric discovery appends reviewed videos and opens a later official release', async ({ page }) => {
+  const exact = findLyricVideos('Rolling Stones Ruby Tuesday')[0];
+  const lyrics = records.filter(track => track.kind === 'lyrics');
+  expect(exact).toMatchObject({id: 'ADtnUC_ctNk', title: 'Ruby Tuesday', artist: 'The Rolling Stones'});
+  expect(lyrics.length).toBeGreaterThan(18);
+  await page.goto('/#music');
+  const list = page.getByRole('list', {name: 'Music tracks'});
+  await expect(list.getByRole('listitem')).toHaveCount(18);
+  await expect(button(list, `Play ${exact.title}`)).toHaveCount(0);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect(list.getByRole('listitem')).toHaveCount(Math.min(36, lyrics.length));
+  await button(list, `Play ${exact.title}`).click();
+  const dialog = page.getByRole('dialog', {name: exact.title, exact: true});
+  await expect(dialog.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/ADtnUC_ctNk/);
+  await expect(dialog.getByRole('link', {name: 'About the visuals'})).toHaveAttribute('href', exact.visualSource);
+});
+
+test('lyric playlists can be reordered with the keyboard and play the saved order', async ({ page }) => {
+  const nextLyric = records.find(track => track.kind === 'lyrics' && track.id !== lyric.id);
+  await page.setViewportSize({width: 320, height: 780});
+  await page.goto('/#music');
+  const list = page.getByRole('list', {name: 'Music tracks'});
+  const editor = page.getByRole('dialog', {name: 'Add to playlist', exact: true});
+  await button(list, `Add ${lyric.title} to playlist`).press('Enter');
+  await editor.getByRole('textbox', {name: 'Playlist name'}).fill('Listening order');
+  await button(editor, 'Add track').click();
+  await button(list, `Add ${nextLyric.title} to playlist`).press('Enter');
+  await button(editor, 'Add track').click();
+
+  await page.goto('/#music?collection=playlists');
+  await expect(button(list, `Move ${lyric.title} earlier`)).toBeDisabled();
+  await button(list, `Move ${nextLyric.title} earlier`).press('Enter');
+  await expect(page.getByText(`Moved ${nextLyric.title} to position 1.`, {exact: true})).toBeVisible();
+  await expect(button(list, `Play ${nextLyric.title}`)).toBeFocused();
+  await expect(button(list, `Move ${nextLyric.title} earlier`)).toBeDisabled();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+
+  await page.reload();
+  const rows = list.getByRole('listitem');
+  await expect(button(rows.first(), `Play ${nextLyric.title}`)).toBeVisible();
+  await button(page, 'Play playlist').press('Enter');
+  const firstPlayer = page.getByRole('dialog', {name: nextLyric.title, exact: true});
+  await expect(firstPlayer.getByRole('link', {name: 'About the visuals'})).toHaveAttribute('href', nextLyric.visualSource);
+  await button(firstPlayer, 'Next track').press('Enter');
+  const secondPlayer = page.getByRole('dialog', {name: lyric.title, exact: true});
+  await expect(secondPlayer).toBeVisible();
+  await expect(button(secondPlayer, 'Next track')).toBeDisabled();
 });

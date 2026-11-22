@@ -25,7 +25,22 @@ test('Lantern Shift plays offline with keyboard lane commands, live scoring and 
   await expect(game.getByRole('button', { name: 'Resume', exact: true })).toBeVisible();
 });
 
+test('the Lantern Shift release deep link opens the game and Back exits it', async ({ page }) => {
+  await page.route('https://**/*', route => route.abort());
+  await page.goto('/?release=d40a117&build=20261122-1#play/lantern-shift?start=1');
+  const game = page.getByRole('group', { name: 'Lantern Shift controls' });
+  await expect(game).toBeVisible();
+  await game.getByRole('button', { name: 'Start', exact: true }).click();
+  await game.getByLabel('Lantern Shift game').press('Space');
+  await expect(game.getByRole('status')).toContainText('Lane outer');
+
+  await page.getByRole('link', { name: /Back to (?:browsing|games)/i }).click();
+  await expect(page).toHaveURL(/#home$/);
+  await expect(game).toHaveCount(0);
+});
+
 test('Lantern Shift keeps the best completed score across retries and reloads', async ({ page }) => {
+  test.slow();
   await page.clock.install();
   const game = await startLanternShift(page);
   const status = game.getByRole('status');

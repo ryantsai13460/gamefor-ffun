@@ -1,6 +1,6 @@
 import { arcadeEmbed, browserApps } from "./embedded-content.js";
 import { createGameAddressLookup, isGamePortalAddress } from "./game-play-policy.js";
-import { createLibrary, normalize, queryLibrary } from "./library.js";
+import { browserBrowsingStorageKey as browsingStorageKey, createLibrary, normalize, queryLibrary } from "./library.js";
 
 const assetVersion = new URL(import.meta.url).search;
 const [{ games }, { mountLocalGame }] = await Promise.all([
@@ -20,10 +20,10 @@ const youtubeHosts = new Set([
   "youtu.be", "www.youtu.be", "www.youtube-nocookie.com",
 ]);
 const browserViews = new WeakMap();
-const browsingStorageKey = "gamefor-ffun-proxy-v1";
 const closedTabsStorageKey = "gamefor-ffun-proxy-closed-v1";
 const addressLimit = 2048;
 const savedLimits = { favorites: 40, history: 30 };
+const bookmarkNameLimit = 80;
 const closedTabLimit = 8;
 const closedEntryLimit = 24;
 const gamePageSize = 24;
@@ -195,14 +195,24 @@ export function resolveBrowserAddress(input, pageUrl) {
   return { kind: "website", title: url.hostname, address: url.href, url: url.href, embed: url.href };
 }
 
+function bookmarkName(value) {
+  return typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, bookmarkNameLimit).trimEnd() : "";
+}
+
 function recoverBrowsingData(pageUrl) {
-  const data = { favorites: [], history: [] };
+  const data = { favorites: [], history: [], names: Object.create(null) };
   try {
     const stored = JSON.parse(window.localStorage.getItem(browsingStorageKey));
     for (const [key, limit] of Object.entries(savedLimits)) {
       if (!Array.isArray(stored?.[key])) continue;
       const addresses = stored[key].slice(0, limit).map(value => resolveBrowserAddress(value, pageUrl)?.address);
       data[key] = [...new Set(addresses.filter(Boolean))];
+    }
+    if (stored?.names && typeof stored.names === "object") {
+      for (const address of data.favorites) {
+        const name = Object.hasOwn(stored.names, address) && bookmarkName(stored.names[address]);
+        if (name) data.names[address] = name;
+      }
     }
   } catch {
     // Browsing is still available when private mode or browser policy disables storage.
@@ -211,12 +221,15 @@ function recoverBrowsingData(pageUrl) {
 }
 
 export function getBrowserLibraryState(pageUrl = window.location.href) {
-  const { favorites, history } = recoverBrowsingData(pageUrl);
+  const { favorites, history, names } = recoverBrowsingData(pageUrl);
   const summary = address => {
     const entry = resolveBrowserAddress(address, pageUrl);
     return { address, title: entry.title };
   };
-  return { favorites: favorites.map(summary), history: history.map(summary) };
+  return {
+    favorites: favorites.map(address => names[address] ? { address, title: names[address] } : summary(address)),
+    history: history.map(summary),
+  };
 }
 
 function recoverClosedTabs(pageUrl) {
@@ -231,14 +244,17 @@ function recoverClosedTabs(pageUrl) {
       if (!Array.isArray(addresses) || addresses.length > closedEntryLimit || !Number.isInteger(tab.index)
           || tab.index < 0 || tab.index >= addresses.length) continue;
       const entries = [];
+      const hiddenPositions = new Set(Array.isArray(tab.hidden) ? tab.hidden.slice(0, closedEntryLimit) : []);
+      const hidden = [];
       let index = -1;
       for (const [position, address] of addresses.entries()) {
         const page = resolveBrowserAddress(address, pageUrl);
         if (!page) continue;
         if (position === tab.index) index = entries.length;
         entries.push(page);
+        if (page.embed && hiddenPositions.has(position)) hidden.push(page);
       }
-      if (index !== -1 && entries.some(page => page.address)) recovered.push({ entries, index });
+      if (index !== -1 && entries.some(page => page.address)) recovered.push({ entries, index, hidden });
     }
     return recovered;
   } catch {
@@ -336,7 +352,7 @@ function createBrowser() {
   const closedTabs = recoverClosedTabs(window.location.href);
 
   let counter = 0;
-  function createTab(entries = [home], index = 0) {
+  function createTab(entries = [home], index = 0, hidden = []) {
     const id = ++counter;
     const panel = element("div", "proxy-tab-panel");
     panel.id = `proxy-tab-content-${viewerId}-${id}`;
@@ -345,7 +361,8 @@ function createBrowser() {
     panel.tabIndex = 0;
     panel.hidden = true;
     panels.append(panel);
-    return { id, entries, index, panel, preview: null, draft: undefined, invalid: false, gameFilters: { ...defaultGameFilters } };
+    return { id, entries, index, panel, hidden: new WeakSet(hidden), preview: null,
+      draft: undefined, invalid: false, gameFilters: { ...defaultGameFilters } };
   }
   let active = createTab();
   const items = [active];
@@ -372,7 +389,10 @@ function createBrowser() {
   function saveClosedTabs() {
     reopen.disabled = !closedTabs.length;
     try {
-      const saved = closedTabs.map(tab => ({ addresses: tab.entries.map(page => page.address), index: tab.index }));
+      const saved = closedTabs.map(tab => ({
+        addresses: tab.entries.map(page => page.address), index: tab.index,
+        hidden: tab.hidden.map(page => tab.entries.indexOf(page)),
+      }));
       window.sessionStorage.setItem(closedTabsStorageKey, JSON.stringify(saved));
     } catch {
       // Closed tabs are still available in this viewer while the page is open.
@@ -396,6 +416,9 @@ function createBrowser() {
     browsing.favorites = isSaved
       ? browsing.favorites.filter(value => value !== pageAddress)
       : [pageAddress, ...browsing.favorites].slice(0, savedLimits.favorites);
+    for (const saved of Object.keys(browsing.names)) {
+      if (!browsing.favorites.includes(saved)) delete browsing.names[saved];
+    }
     storeBrowsing(isSaved ? "Page removed from favorites." : "Page saved to favorites.");
     syncFavorite();
   }
@@ -462,7 +485,8 @@ function createBrowser() {
     contents.append(filter, results);
     const { dialog, close } = createDialog(title, contents);
 
-    function drawSaved() {
+    function drawSaved(focusAddress) {
+      let focusRename;
       const entries = browsing[kind];
       filter.hidden = !entries.length;
       if (!entries.length) {
@@ -474,26 +498,67 @@ function createBrowser() {
         const list = element("ul", "proxy-saved-list");
         for (const value of entries) {
           const page = resolveBrowserAddress(value, window.location.href);
-          if (!page?.address || !`${page.title} ${value}`.toLowerCase().includes(query)) continue;
+          if (!page?.address) continue;
+          const name = (favorites && browsing.names[value]) || page.title;
+          if (!`${name} ${page.title} ${value}`.toLowerCase().includes(query)) continue;
           const row = element("li");
-          const label = page.title === value ? value : `${page.title} ${value}`;
+          const label = name === value ? value : `${name} ${value}`;
           const open = control(`Open ${label}`, "", () => {
             dialog.close();
             submit(value);
             address.focus();
           });
           open.className = "proxy-saved-link";
-          open.append(element("strong", "", page.title));
-          if (page.title !== value) open.append(" ", element("small", "", value));
+          open.append(element("strong", "", name));
+          if (name !== value) open.append(" ", element("small", "", value));
           const remove = control(`Remove ${value}`, "×", () => {
             browsing[kind] = browsing[kind].filter(item => item !== value);
+            if (favorites) delete browsing.names[value];
             storeBrowsing(favorites ? "Favorite removed." : "History entry removed.");
             if (current().kind === "home") showPage(true);
             else syncFavorite();
             drawSaved();
             close.focus();
           });
-          row.append(open, remove);
+          if (favorites) {
+            const tools = element("div", "proxy-bookmark-actions");
+            const rename = control(`Rename ${name}`, "Rename", () => {
+              list.querySelector(".proxy-bookmark-editor")?.remove();
+              const editor = element("form", "proxy-bookmark-editor");
+              const label = element("label", "", "Bookmark name");
+              const field = element("input", "field");
+              field.maxLength = bookmarkNameLimit;
+              field.value = browsing.names[value] || page.title;
+              field.placeholder = page.title;
+              label.append(field);
+              const actions = element("div", "proxy-bookmark-actions");
+              const save = element("button", "button primary", "Save name");
+              save.type = "submit";
+              const cancel = control("Cancel rename", "Cancel", () => {
+                editor.remove();
+                rename.focus();
+              });
+              cancel.className = "button";
+              actions.append(save, cancel);
+              editor.append(label, actions);
+              editor.addEventListener("submit", event => {
+                event.preventDefault();
+                const updated = bookmarkName(field.value);
+                if (updated && updated !== page.title) browsing.names[value] = updated;
+                else delete browsing.names[value];
+                storeBrowsing("Bookmark name updated.");
+                if (current().kind === "home") showPage(true);
+                drawSaved(value);
+              });
+              row.append(editor);
+              field.focus();
+              field.select();
+            });
+            rename.className = "button proxy-bookmark-rename";
+            if (value === focusAddress) focusRename = rename;
+            tools.append(rename, remove);
+            row.append(open, tools);
+          } else row.append(open, remove);
           list.append(row);
         }
         results.replaceChildren(list.childElementCount ? list
@@ -512,9 +577,10 @@ function createBrowser() {
         clear.className = "button proxy-clear-history";
         results.append(clear);
       }
+      if (focusAddress) (focusRename || filter).focus();
     }
 
-    filter.addEventListener("input", drawSaved);
+    filter.addEventListener("input", () => drawSaved());
     drawSaved();
     dialog.showModal();
   }
@@ -574,7 +640,8 @@ function createBrowser() {
     if (tab.entries.some(page => page.address)) {
       const latestStart = Math.max(0, tab.entries.length - closedEntryLimit);
       const start = Math.max(0, Math.min(latestStart, tab.index - Math.floor(closedEntryLimit / 2)));
-      closedTabs.unshift({ entries: tab.entries.slice(start, start + closedEntryLimit), index: tab.index - start });
+      const entries = tab.entries.slice(start, start + closedEntryLimit);
+      closedTabs.unshift({ entries, index: tab.index - start, hidden: entries.filter(page => tab.hidden.has(page)) });
       closedTabs.length = Math.min(closedTabs.length, closedTabLimit);
       saveClosedTabs();
     }
@@ -605,7 +672,7 @@ function createBrowser() {
   }
 
   function duplicateTab() {
-    const next = createTab(active.entries.slice(), active.index);
+    const next = createTab(active.entries.slice(), active.index, active.entries.filter(page => active.hidden.has(page)));
     next.gameFilters = { ...active.gameFilters };
     items.splice(items.indexOf(active) + 1, 0, next);
     activate(next);
@@ -615,7 +682,7 @@ function createBrowser() {
   function reopenTab() {
     const next = closedTabs.shift();
     if (!next) return;
-    const tab = createTab(next.entries, next.index);
+    const tab = createTab(next.entries, next.index, next.hidden);
     items.push(tab);
     saveClosedTabs();
     activate(tab);
@@ -630,7 +697,7 @@ function createBrowser() {
     if (page.kind !== current().kind || page.address !== current().address) {
       active.entries.splice(active.index + 1, Infinity, page);
       active.index++;
-    }
+    } else active.hidden.delete(current());
     showPage(true, repeatSearch);
     renderTabs();
     if (restoreFocus) active.panel.focus({ preventScroll: true });
@@ -819,7 +886,8 @@ function createBrowser() {
         const saved = resolveBrowserAddress(value, window.location.href);
         if (!saved?.address) continue;
         const item = element("li");
-        const open = control(`Open saved page ${saved.title}`, saved.title, () => submit(value));
+        const name = browsing.names[value] || saved.title;
+        const open = control(`Open saved page ${name}`, name, () => submit(value));
         open.className = "proxy-bookmark";
         item.append(open);
         list.append(item);
@@ -853,13 +921,13 @@ function createBrowser() {
     return content;
   }
 
-  function playHereAction() {
+  function playHereAction(primary = true) {
     const choose = control("Choose an in-page game", "Choose an in-page game", () => {
       active.gameFilters = { ...defaultGameFilters };
       visit(home);
       active.panel.querySelector(".proxy-game-shelf h2")?.focus();
     });
-    choose.className = "button proxy-action";
+    choose.className = primary ? "button proxy-action" : "button";
     return choose;
   }
 
@@ -1035,19 +1103,27 @@ function createBrowser() {
   function refreshPage() {
     active.draft = undefined;
     active.invalid = false;
+    active.hidden.delete(current());
     showPage(true, true);
   }
 
-  function previewRecovery(heading, message, retryLabel = "Retry preview", publisher = "") {
+  function previewRecovery(page, heading, message, retryLabel = "Retry preview") {
     const panel = element("div", "proxy-direct proxy-recovery");
     const actions = element("div", "proxy-direct-actions");
+    const original = externalPreviewSource(page);
+    const publisher = officialGameSource(page);
     const retry = control(retryLabel, retryLabel, () => {
       refreshPage();
       active.panel.focus();
     });
     retry.className = "button";
-    actions.append(playHereAction(), retry);
-    if (publisher) actions.append(external(publisher, "Open game page", "button"));
+    if (original) {
+      actions.append(external(original, page.kind === "youtube" ? "Open on YouTube" : "Open original site", "button proxy-action"),
+        retry, playHereAction(false));
+    } else {
+      actions.append(playHereAction(), retry);
+      if (publisher) actions.append(external(publisher, "Open game page", "button"));
+    }
     panel.append(element("h2", "", heading), element("p", "", message), actions);
     return panel;
   }
@@ -1091,11 +1167,10 @@ function createBrowser() {
       try { player?.destroy(); } catch {}
       player = undefined;
     };
-    const finish = (message, dismissible = false) => {
+    const finish = message => {
       clearTimeout(timer);
       preview.busy = false;
       preview.message = message;
-      preview.dismissible = dismissible;
       stage.removeAttribute("aria-busy");
       update();
     };
@@ -1104,7 +1179,7 @@ function createBrowser() {
       stopPlayer();
       preview.source = externalPreviewSource(page);
       preview.frame = null;
-      stage.replaceChildren(previewRecovery(heading, message, "Retry preview", publisher));
+      stage.replaceChildren(previewRecovery(page, heading, message));
       finish(heading);
     };
     const unverified = page.kind === "game"
@@ -1114,7 +1189,7 @@ function createBrowser() {
       : publisher ? "Retry the player, open the game page, or choose another in-page game."
         : "Retry the player or choose another in-page game.";
     const timer = setTimeout(() => {
-      if (frameResponded && youtube) finish("YouTube playback could not be verified. Open the video on YouTube if it does not play here.", true);
+      if (frameResponded && youtube) finish("YouTube playback could not be verified. Open the video on YouTube if it does not play here.");
       else fail("Preview timed out", retryMessage);
     }, 10000);
     frame.addEventListener("load", () => {
@@ -1123,7 +1198,7 @@ function createBrowser() {
         const ready = Boolean(frame.contentDocument?.getElementById("star"));
         if (ready) finish("The game is ready.");
         else fail("The local game could not load", retryMessage);
-      } else if (!youtube) finish(unverified, true);
+      } else if (!youtube) finish(unverified);
     }, listenerOptions);
     frame.addEventListener("error", () => {
       fail("Preview unavailable", retryMessage);
@@ -1141,13 +1216,13 @@ function createBrowser() {
       player = new api.Player(frame, {
         events: {
           onReady: () => {
-            if (!controller.signal.aborted) finish("YouTube player ready. Use the player’s Play control.", true);
+            if (!controller.signal.aborted) finish("YouTube player ready. Use the player’s Play control.");
           },
           onError: () => {
             if (!controller.signal.aborted) fail("YouTube playback unavailable", "Open the original video on YouTube for details.");
           },
           onStateChange: event => {
-            if (event.data === 1 && !controller.signal.aborted) finish("The video is playing in YouTube.", true);
+            if (event.data === 1 && !controller.signal.aborted) finish("The video is playing in YouTube.");
           }
         }
       });
@@ -1178,7 +1253,7 @@ function createBrowser() {
     if (page.kind === "search") refresh.disabled = !preview?.canRefresh;
     const sourceUrl = preview?.source || (page.credit && officialGameSource(page));
     source.hidden = !sourceUrl;
-    dismissPreview.hidden = !preview?.dismissible;
+    dismissPreview.hidden = !preview?.frame || page.kind === "local";
     source.textContent = page.credit ? `Game from ${page.credit}` : "Open in new tab";
     if (sourceUrl) source.href = sourceUrl;
     else source.removeAttribute("href");
@@ -1193,19 +1268,9 @@ function createBrowser() {
   }
 
   function hidePreview() {
-    const tab = active;
-    const page = current();
-    unloadTab(tab);
-    const original = externalPreviewSource(page);
-    const publisher = officialGameSource(page);
-    tab.preview = { source: original };
-    const message = original ? "You can still open the original in a new tab."
-      : publisher ? "Retry the player, open the game page, or choose another in-page game."
-        : "Retry the player or choose another in-page game.";
-    const panel = previewRecovery("Preview hidden", message, "Retry preview", publisher);
-    tab.panel.append(panel);
-    syncPreview();
-    panel.querySelector(".proxy-action").focus();
+    active.hidden.add(current());
+    showPage(true);
+    active.panel.querySelector(".proxy-recovery .proxy-action")?.focus();
   }
 
   function showPage(reset = false, refreshSearch = false) {
@@ -1236,8 +1301,13 @@ function createBrowser() {
         try {
           preview.release = mountLocalGame(page.id, stage);
         } catch {
-          stage.replaceChildren(previewRecovery("The game did not start", "Restart this game or choose another from the arcade.", "Restart game"));
+          stage.replaceChildren(previewRecovery(page, "The game did not start", "Restart this game or choose another from the arcade.", "Restart game"));
         }
+      } else if (active.hidden.has(page)) {
+        preview.source = externalPreviewSource(page);
+        const message = preview.source ? "Open the original in a new tab, or retry the preview here."
+          : "Retry the game player, open the game page, or choose another in-page game.";
+        stage.append(previewRecovery(page, "Preview hidden", message));
       } else if (page.kind === "local" || page.embed) {
         preview.release = mountFrame(active, page);
       } else {
