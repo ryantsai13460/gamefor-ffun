@@ -1,6 +1,13 @@
+const release = new URL(import.meta.url).search;
+const [{ indieRacingGames }, { openWebGames }, { publisherGames }] = await Promise.all([
+  import(`./indie-racing.js${release}`),
+  import(`./open-web-games.js${release}`),
+  import(`./publisher-games.js${release}`)
+]);
+
 // Recovered from the legacy Gamefor Ffun library and the public Proxy Arcade catalog.
 // External game pages are verified separately from in-page gameplay.
-export const games = [
+const preservedGames = [
   {"id": "territorial", "title": "Territorial.io", "category": "Strategy", "collection": "github", "aliases": ["territorial-io"], "url": "https://territorial.io/", "embed": "https://territorial.io/", "status": "embed", "art": "https://www3.minijuegosgratis.com/v3/games/thumbnails/235881_7_sq.jpg", "artCredit": "Miniplay"},
   {"id": "paperio", "title": "Paper.io 2", "category": "Arcade", "collection": "github", "aliases": ["paper-io-2", "6afe6ed032112dae96e535a8"], "url": "https://www.miniplay.com/game/paper-io-2", "status": "external", "art": "https://www4.minijuegosgratis.com/v3/games/thumbnails/253450_7_sq.jpg", "artCredit": "Miniplay"},
   {"id": "hexanaut", "title": "Hexanaut.io", "category": "Strategy", "collection": "github", "aliases": ["hexanaut-io", "6afe6f480567ca2910243b0b"], "url": "https://hexanaut.io/", "status": "external", "art": "https://hexanaut.io/img/banners/1200x630.png", "artCredit": "Hexanaut.io"},
@@ -565,3 +572,6 @@ export const games = [
   {"id": "fraction-kitchen", "title": "Fraction Kitchen", "description": "Combine slices of different sizes to serve four fraction orders at your own pace.", "category": "Puzzle", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/fraction-kitchen.webp", "artCredit": "Gamefor Ffun gameplay"},
   {"id": "clock-courier", "title": "Clock Courier", "description": "Read simple delivery clues and set an analog clock across five untimed stops.", "category": "Puzzle", "collection": "original", "status": "local", "local": true, "isNew": true, "art": "./assets/local-art/clock-courier.webp", "artCredit": "Gamefor Ffun gameplay"}
 ];
+
+const additions = [...indieRacingGames, ...openWebGames, ...publisherGames].map(game => ({ ...game, isNew: true }));
+export const games = [...preservedGames, ...additions];

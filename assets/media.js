@@ -232,7 +232,7 @@ function image(art, title) {
   return element;
 }
 
-function loadIframeApi() {
+export function loadIframeApi() {
   if (window.YT?.Player) return Promise.resolve(window.YT);
   if (iframeApi) return iframeApi;
   iframeApi = new Promise((resolve) => {

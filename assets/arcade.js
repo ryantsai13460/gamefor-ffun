@@ -44,6 +44,7 @@ const routeNames = {
 const labels = { local: 'Built in', embed: 'In-page player', external: 'Catalog only', unverified: 'Play unavailable' };
 const learningGames = ['fraction-kitchen', 'clock-courier', 'memory-match', '2048'];
 const isPlayable = game => Boolean(game.local || arcadeEmbed(game));
+const playableCount = games.filter(isPlayable).length;
 
 const paths = {
   home: '<path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2z"/>',
@@ -384,7 +385,7 @@ function homePlayPanel() {
     row.append(play);
     picks.append(row);
   }
-  panel.append(title, element('p', '', `${localCount} built-in games`), picks,
+  panel.append(title, element('p', '', `${playableCount.toLocaleString('en-US')} playable games`), picks,
     link('In-page games', '#games?option=in-page', 'button'));
   return panel;
 }
@@ -518,7 +519,8 @@ function renderHome(target) {
   for (const category of ['Arcade', 'Racing', 'Puzzle', 'Sports', 'Platformer', 'Parkour', 'Multiplayer']) {
     if (library.categoryCounts.has(category)) chips.append(link(category, hashFor('games', { category }), 'chip'));
   }
-  chips.append(link('All categories', '#categories', 'chip', 'layers'));
+  chips.append(link('In-page racing', '#games?option=in-page&category=Racing', 'chip', 'activity'),
+    link('All categories', '#categories', 'chip', 'layers'));
   target.append(chips);
 
   const artPicks = games.filter(game => game.art && isPlayable(game));
@@ -530,6 +532,11 @@ function renderHome(target) {
   const shelves = [
     ['recent', 'Recently played', records(prefs.recent), 'Play history', '#recent'],
     ['featured', 'Featured games', picks, 'All games', '#games'],
+    ['racing', 'In-page racing', distinct([
+      ...records(['hexgl', 'playzone-velocity-rush', 'playzone-drift-track', 'ffun-circuit-v1']),
+      ...games.filter(game => game.collection === 'indie-racing' && game.category === 'Racing'),
+      ...games.filter(game => game.category === 'Racing' && isPlayable(game))
+    ]), 'All playable racers', '#games?option=in-page&category=Racing'],
     ['media'],
     ['popular', 'Popular on this device', popular, 'Trending games', '#trending'],
     ['new', 'New games', games.filter(game => game.isNew && isPlayable(game)).sort((a, b) => Number(Boolean(b.local)) - Number(Boolean(a.local))
@@ -1363,7 +1370,7 @@ function renderSettings(target, params) {
   const home = element('section', 'info-panel');
   home.append(element('h2', '', 'Home sections'));
   for (const [key, title] of [
-    ['destinations', 'Home shortcuts'], ['featured', 'Featured games'], ['recent', 'Recently played'],
+    ['destinations', 'Home shortcuts'], ['featured', 'Featured games'], ['racing', 'In-page racing'], ['recent', 'Recently played'],
     ['popular', 'Popular on this device'], ['new', 'New games'], ['built-in', 'Built-in arcade'], ['media', 'Film, music, and video picks']
   ]) {
     const choice = element('label', 'settings-option', title);
@@ -1502,6 +1509,7 @@ function renderGame(target, id, startFromLink) {
   const headingCopy = element('div');
   headingCopy.append(element('p', '', `${game.category} · ${labels[availability]}`), element('h1', '', game.title));
   if (game.description) headingCopy.append(element('p', '', game.description));
+  if (game.creator && !game.attribution) headingCopy.append(element('p', '', `By ${game.creator}`));
   header.append(artwork(game), headingCopy);
   target.append(header);
   const controls = element('div', 'player-actions interaction-row');
@@ -1521,6 +1529,11 @@ function renderGame(target, id, startFromLink) {
     embedHelp.append(element('span', '', 'Player blank or blocked? Try Restart or choose another game.'),
       link('Browse in-page games', '#games?option=in-page', 'button'));
     target.append(embedHelp);
+  }
+  if (game.attribution && verifiedSource(game.url)) {
+    const credit = element('p', 'player-note');
+    credit.append(external(`Game from ${game.creator}`, game.url, 'text-action'));
+    target.append(credit);
   }
   if (game.artCredit && prefs.artwork) target.append(element('p', 'player-note', `Artwork: ${game.artCredit}`));
   const related = games.filter(candidate => candidate !== game && candidate.category === game.category && isPlayable(candidate))

@@ -1,6 +1,14 @@
 # Arcade release verification
 
-## Direct play links and 7clouds uploads
+## In-page game expansion and main 7clouds uploads
+
+The library preserves all 563 earlier records and adds 988 play entries, for 1,017 in-page titles in total. Each added game was checked against an exact publisher or creator URL. The catalog excludes duplicate titles and inspected addresses with frame restrictions. [Game sources](catalog-recovery.md)
+
+Representative live WebKit checks used the arcade's sandbox with TLS verification enabled. In-game input changed the rendered game for Rally Legend, Stacktris, Drift Track, and Black Box. Tower of Hanoi recorded a move, Bubblenado started from a touch input, and Drift Racing's dashboard showed 35 km/h after the race started. Word Hive and Solitaire opened playable boards. These checks kept the parent page and tab stable. Hosted titles rely on the publisher and the player's connection.
+
+Music loads the main 7clouds public uploads playlist. Browser fixtures covered on-demand loading, player status, closing the player, and redirects from earlier channel routes. The live main playlist displayed an upload in WebKit, where YouTube media requests returned HTTP 403 and playback stalled. The link to the full playlist remained available. [7clouds uploads](https://www.youtube.com/playlist?list=UUNqFDjYTexJDET3rPDrmJKg)
+
+## Earlier direct play and channel picker release
 
 The Music picker includes all 43 handles on the official 7clouds roster. Official YouTube oEmbed responses confirmed an uploader match on a representative video for each handle. The in-page player uses the corresponding uploads playlist. In live WebKit checks, the main playlist loaded its first entry but media requests returned HTTP 403. Rock’s player said the video was unavailable. Both channel links remained available. [Official 7clouds roster](https://7clouds.org/) · [YouTube embedding help](https://support.google.com/youtube/answer/171780)
 

@@ -26,6 +26,7 @@ const addressLimit = 2048;
 const savedLimits = { favorites: 40, history: 30 };
 const closedTabLimit = 8;
 const closedEntryLimit = 24;
+const gamePageSize = 24;
 const youtubeApiUrl = "https://www.youtube.com/iframe_api";
 let viewerCount = 0;
 let youtubeApi;
@@ -140,7 +141,9 @@ export function resolveBrowserAddress(input, pageUrl) {
 
   const game = gameEmbeds.get(url.href);
   if (game) {
-    return { kind: "game", title: game.title, address: url.href, url: game.url, embed: arcadeEmbed(game) };
+    const page = { kind: "game", title: game.title, address: url.href, url: game.url, embed: arcadeEmbed(game) };
+    if (game.attribution) page.credit = game.creator;
+    return page;
   }
 
   const app = appEmbeds.get(url.href);
@@ -634,41 +637,56 @@ function createBrowser() {
     matchCount.setAttribute("role", "status");
     section.append(heading, filter, matchCount);
 
+    let visibleEmbeds = gamePageSize;
     const groups = [
       ["Built-in games", builtInGames],
       ["Official in-page players", embeddedGames]
     ].map(([label, entries]) => {
       const group = element("section", "proxy-playable-group");
       const list = element("ul", "proxy-playable-list");
-      const items = entries.map(game => {
-        const item = element("li");
-        const play = control(`Play ${game.title}`, game.title, () => submit(gameLaunchAddress(game)));
-        play.className = "proxy-bookmark";
-        item.append(play);
-        list.append(item);
-        return { id: game.id, item };
-      });
+      const hosted = entries === embeddedGames;
       group.append(element("h3", "", label));
-      if (entries === embeddedGames) group.append(element("p", "", "Playback depends on the publisher and your connection."));
+      if (hosted) group.append(element("p", "", "Playback depends on the publisher and your connection."));
       group.append(list);
+      const more = control("Show more in-page games", "Show more", () => {
+        const next = visibleEmbeds;
+        visibleEmbeds += gamePageSize;
+        syncGames();
+        list.children[next]?.querySelector("button")?.focus();
+      });
+      more.className = "button";
+      more.hidden = true;
+      if (hosted) group.append(more);
       section.append(group);
-      return { group, items };
+      return { group, list, entries, hosted, more };
     });
 
     function syncGames() {
       tab.gameQuery = filter.value;
       const query = filter.value.trim();
       const matches = new Set(queryLibrary(inPageLibrary, { search: query }).map(game => game.id));
-      for (const { group, items } of groups) {
-        group.hidden = !items.some(({ id }) => matches.has(id));
-        for (const { id, item } of items) item.hidden = !matches.has(id);
+      for (const { group, list, entries, hosted, more } of groups) {
+        const found = entries.filter(game => matches.has(game.id));
+        group.hidden = !found.length;
+        more.hidden = !hosted || found.length <= visibleEmbeds;
+        const visible = hosted ? found.slice(0, visibleEmbeds) : found;
+        list.replaceChildren(...visible.map(game => {
+          const item = element("li");
+          const play = control(`Play ${game.title}`, game.title, () => submit(gameLaunchAddress(game)));
+          play.className = "proxy-bookmark";
+          item.append(play);
+          return item;
+        }));
       }
-      if (!query) matchCount.textContent = "";
+      if (!query) matchCount.textContent = `${matches.size} games you can open here.`;
       else if (matches.size) matchCount.textContent = `${matches.size} ${matches.size === 1 ? "game" : "games"} found.`;
       else matchCount.textContent = "No in-page games match this search.";
     }
 
-    filter.addEventListener("input", syncGames);
+    filter.addEventListener("input", () => {
+      visibleEmbeds = gamePageSize;
+      syncGames();
+    });
     syncGames();
     return section;
   }
@@ -1035,13 +1053,16 @@ function createBrowser() {
 
   function syncPreview() {
     const preview = active.preview;
+    const page = current();
     status.textContent = preview?.message || "";
     progress.hidden = !preview?.busy;
     progress.setAttribute("aria-label", preview?.busyLabel || "Loading preview");
-    if (current().kind === "search") refresh.disabled = !preview?.canRefresh;
-    source.hidden = !preview?.source;
+    if (page.kind === "search") refresh.disabled = !preview?.canRefresh;
+    const sourceUrl = preview?.source || (page.credit && page.url);
+    source.hidden = !sourceUrl;
     dismissPreview.hidden = !preview?.dismissible;
-    if (preview?.source) source.href = preview.source;
+    source.textContent = page.credit ? `Game from ${page.credit}` : "Open in new tab";
+    if (sourceUrl) source.href = sourceUrl;
     else source.removeAttribute("href");
     syncFullscreen();
   }

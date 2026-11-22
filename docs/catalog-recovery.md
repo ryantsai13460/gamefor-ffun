@@ -1,6 +1,6 @@
 # Game catalog
 
-The catalog lives in `assets/catalog.js`. The library derives its counts from the published records. Each entry has a stable ID, title, and category. The game detail distinguishes built-in games, publisher-approved players, and records without in-page play.
+The catalog combines the preserved records in `assets/catalog.js` with the supported players in `assets/publisher-games.js`, `assets/indie-racing.js`, and `assets/open-web-games.js`. The library derives its counts from those records. Each entry has a stable ID, title, and category. The game detail distinguishes built-in games, publisher-approved players, and catalog-only records.
 
 ## Source inventory
 
@@ -25,11 +25,20 @@ The catalog lives in `assets/catalog.js`. The library derives its counts from th
 | Picnic Pack and Kite Breeze | 2 |
 | Clover Roll | 1 |
 | Fraction Kitchen and Clock Courier | 2 |
-| **Current searchable catalog** | **563** |
+| **Preserved games and original built-in additions** | **563** |
+| Fancade shared players | 808 |
+| GameLake original games | 74 |
+| Simon Tatham's Portable Puzzle Collection | 40 |
+| 360 PlayZone original games | 38 |
+| Tibo Games | 11 |
+| Upload Arcade original games | 9 |
+| Featured indie racers and arcade games | 4 |
+| Independent creator-hosted games | 4 |
+| **Current searchable catalog** | **1,551** |
 
 The GitHub source is commit [`4deda5c`](https://github.com/ryantsai13460/gamefor-ffun/tree/4deda5c1ce9058184123d85792198fee5bc09a7c). Memory Match came from commit [`41ea241`](https://github.com/ryantsai13460/gamefor-ffun/commit/41ea241). The [public Base44 library](https://proxy-arcade-play.base44.app/library/games) supplied 58 records, including six titles already in the GitHub catalog. Slither.io appears in both Base44 sources and counts once. The [Base44 homepage](https://proxy-arcade-play.base44.app/) also lists Minecraft Classic and Suika Game, which are absent from both main libraries. Suika Game is the commercial original, with a separate listing from Suika Game: Merge Fruits. Catch the Star is the standalone clicker, while Catch the Stars is the built-in falling-stars game.
 
-The earlier upgrade ZIP in the workspace contains 551 entries. Each retains its ID, title, category, collection, and original aliases. The 548 entries from the GitHub and Base44 libraries form the recovered set within the 563 total.
+The 548 entries from the GitHub and Base44 libraries form the recovered set within the 563 preserved games. Stable IDs keep existing favorites, recent games, and links working.
 
 ## Links and artwork
 
@@ -37,7 +46,11 @@ Catalog-only entries retain their HTTPS publisher or distributor records. Their 
 
 Territorial.io and HexGL open from their original HTTPS game addresses in a sandboxed frame. Territorial.io’s terms describe permitted fan sites, and HexGL’s author publishes the game under MIT terms with listed asset exceptions. These links use the original services. [Territorial.io terms](https://territorial.io/terms) · [HexGL source and license](https://github.com/BKcore/HexGL)
 
-Artwork comes from game-specific publisher or distributor metadata or from captured gameplay of this site's local games. The catalog has 560 artwork entries, including captured gameplay for Fraction Kitchen and Clock Courier and artwork for all 25 built-in games. Resent Client, Blash.io, and Roams.io use title cards. The catalog keeps source attribution and the interface uses a title card if an image fails to load.
+Fancade documents embedding shared play links. GameLake, Tibo Games, 360 PlayZone, and Upload Arcade publish their own embed codes. Added entries use those exact players and preserve publisher branding and credits. The source check covered HTTPS, the publisher's title and player identity, and frame permissions. Individual gameplay checks covered representative titles. [Fancade embed documentation](https://www.fancade.com/wiki/Fancade_Web#Embedding) · [Fancade category catalog](https://www.fancade.com/wiki/List_of_games_by_category) · [GameLake](https://gamelake.com/developers/) · [Tibo Games](https://tibogames.com/free-games-for-websites/) · [360 PlayZone](https://360playzone.com/embed-games) · [Upload Arcade](https://www.uploadarcade.com/embeddable-games)
+
+The independent games use creator-hosted releases and keep their source and license credits. [Starter Kit Racing](https://github.com/mrdoob/Starter-Kit-Racing) · [Simon Tatham's Portable Puzzle Collection](https://www.chiark.greenend.org.uk/~sgtatham/puzzles/)
+
+Artwork comes from game-specific publisher or distributor metadata or from captured gameplay of this site's local games. The preserved catalog has 560 artwork entries, including screenshots for all 25 built-in games. The catalog keeps source attribution and uses a title card when artwork is unavailable.
 
 The source pass checked 536 distinct game-source URLs for an HTTP response and compared page contents for 78 titles. Artwork checks also compared 425 existing Miniplay image identifiers against their game pages. The reachability check establishes that a source responded. Test coverage for actual gameplay is recorded separately. [Verification report](qa.md)
 

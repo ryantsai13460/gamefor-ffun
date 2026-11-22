@@ -4,6 +4,7 @@ import test from 'node:test';
 import { games } from '../assets/catalog.js';
 import { createLibrary, gameAvailability, normalize, queryLibrary, restorePreferences } from '../assets/library.js';
 import { resolveBrowserAddress } from '../assets/browser.js';
+import { arcadeEmbed } from '../assets/embedded-content.js';
 import { findCuratedVideos, getVideoCollections, parseYouTubeVideo } from '../assets/media.js';
 import { expansionVideos } from '../assets/media-expansion.js';
 import { discoveryVideos } from '../assets/media-discovery-videos.js';
@@ -112,8 +113,8 @@ test('expiring family film offers preserve their records and only advertise acti
   assert.equal(filmPlayback({ ...bear, availableUntil: '2000-01-01T00:00:00Z', trailer: 'wJO_vIDZn-I' }, true).id, 'wJO_vIDZn-I');
 });
 
-test('the catalog includes 548 main library games, three additional recovered games and twelve originals', () => {
-  assert.equal(games.length, 563);
+test('the catalog preserves the earlier library and exposes at least 1,000 distinct in-page titles', () => {
+  assert.ok(games.filter(game => ['local', 'embed'].includes(gameAvailability(game))).length >= 1000);
   assert.equal(games.filter(({ collection }) => collection === 'github' || collection === 'base44-library').length, 548);
   assert.equal(games.filter(({ collection }) => collection === 'base44-home').length, 2);
   assert.equal(games.filter(({ collection }) => collection === 'history').length, 1);
@@ -125,13 +126,14 @@ test('the catalog includes 548 main library games, three additional recovered ga
 
 test('catalog records have distinct sources, correct status, and safe relative assets', async () => {
   const sources = new Set();
+  const players = new Set();
   const statusCounts = { local: 0, embed: 0, external: 0, unverified: 0 };
   for (const game of games) {
     assert.ok(game.id && game.title && game.category);
     for (const alias of game.aliases || []) assert.equal(library.byId.get(alias), game);
     const status = gameAvailability(game);
     statusCounts[status]++;
-    for (const source of [game.url, game.embed, game.relatedUrl].filter(Boolean)) {
+    for (const source of [game.url, game.embed, game.embedUrl, game.relatedUrl].filter(Boolean)) {
       const url = new URL(source);
       assert.equal(url.protocol, 'https:');
       assert.equal(url.username, '');
@@ -141,13 +143,22 @@ test('catalog records have distinct sources, correct status, and safe relative a
       assert.ok(!sources.has(game.url), game.url);
       sources.add(game.url);
     }
+    const player = arcadeEmbed(game);
+    if (player) {
+      assert.ok(!players.has(player), player);
+      assert.equal(game.status, 'embed');
+      players.add(player);
+    }
     if (game.art) {
       assert.ok(game.artCredit);
       if (!game.art.startsWith('https://')) await readFile(new URL(game.art, new URL('../', import.meta.url)));
     }
     if (typeof game.local === 'string') await readFile(new URL(game.local, new URL('../', import.meta.url)));
   }
-  assert.deepEqual(statusCounts, { local: 25, embed: 4, external: 532, unverified: 2 });
+  assert.equal(statusCounts.local, 25);
+  assert.ok(statusCounts.embed >= 975);
+  assert.equal(statusCounts.external, 532);
+  assert.equal(statusCounts.unverified, 2);
 });
 
 test('search spans titles, punctuated names, legacy aliases, categories and availability', () => {

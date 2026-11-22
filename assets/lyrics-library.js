@@ -1,13 +1,14 @@
 const release = new URL(import.meta.url).search;
-const [{ lyricsChart }, { lyricsSources, normalizeLyricsText: normalize, appleMusicSearchUrl }, { sevenCloudsLyrics }, { otherChannelLyrics }, { sevenCloudsChannels, sevenCloudsUploads }] = await Promise.all([
+const [{ lyricsChart }, { lyricsSources, normalizeLyricsText: normalize, appleMusicSearchUrl }, { sevenCloudsLyrics }, { otherChannelLyrics }] = await Promise.all([
   import(`./lyrics-chart.js${release}`),
   import(`./lyrics-sources.js${release}`),
   import(`./lyrics-7clouds.js${release}`),
-  import(`./lyrics-other-channels.js${release}`),
-  import(`./seven-clouds-channels.js${release}`)
+  import(`./lyrics-other-channels.js${release}`)
 ]);
 
 const batchSize = 25;
+const sevenCloudsRoute = '#music?lyrics=7clouds';
+const sevenCloudsUploads = 'UUNqFDjYTexJDET3rPDrmJKg';
 const corrections = new Map([['house wifre', 'housewife'], ['house wife', 'housewife'], ['drcula', 'dracula']]);
 const searchIndex = songs => songs.map(song => ({ song, match: normalize(`${song.title} ${song.artist}`) }));
 const trackKey = (title, artist) => `${normalize(title)}|${normalize(artist)}`;
@@ -80,66 +81,107 @@ export function findChartSongs(query = '', chart = '', videosOnly = false) {
   return searchTracks(songIndex, query, song => (!chart || song.sourceUrl === chart) && (!videosOnly || trackVideo(song)));
 }
 
-function renderSevenClouds(target, params) {
+function renderSevenClouds(target) {
   const page = element('section', 'lyrics-library');
   const head = element('header', 'lyrics-heading');
-  const copy = element('div');
-  copy.append(element('h1', '', 'Music'), element('p', 'muted', 'Browse the 7clouds channels and play their public uploads here when embedding is available.'));
-  head.append(copy);
+  head.append(element('h1', '', 'Music'));
   const views = element('nav', 'lyrics-views');
   views.setAttribute('aria-label', 'Music views');
-  const current = link('7clouds channels', '#music?lyrics=channels', 'button primary');
+  const current = link('7clouds uploads', sevenCloudsRoute, 'button primary');
   current.setAttribute('aria-current', 'page');
   views.append(link('Watch lyrics', '#music?lyrics=watch'), link('All chart songs', '#music'), link('Music videos', '#music?view=videos'), current);
 
-  const section = element('section', 'info-panel seven-clouds-channels');
-  section.append(element('h2', '', '7clouds channels'));
-  const label = element('label', '', 'Choose a 7clouds channel');
-  const picker = element('select', 'field');
-  for (const [id, name] of sevenCloudsChannels) picker.append(new Option(name, id));
-  if (sevenCloudsChannels.some(([handle]) => handle === params.get('channel'))) picker.value = params.get('channel');
-  label.append(picker);
+  const section = element('section', 'info-panel seven-clouds-player');
+  section.append(element('h2', '', '7clouds uploads'), element('p', '', 'Use the playlist menu in the player to browse public uploads from the main 7clouds channel.'));
   const actions = element('div', 'interaction-row');
   const stage = element('div', 'media-player');
+  stage.id = 'seven-clouds-playlist';
   stage.hidden = true;
-  const status = element('p', 'muted');
-  const channelLink = link('Open channel on YouTube', '', 'button', true);
-  const play = button('Play channel uploads', () => {
+  const status = element('p', 'media-player-status');
+  status.setAttribute('role', 'status');
+  status.hidden = true;
+  const play = button('Load playlist player', () => {
+    if (stage.hidden) openPlaylist();
+    else closePlaylist();
+  }, 'button primary');
+  play.setAttribute('aria-controls', stage.id);
+  play.setAttribute('aria-expanded', 'false');
+  const playlist = link('Open full playlist on YouTube', `https://www.youtube.com/playlist?list=${sevenCloudsUploads}`, 'button', true);
+  actions.append(play, playlist);
+  let releasePlayer;
+
+  function openPlaylist() {
     const frame = element('iframe');
     const url = new URL('https://www.youtube-nocookie.com/embed/videoseries');
-    url.searchParams.set('list', `UU${sevenCloudsUploads[picker.value].slice(2)}`);
+    url.search = new URLSearchParams({ list: sevenCloudsUploads, enablejsapi: '1', playsinline: '1', origin: location.origin });
     frame.src = url.href;
-    frame.title = `${picker.selectedOptions[0].text} uploads`;
-    frame.allow = 'encrypted-media; picture-in-picture; fullscreen';
+    frame.title = '7clouds uploads playlist';
+    frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
     frame.allowFullscreen = true;
     frame.referrerPolicy = 'strict-origin-when-cross-origin';
-    stage.replaceChildren(frame);
+    status.hidden = false;
     stage.hidden = false;
-  }, 'button primary');
+    stage.append(frame);
+    play.textContent = 'Close playlist player';
+    play.setAttribute('aria-expanded', 'true');
 
-  function selectChannel() {
+    let player;
+    let closed = false;
+    let timer;
+    function report(message, timeoutMessage) {
+      if (closed) return;
+      clearTimeout(timer);
+      status.textContent = message;
+      if (timeoutMessage) timer = setTimeout(() => report(timeoutMessage), 8500);
+    }
+
+    const unavailable = 'YouTube could not play this upload here. Try another upload or open the full playlist on YouTube.';
+    const unconfirmed = 'Playback status is unavailable. Open the full playlist on YouTube if playback stalls.';
+    report('Connecting to YouTube…', unconfirmed);
+    frame.addEventListener('error', () => report(unconfirmed), { once: true });
+    import(`./media.js${release}`).then(({ loadIframeApi }) => closed ? null : loadIframeApi()).then(api => {
+      if (closed || !api) return;
+      player = new api.Player(frame, {
+        events: {
+          onReady: () => report('YouTube player ready. Use its Play control to begin.'),
+          onStateChange: ({ data }) => {
+            if (data === 1) report('Playing on YouTube.');
+            else if (data === 2) report('Playback paused.');
+            else if (data === 3) report('Buffering on YouTube…', 'YouTube is still buffering. Open the full playlist on YouTube if playback does not start.');
+            else if (data === 0) report('Playback ended. Choose another upload in the playlist.');
+          },
+          onError: () => report(unavailable)
+        }
+      });
+    }).catch(() => report(unconfirmed));
+
+    releasePlayer = () => {
+      closed = true;
+      clearTimeout(timer);
+      try { player?.destroy(); } catch { /* The YouTube frame may already be gone. */ }
+    };
+  }
+
+  function closePlaylist() {
+    releasePlayer?.();
+    releasePlayer = undefined;
     stage.replaceChildren();
     stage.hidden = true;
-    channelLink.href = `https://www.youtube.com/@${picker.value}/videos`;
-    play.hidden = !sevenCloudsUploads[picker.value];
-    status.textContent = play.hidden ? 'Browse this channel’s uploads on YouTube.' : 'Playback depends on the uploader’s settings and your connection.';
-    current.href = `#music?${new URLSearchParams({ lyrics: 'channels', channel: picker.value })}`;
+    status.hidden = true;
+    play.textContent = 'Load playlist player';
+    play.setAttribute('aria-expanded', 'false');
   }
-  picker.addEventListener('change', () => {
-    selectChannel();
-    history.replaceState(null, '', current.href);
-  });
-  selectChannel();
-  actions.append(play, channelLink, link('See all featured channels', 'https://www.youtube.com/@7clouds/channels', 'button', true));
-  section.append(label, actions, stage, status);
+
+  section.append(actions, stage, status);
   page.append(head, views, section);
   target.replaceChildren(page);
-  return () => stage.replaceChildren();
+  return closePlaylist;
 }
 
 export function renderLyrics(target, params) {
-  if (params?.get('lyrics') === 'channels') return renderSevenClouds(target, params);
-  let watchView = params?.get('lyrics') === 'watch';
+  const view = params?.get('lyrics');
+  if (view === '7clouds' || view === 'channels') return renderSevenClouds(target);
+  let watchView = view === 'watch';
   const page = element('section', 'lyrics-library');
   const head = element('header', 'lyrics-heading');
   const copy = element('div');
@@ -151,7 +193,7 @@ export function renderLyrics(target, params) {
   const watchLyrics = button('Watch lyrics', () => chooseView(true), 'button primary');
   const allSongs = button('All chart songs', () => chooseView(false));
   const musicVideos = link('Music videos', '#music?view=videos');
-  views.append(watchLyrics, allSongs, musicVideos, link('7clouds channels', '#music?lyrics=channels'));
+  views.append(watchLyrics, allSongs, musicVideos, link('7clouds uploads', sevenCloudsRoute));
   page.append(head, views);
 
   const filters = element('div', 'lyrics-filters');

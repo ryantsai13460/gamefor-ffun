@@ -97,6 +97,29 @@ test('the Home shortcuts open the main sections and lead to an in-page game', as
   await expect(page.locator('.player-status')).toHaveText('Built-in game ready.');
 });
 
+test('the racing shelf and a copied link open the official Drift Track player inside the arcade', async ({ page }) => {
+  const player = 'https://360playzone.com/game/drift-track';
+  await page.unrouteAll();
+  await page.route('https://**/*', route => route.request().url() === player
+    ? route.fulfill({ contentType: 'text/html', body: '<title>Drift Track</title><button>Start race</button>' })
+    : route.fulfill({ status: 503 }));
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'In-page racing', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'All playable racers' }).click();
+  await expect(page.getByRole('combobox', { name: 'Category' })).toHaveValue('Racing');
+  await expect(page.getByRole('combobox', { name: 'Play option' })).toHaveValue('in-page');
+  await page.getByRole('link', { name: /^Drift Track Racing/ }).click();
+  await expect(page.getByRole('link', { name: 'Game from 360 PlayZone' })).toHaveAttribute('href', 'https://360playzone.com/play/drift-track');
+  await page.getByRole('button', { name: 'Play game', exact: true }).click();
+  const frame = page.getByTitle('Drift Track', { exact: true });
+  await expect(frame).toHaveAttribute('src', player);
+  await expect(frame.contentFrame().getByRole('button', { name: 'Start race' })).toBeVisible();
+  await expect(page).toHaveURL(/#play\/playzone-drift-track$/);
+  expect(page.context().pages()).toHaveLength(1);
+  await page.goto('/#play/playzone-drift-track?start=1');
+  await expect(frame.contentFrame().getByRole('button', { name: 'Start race' })).toBeVisible();
+});
+
 test('Home shelves and background controls reflow at 200% text size on a phone', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
   for (const [route, title] of [['home', 'Pocket Circuit'], ['settings?panel=background', 'Settings']]) {

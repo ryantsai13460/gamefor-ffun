@@ -406,6 +406,10 @@
   margin-top: 1rem;
 }
 
+.proxy-playable-group > .button {
+  margin-top: .65rem;
+}
+
 .proxy-playable-group h3 {
   margin: 0 0 .4rem;
   color: var(--accent, #ffc361);
