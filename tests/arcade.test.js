@@ -154,7 +154,7 @@ test('the catalog preserves the earlier library and exposes at least 1,000 disti
   assert.equal(games.filter(({ collection }) => collection === 'github' || collection === 'base44-library').length, 548);
   assert.equal(games.filter(({ collection }) => collection === 'base44-home').length, 2);
   assert.equal(games.filter(({ collection }) => collection === 'history').length, 1);
-  assert.equal(games.filter(({ collection }) => collection === 'original').length, 15);
+  assert.equal(games.filter(({ collection }) => collection === 'original').length, 16);
   assert.equal(new Set(games.map(({ id }) => id)).size, games.length);
   assert.equal(new Set(games.map(({ title }) => normalize(title))).size, games.length);
   assert.equal([...library.categoryCounts.values()].reduce((sum, count) => sum + count, 0), games.length);
@@ -195,7 +195,7 @@ test('catalog records have distinct sources, correct status, and safe relative a
     }
     if (typeof game.local === 'string') await readFile(new URL(game.local, new URL('../', import.meta.url)));
   }
-  assert.equal(statusCounts.local, 28);
+  assert.equal(statusCounts.local, 29);
   assert.ok(statusCounts.embed >= 975);
   assert.equal(statusCounts.external, 531);
   assert.equal(statusCounts.unverified, 3);

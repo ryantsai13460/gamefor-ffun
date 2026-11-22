@@ -308,7 +308,11 @@ function createBrowser() {
   const heading = element("div", "proxy-heading");
   const title = element("h1", "", "Proxy Gemini");
   const description = element("p", "", "Play arcade games here, search the web, or preview sites that allow embedding.");
-  heading.append(title, description);
+  const copy = element("div");
+  copy.append(title, description);
+  const cloud = element("a", "button", "Open Cloud Browser");
+  cloud.href = "#cloud-browser";
+  heading.append(copy, cloud);
 
   const windowPanel = element("div", "proxy-window");
   const tabsRow = element("div", "proxy-tab-row");
