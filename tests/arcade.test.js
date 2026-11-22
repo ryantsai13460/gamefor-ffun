@@ -118,7 +118,7 @@ test('the catalog preserves the earlier library and exposes at least 1,000 disti
   assert.equal(games.filter(({ collection }) => collection === 'github' || collection === 'base44-library').length, 548);
   assert.equal(games.filter(({ collection }) => collection === 'base44-home').length, 2);
   assert.equal(games.filter(({ collection }) => collection === 'history').length, 1);
-  assert.equal(games.filter(({ collection }) => collection === 'original').length, 12);
+  assert.equal(games.filter(({ collection }) => collection === 'original').length, 13);
   assert.equal(new Set(games.map(({ id }) => id)).size, games.length);
   assert.equal(new Set(games.map(({ title }) => normalize(title))).size, games.length);
   assert.equal([...library.categoryCounts.values()].reduce((sum, count) => sum + count, 0), games.length);
@@ -131,9 +131,13 @@ test('catalog records have distinct sources, correct status, and safe relative a
   for (const game of games) {
     assert.ok(game.id && game.title && game.category);
     for (const alias of game.aliases || []) assert.equal(library.byId.get(alias), game);
+    for (const id of game.playAlternatives || []) {
+      const alternative = library.byId.get(id);
+      assert.ok(alternative && alternative !== game && (alternative.local || arcadeEmbed(alternative)), id);
+    }
     const status = gameAvailability(game);
     statusCounts[status]++;
-    for (const source of [game.url, game.embed, game.embedUrl, game.relatedUrl].filter(Boolean)) {
+    for (const source of [game.url, game.embed, game.embedUrl, game.demo, game.relatedUrl].filter(Boolean)) {
       const url = new URL(source);
       assert.equal(url.protocol, 'https:');
       assert.equal(url.username, '');
@@ -155,7 +159,7 @@ test('catalog records have distinct sources, correct status, and safe relative a
     }
     if (typeof game.local === 'string') await readFile(new URL(game.local, new URL('../', import.meta.url)));
   }
-  assert.equal(statusCounts.local, 25);
+  assert.equal(statusCounts.local, 26);
   assert.ok(statusCounts.embed >= 975);
   assert.equal(statusCounts.external, 532);
   assert.equal(statusCounts.unverified, 2);

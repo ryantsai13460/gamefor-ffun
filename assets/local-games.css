@@ -154,6 +154,28 @@
 .local-game__tile[data-value="high"] { background: #aa5541; }
 .local-game__tile[data-value="top"] { background: #b19332; color: #1d1b10; }
 
+.terrace-board {
+  width: min(100%, 25rem);
+  padding: .3rem;
+  border-radius: .7rem;
+  background: #172d27;
+}
+
+.terrace-board .local-game__tile {
+  color: #f1edd6;
+  background: #364638;
+  border-color: #506353;
+}
+
+.terrace-board .local-game__tile[data-material="path"] { color: #342617; background: #bd955f; }
+.terrace-board .local-game__tile.connected-path { color: #2e2417; background: #e0bc7d; }
+.terrace-board .local-game__tile[data-material="flower"] { color: #ffd2b5; background: #754854; }
+.terrace-board .local-game__tile[data-material="gate"] { color: #f2d89c; background: #544332; }
+.terrace-board .local-game__tile[data-material="spring"] { color: #b9eeef; background: #27616e; }
+.terrace-board .local-game__tile[data-material="rock"] { color: #d2d9d5; background: #505c59; }
+.terrace-board .local-game__tile:hover:not([aria-disabled="true"]) { border-color: var(--game-accent); }
+.terrace-materials .local-game__button[aria-pressed="true"] { background: var(--game-accent); color: #181708; }
+
 .local-game__switches {
   display: flex;
   flex-wrap: wrap;

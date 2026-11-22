@@ -45,10 +45,12 @@ function gameLaunchAddress(game) {
   return game.local ? `arcade:${game.id}` : arcadeEmbed(game);
 }
 
-function suggestedGames(category) {
+function suggestedGames(game) {
+  const category = game?.category;
+  const picks = (game?.playAlternatives || []).map(id => inPageLibrary.byId.get(id)).filter(Boolean);
   const sameCategory = category ? queryLibrary(inPageLibrary, { source: builtInGames, category }) : [];
   const featured = featuredAlternatives.map(id => inPageLibrary.byId.get(id)).filter(Boolean);
-  return [...new Set([...sameCategory, ...featured, ...builtInGames])].slice(0, 3);
+  return [...new Set([...picks, ...sameCategory, ...featured, ...builtInGames])].slice(0, 3);
 }
 
 function catalogGameForQuery(query) {
@@ -787,7 +789,7 @@ function createBrowser() {
       actions.append(playHereAction());
       content.append(element("h2", "", title),
         element("p", "", "Try a game you can play inside the arcade."),
-        gameSuggestions(suggestedGames(page.game?.category)), actions);
+        gameSuggestions(suggestedGames(page.game)), actions);
       return content;
     }
 
@@ -797,7 +799,7 @@ function createBrowser() {
     const matches = queryLibrary(inPageLibrary, { search: page.title }).slice(0, 3);
     const externalGame = !matches.length && catalogGameForQuery(page.title);
     if (matches.length || externalGame) {
-      content.append(gameSuggestions(externalGame ? suggestedGames(externalGame.category) : matches));
+      content.append(gameSuggestions(externalGame ? suggestedGames(externalGame) : matches));
     }
     const gameQuery = Boolean(matches.length || externalGame);
     const webSearch = element("a", gameQuery ? "button" : "button proxy-action", "Search web and YouTube");

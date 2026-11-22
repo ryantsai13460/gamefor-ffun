@@ -949,7 +949,31 @@ const fancadeTitles = [
   ["fancade-624c9af2d222185f","Spinning Turret","Multiplayer","BomBillo","https://play.fancade.com/624C9AF2D222185F","https://www.fancade.com/images/624C9AF2D222185F.jpg"]
 ];
 
+// Original games from Tapamine's published embed snippets.
+const tapamineTitles = [
+  ["dash","Dash (Tapamine)","Platformer","Jump over spikes and onto blocks to the beat in a fast one-tap rhythm runner."],
+  ["bridge","Bridge","Arcade","Hold to grow a bridge, then let go when it is long enough to reach the next platform."],
+  ["tempo","Tempo","Music","Tap and hold notes in one lane to play a new generated song each day."],
+  ["crane","Crane","Physics","Time the release of swinging blocks to build a steady tower."],
+  ["slab","Slab","Puzzle","Line up moving slabs and stack them as high as you can."],
+  ["spire","Spire","Platformer","Hold to swing between rooftops, then let go to launch toward the next ledge."],
+  ["wallhop","Wall Hop","Parkour","Leap from wall to wall while climbing around hazards."],
+  ["updraft","Updraft","Arcade","Flap to gain height and glide through wind gates."],
+  ["flipside","Flipside","Platformer","Switch gravity to run along the floor and ceiling while avoiding gaps."],
+  ["orbit","Orbit","Arcade","Release from one planet at the right angle to catch the next orbit."],
+  ["rail","Rail","Puzzle","Flip one switch to send each train down the correct track."],
+  ["cookie","Cookie","Arcade","Carve a shape out of candy by timing when to press and release."],
+  ["lander","Lander","Simulation","Use short engine bursts to touch down gently on the landing pad."]
+];
+
 export const publisherGames = [
+  ...tapamineTitles.map(([slug, title, category, description]) => ({
+    id: 'tapamine-' + slug, title, category, description, creator: 'Tapamine', collection: 'tapamine',
+    url: 'https://tapamine.com/games/' + slug + '/',
+    embed: 'https://tapamine.com/embed/' + slug + '/',
+    art: 'https://tapamine.com/og/' + slug + '.png',
+    artCredit: 'Tapamine', attribution: true, status: 'embed', addedOn: '2026-11-21'
+  })),
   ...publisherTitles.map(([id, title, category, creator, url, embed, collection, attribution]) => ({
     id, title, category, creator, url, embed, collection, attribution, status: 'embed'
   })),

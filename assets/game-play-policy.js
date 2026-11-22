@@ -17,6 +17,7 @@ export function isGamePortalAddress(value) {
   const host = address.hostname.replace(/\.$/, '');
   const path = address.pathname.toLowerCase();
   if (gamePortals.some(portal => onDomain(host, portal))) return true;
+  if (onDomain(host, 'geometrydash.com')) return /^\/game(?:\/|$)/.test(path);
   if (onDomain(host, 'miniclip.com')) return /^\/games(?:\/|$)/.test(path);
   if (onDomain(host, 'yandex.com')) return /^\/games(?:\/|$)/.test(path);
   return false;
@@ -37,7 +38,7 @@ export function createGameAddressLookup(games) {
   }
 
   for (const game of games) {
-    const addresses = [game.url, game.embed, game.embedUrl];
+    const addresses = [game.url, game.embed, game.embedUrl, game.demo];
     if (isGamePortalAddress(game.relatedUrl)) addresses.push(game.relatedUrl);
     if (game.id === 'paperio') addresses.push('https://voodoo.io/paper2');
     for (const value of addresses) {

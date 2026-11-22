@@ -1,5 +1,11 @@
 # Arcade release verification
 
+## Main-channel song selection and popular game alternatives
+
+Music's 55-song 7clouds queue switches between individual official players and the full uploads playlist. Chromium and WebKit covered searching, keyboard selection, focus restoration, and video switching with the YouTube status script unavailable. Live WebKit received the playlist and individual player documents with the correct referrer, then YouTube returned HTTP 403 for the media requests when Play was pressed. Both streams stayed at 0:00. The view offers the official links and keeps song selection available. [Main 7clouds uploads](https://www.youtube.com/playlist?list=UUNqFDjYTexJDET3rPDrmJKg)
+
+The arcade added 18 games and now offers 1,035 in-page titles. Tested Terrace Workshop's complete game loop on a 320-pixel view with external requests disabled. Live WebKit confirmed representative Tapamine games, Voxelia, and Annex respond inside the playback sandbox. Territorial.io loaded its game canvas and visible controls. Bloxd.io and Geometry Dash lead to related in-page games, with a link to RobTop's official demo on the Geometry Dash page. [Game sources](catalog-recovery.md)
+
 ## In-page game expansion and main 7clouds uploads
 
 The library preserves all 563 earlier records and adds 988 play entries, for 1,017 in-page titles in total. Each added game was checked against an exact publisher or creator URL. The catalog excludes duplicate titles and inspected addresses with frame restrictions. [Game sources](catalog-recovery.md)

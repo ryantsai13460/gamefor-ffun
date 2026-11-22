@@ -32,7 +32,7 @@ const announce = text => { document.getElementById('announcement').textContent =
 const localCount = games.filter(game => game.local).length;
 const mainCatalogCount = games.filter(game => game.collection === 'github' || game.collection === 'base44-library').length;
 const categories = [...library.categoryCounts.keys()].sort((a, b) => a.localeCompare(b));
-const altFeatured = ['2048', 'subway', 'ffun-skyline-v1', 'minecraft-classic', 'snake', 'retrobowl', 'stickman', 'drivemad', 'memory-match', 'pong'];
+const altFeatured = ['territorial', 'terrace-workshop', 'tapamine-dash', 'voxelia', '2048', 'ffun-skyline-v1', 'snake', 'memory-match', 'pong'];
 const drawerMedia = matchMedia('(max-width: 860px)');
 const routes = new Set(['home', 'explore', 'discover', 'library', 'games', 'categories', 'trending', 'new', 'favorites', 'recent', 'youtube', 'movies', 'music', 'browse', 'web-search', 'blip', 'play-hub', 'settings', 'credits', 'play']);
 const routeNames = {
@@ -45,6 +45,7 @@ const labels = { local: 'Built in', embed: 'In-page player', external: 'Catalog 
 const learningGames = ['fraction-kitchen', 'clock-courier', 'memory-match', '2048'];
 const isPlayable = game => Boolean(game.local || arcadeEmbed(game));
 const playableCount = games.filter(isPlayable).length;
+const newestFirst = (first, second) => (second.addedOn || '').localeCompare(first.addedOn || '');
 
 const paths = {
   home: '<path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2z"/>',
@@ -374,7 +375,7 @@ function homePlayPanel() {
   const title = element('h2', '', 'Play here');
   title.prepend(icon('gamepad'));
   const picks = element('ul', 'home-play-picks');
-  for (const game of records(['fraction-kitchen', 'clover-roll', 'picnic-pack']).slice(0, 2)) {
+  for (const game of records(['territorial', 'terrace-workshop'])) {
     const row = element('li');
     const play = link('', gamePath(game), 'home-play-pick');
     const thumb = artwork(game);
@@ -539,7 +540,7 @@ function renderHome(target) {
     ]), 'All playable racers', '#games?option=in-page&category=Racing'],
     ['media'],
     ['popular', 'Popular on this device', popular, 'Trending games', '#trending'],
-    ['new', 'New games', games.filter(game => game.isNew && isPlayable(game)).sort((a, b) => Number(Boolean(b.local)) - Number(Boolean(a.local))
+    ['new', 'New games', games.filter(game => game.isNew && isPlayable(game)).sort((a, b) => newestFirst(a, b) || Number(Boolean(b.local)) - Number(Boolean(a.local))
       || Number(Boolean(b.art)) - Number(Boolean(a.art))), 'New games', '#new'],
     ['built-in', 'Built-in arcade', games.filter(game => game.local).sort((a, b) => Number(Boolean(b.art)) - Number(Boolean(a.art))), 'Built-in games', '#games?local=1']
   ];
@@ -615,8 +616,8 @@ function renderLibrary(target, route) {
     description = 'Games you opened from this browser.';
   }
   if (name === 'new') {
-    source = games.filter(game => game.isNew);
-    description = 'Games from the latest recoverable additions to the library.';
+    source = games.filter(game => game.isNew).sort(newestFirst);
+    description = 'The latest additions to the arcade library.';
   }
   if (name === 'trending') {
     source = games.filter(game => prefs.launches[game.id] > 0);
@@ -1071,6 +1072,8 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
       } else if (!playable) {
         item.append(link(`View ${game.title}`, gamePath(game), 'button'));
       }
+      const demo = verifiedSource(game.demo);
+      if (demo) item.append(external('Official web demo', demo));
       return item;
     }));
   }
@@ -1516,6 +1519,8 @@ function renderGame(target, id, startFromLink) {
   controls.append(favoriteButton(game, false),
     link('Find wiki and videos', hashFor('web-search', { q: game.title }), 'button', 'search'),
     link('Customize background', '#settings?panel=background', 'button'));
+  const demo = verifiedSource(game.demo);
+  if (demo) controls.append(external('Official web demo', demo));
   const status = element('p', 'player-status');
   status.setAttribute('role', 'status');
   const stage = element('div', 'player-stage');
@@ -1536,9 +1541,13 @@ function renderGame(target, id, startFromLink) {
     target.append(credit);
   }
   if (game.artCredit && prefs.artwork) target.append(element('p', 'player-note', `Artwork: ${game.artCredit}`));
-  const related = games.filter(candidate => candidate !== game && candidate.category === game.category && isPlayable(candidate))
+  const similar = games.filter(candidate => candidate !== game && candidate.category === game.category && isPlayable(candidate))
     .sort((first, second) => Number(Boolean(second.local)) - Number(Boolean(first.local)));
-  const recommendations = shelf('Related games you can play here', related, `More ${game.category} games`, hashFor('games', { category: game.category, option: 'in-page' }));
+  const alternatives = records(game.playAlternatives || []).filter(isPlayable);
+  const related = distinct([...alternatives, ...similar]);
+  const browseCategory = similar.length ? game.category : '';
+  const recommendations = shelf('Related games you can play here', related,
+    browseCategory ? `More ${browseCategory} games` : 'All playable games', hashFor('games', { category: browseCategory, option: 'in-page' }));
   if (recommendations) target.append(recommendations);
   let dispose = () => {};
   const scope = new AbortController();

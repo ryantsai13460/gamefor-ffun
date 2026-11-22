@@ -72,6 +72,93 @@ function enableGridNavigation(root, board, tiles, columns, signal) {
   }, { signal });
 }
 
+function terraceWorkshop({ root, surface, controls, status, signal }) {
+  const columns = 7;
+  const gate = 14;
+  const spring = 20;
+  const rocks = new Set([9, 11, 17, 31, 33]);
+  const materials = {
+    soil: ["Bare soil", ""], path: ["Boardwalk", "▬"], flower: ["Flower bed", "✿"],
+    gate: ["Garden gate", "▣"], spring: ["Spring", "≈"], rock: ["Boulder", "◆"]
+  };
+  const cells = Array.from({ length: 42 }, (_, slot) => {
+    if (slot === gate) return "gate";
+    if (slot === spring) return "spring";
+    return rocks.has(slot) ? "rock" : "soil";
+  });
+  const board = makeBoard(surface, columns);
+  board.classList.add("terrace-board");
+  board.setAttribute("role", "group");
+  board.setAttribute("aria-label", "Terrace garden");
+  const tools = element("div", "local-game__controls terrace-materials");
+  tools.setAttribute("role", "group");
+  tools.setAttribute("aria-label", "Building materials");
+  let brush = "path";
+  let lastEdit;
+
+  function adjacent(slot) {
+    const column = slot % columns;
+    const neighbors = [slot - columns, slot + columns];
+    if (column > 0) neighbors.push(slot - 1);
+    if (column < columns - 1) neighbors.push(slot + 1);
+    return neighbors.filter(index => index >= 0 && index < cells.length);
+  }
+
+  const tiles = cells.map((_, slot) => {
+    const fixed = slot === gate || slot === spring || rocks.has(slot);
+    const tile = button('', () => {
+      if (fixed || cells[slot] === brush) return;
+      lastEdit = { slot, material: cells[slot] };
+      cells[slot] = brush;
+      draw();
+    }, 'local-game__tile');
+    if (fixed) tile.setAttribute('aria-disabled', 'true');
+    return tile;
+  });
+
+  const choices = new Map(Object.entries({ path: 'Boardwalk', flower: 'Flower bed', soil: 'Eraser' })
+    .map(([material, label]) => [material, button(label, () => {
+      brush = material;
+      draw();
+    })]));
+  const undo = button('Undo edit', () => {
+    if (!lastEdit) return;
+    cells[lastEdit.slot] = lastEdit.material;
+    lastEdit = undefined;
+    draw();
+  });
+  tools.append(...choices.values());
+  controls.append(tools, undo);
+  board.append(...tiles);
+  enableGridNavigation(root, board, tiles, columns, signal);
+
+  function draw() {
+    const connected = new Set([gate]);
+    for (const slot of connected) {
+      for (const neighbor of adjacent(slot)) {
+        if (cells[neighbor] === 'path' || neighbor === spring) connected.add(neighbor);
+      }
+    }
+    const planted = cells.filter((material, slot) => material === 'flower' && adjacent(slot)
+      .some(neighbor => cells[neighbor] === 'path' && connected.has(neighbor))).length;
+    for (const [slot, tile] of tiles.entries()) {
+      const material = cells[slot];
+      const [name, symbol] = materials[material];
+      tile.dataset.material = material;
+      tile.classList.toggle('connected-path', material === 'path' && connected.has(slot));
+      tile.textContent = symbol;
+      tile.setAttribute('aria-label', `Row ${Math.floor(slot / columns) + 1}, column ${slot % columns + 1}, ${name}`);
+    }
+    for (const [material, choice] of choices) choice.setAttribute('aria-pressed', String(material === brush));
+    undo.disabled = !lastEdit;
+    const complete = connected.has(spring) && planted >= 4;
+    status.textContent = complete ? 'Garden complete! Keep building or try a new layout.'
+      : `${connected.has(spring) ? 'Spring connected' : 'Connect the gate to the spring'} · ${Math.min(planted, 4)} of 4 flower beds beside the boardwalk`;
+  }
+
+  draw();
+}
+
 function ticTacToe({ root, surface, status, signal }) {
   const board = makeBoard(surface, 3);
   const cells = Array(9).fill("");
@@ -1915,6 +2002,11 @@ const localGames = {
   "clover-roll": { title: "Clover Roll", run: context => playCanvas(context, createCloverRoll) },
   "fraction-kitchen": { title: "Fraction Kitchen", run: context => playCanvas(context, createFractionKitchen) },
   "clock-courier": { title: "Clock Courier", run: context => playCanvas(context, createClockCourier) },
+  "terrace-workshop": {
+    title: "Terrace Workshop",
+    run: terraceWorkshop,
+    help: "Choose a material and tap a tile, or move with the arrow keys and place it with Enter. Build around the boulders and plant four flower beds beside the connected boardwalk."
+  },
   ...Object.fromEntries(Object.entries(classicGames).map(([id, { title }]) => [
     id, { title, run: context => playCanvas(context, () => classicArcade(id)) }
   ])),

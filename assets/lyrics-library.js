@@ -15,6 +15,7 @@ const trackKey = (title, artist) => `${normalize(title)}|${normalize(artist)}`;
 const songIndex = searchIndex(lyricsChart);
 export const creatorLyricVideos = [...new Map([...sevenCloudsLyrics, ...otherChannelLyrics].map(video => [video.id, video])).values()];
 const videoIndex = searchIndex(creatorLyricVideos);
+const sevenCloudsIndex = searchIndex(sevenCloudsLyrics);
 const videoByTrack = new Map();
 for (const video of creatorLyricVideos) {
   const key = trackKey(video.chartTitle || video.title, video.artist);
@@ -81,7 +82,7 @@ export function findChartSongs(query = '', chart = '', videosOnly = false) {
   return searchTracks(songIndex, query, song => (!chart || song.sourceUrl === chart) && (!videosOnly || trackVideo(song)));
 }
 
-function renderSevenClouds(target) {
+function renderSevenClouds(target, params) {
   const page = element('section', 'lyrics-library');
   const head = element('header', 'lyrics-heading');
   head.append(element('h1', '', 'Music'));
@@ -92,42 +93,155 @@ function renderSevenClouds(target) {
   views.append(link('Watch lyrics', '#music?lyrics=watch'), link('All chart songs', '#music'), link('Music videos', '#music?view=videos'), current);
 
   const section = element('section', 'info-panel seven-clouds-player');
-  section.append(element('h2', '', '7clouds uploads'), element('p', '', 'Use the playlist menu in the player to browse public uploads from the main 7clouds channel.'));
-  const actions = element('div', 'interaction-row');
+  section.append(element('h2', '', '7clouds uploads'), element('p', '', 'Choose a lyric video below or open the main channel’s full uploads playlist.'));
   const stage = element('div', 'media-player');
   stage.id = 'seven-clouds-playlist';
   stage.hidden = true;
   const status = element('p', 'media-player-status');
   status.setAttribute('role', 'status');
   status.hidden = true;
-  const play = button('Load playlist player', () => {
-    if (stage.hidden) openPlaylist();
-    else closePlaylist();
-  }, 'button primary');
-  play.setAttribute('aria-controls', stage.id);
-  play.setAttribute('aria-expanded', 'false');
-  const playlist = link('Open full playlist on YouTube', `https://www.youtube.com/playlist?list=${sevenCloudsUploads}`, 'button', true);
-  actions.append(play, playlist);
-  let releasePlayer;
 
-  function openPlaylist() {
+  const openFull = button('Load playlist player', () => {
+    if (mode === 'playlist') {
+      closePlayer();
+      return;
+    }
+    mode = 'playlist';
+    selection = [];
+    position = -1;
+    startSong = undefined;
+    songDetails.hidden = true;
+    updateButtons();
+    openPlayer(`/embed/videoseries?list=${sevenCloudsUploads}`, '7clouds uploads playlist');
+  }, 'button primary');
+  openFull.setAttribute('aria-controls', stage.id);
+  openFull.setAttribute('aria-expanded', 'false');
+  const playlist = link('Open full playlist on YouTube', `https://www.youtube.com/playlist?list=${sevenCloudsUploads}`, 'button', true);
+  const playlistActions = element('div', 'interaction-row');
+  playlistActions.append(openFull, playlist);
+
+  const songDetails = element('div', 'seven-clouds-song');
+  songDetails.hidden = true;
+  const songTitle = element('h3');
+  songTitle.tabIndex = -1;
+  songTitle.setAttribute('aria-live', 'polite');
+  const songByline = element('p', 'media-meta');
+  songByline.id = 'seven-clouds-song-position';
+  songTitle.setAttribute('aria-describedby', songByline.id);
+  const songActions = element('div', 'interaction-row');
+  songActions.setAttribute('role', 'group');
+  songActions.setAttribute('aria-label', 'Lyric video controls');
+  const previous = button('Previous song', () => showSong(position - 1));
+  const next = button('Next song', () => showSong(position + 1));
+  const directSong = link('Watch this video on YouTube', '', 'button', true);
+  const closeSong = button('Close lyric video', () => closePlayer(true));
+  songActions.append(previous, next, directSong, closeSong);
+  songDetails.append(songTitle, songByline, songActions);
+  section.append(playlistActions, songDetails, stage, status);
+
+  const queuePanel = element('section', 'seven-clouds-queue');
+  const queueHead = element('h2', '', 'Choose a 7clouds lyric video');
+  const searchLabel = element('label', '', 'Song or artist');
+  const query = element('input', 'field');
+  query.type = 'search';
+  query.maxLength = 160;
+  query.value = (params?.get('q') || '').slice(0, query.maxLength);
+  searchLabel.append(query);
+  const count = element('p', 'media-meta');
+  count.setAttribute('role', 'status');
+  const list = element('ul', 'seven-clouds-queue-list');
+  list.setAttribute('role', 'list');
+  list.setAttribute('aria-label', 'Curated 7clouds videos');
+  const more = button('Load more videos', () => {
+    const firstNew = matches[visible];
+    visible += batchSize;
+    drawQueue();
+    choices.get(firstNew?.id)?.focus();
+  }, 'button lyrics-more');
+  queuePanel.append(queueHead, searchLabel, count, list, more);
+  page.append(head, views, section, queuePanel);
+
+  let mode = '';
+  let releasePlayer;
+  let matches = [];
+  let selection = [];
+  let startSong;
+  let position = -1;
+  let visible = batchSize;
+  const choices = new Map();
+
+  function updateButtons() {
+    const active = selection[position]?.id;
+    for (const [id, choice] of choices) {
+      if (id === active) choice.setAttribute('aria-current', 'true');
+      else choice.removeAttribute('aria-current');
+    }
+    const fullOpen = mode === 'playlist';
+    openFull.textContent = fullOpen ? 'Close playlist player' : 'Load playlist player';
+    openFull.setAttribute('aria-expanded', String(fullOpen));
+  }
+
+  function drawQueue() {
+    matches = searchTracks(sevenCloudsIndex, query.value, () => true);
+    count.textContent = matches.length
+      ? `Showing ${Math.min(visible, matches.length)} of ${matches.length} curated lyric videos.`
+      : 'No curated 7clouds videos match this search.';
+    choices.clear();
+    list.replaceChildren(...matches.slice(0, visible).map(song => {
+      const item = element('li');
+      const choice = button('', () => {
+        mode = 'song';
+        selection = matches;
+        startSong = song.id;
+        showSong(selection.indexOf(song), true);
+      }, 'seven-clouds-choice');
+      choice.setAttribute('aria-label', `Select ${song.title} by ${song.artist}`);
+      choice.append(element('strong', '', song.title), element('span', 'muted', song.artist));
+      choices.set(song.id, choice);
+      item.append(choice);
+      return item;
+    }));
+    more.hidden = matches.length <= visible;
+    updateButtons();
+  }
+
+  function showSong(index, moveFocus = false) {
+    const song = selection[index];
+    if (!song) return;
+    position = index;
+    songTitle.textContent = song.title;
+    songByline.textContent = `${song.artist} · ${index + 1} of ${selection.length}`;
+    songDetails.hidden = false;
+    const focused = document.activeElement;
+    previous.disabled = index === 0;
+    next.disabled = index === selection.length - 1;
+    directSong.href = watchUrl(song);
+    updateButtons();
+    openPlayer(`/embed/${song.id}`, `${song.title} lyric video from 7clouds`);
+    if (moveFocus || (focused === previous && previous.disabled) || (focused === next && next.disabled)) {
+      songTitle.focus({ preventScroll: !moveFocus });
+    }
+  }
+
+  function openPlayer(embed, title) {
+    releasePlayer?.();
+    const fullOpen = mode === 'playlist';
     const frame = element('iframe');
-    const url = new URL('https://www.youtube-nocookie.com/embed/videoseries');
-    url.search = new URLSearchParams({ list: sevenCloudsUploads, enablejsapi: '1', playsinline: '1', origin: location.origin });
-    frame.src = url.href;
-    frame.title = '7clouds uploads playlist';
+    const url = new URL(embed, 'https://www.youtube-nocookie.com');
+    url.searchParams.set('enablejsapi', '1');
+    url.searchParams.set('playsinline', '1');
+    url.searchParams.set('origin', location.origin);
+    frame.title = title;
     frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
     frame.allowFullscreen = true;
     frame.referrerPolicy = 'strict-origin-when-cross-origin';
     status.hidden = false;
     stage.hidden = false;
-    stage.append(frame);
-    play.textContent = 'Close playlist player';
-    play.setAttribute('aria-expanded', 'true');
 
     let player;
     let closed = false;
     let timer;
+    let reportedState = false;
     function report(message, timeoutMessage) {
       if (closed) return;
       clearTimeout(timer);
@@ -135,22 +249,38 @@ function renderSevenClouds(target) {
       if (timeoutMessage) timer = setTimeout(() => report(timeoutMessage), 8500);
     }
 
-    const unavailable = 'YouTube could not play this upload here. Try another upload or open the full playlist on YouTube.';
-    const unconfirmed = 'Playback status is unavailable. Open the full playlist on YouTube if playback stalls.';
+    const alternative = fullOpen
+      ? 'Choose a lyric video below or open the full playlist on YouTube.'
+      : 'Try another song or watch this video on YouTube.';
+    const unavailable = 'YouTube could not play this upload here. ' + alternative;
+    const unconfirmed = 'YouTube playback status is unavailable. ' + alternative;
     report('Connecting to YouTube…', unconfirmed);
     frame.addEventListener('error', () => report(unconfirmed), { once: true });
+    frame.src = url.href;
+    stage.replaceChildren(frame);
     import(`./media.js${release}`).then(({ loadIframeApi }) => closed ? null : loadIframeApi()).then(api => {
-      if (closed || !api) return;
+      if (closed) return;
+      if (!api) {
+        report(unconfirmed);
+        return;
+      }
       player = new api.Player(frame, {
         events: {
-          onReady: () => report('YouTube player ready. Use its Play control to begin.'),
+          onReady: () => {
+            if (!reportedState) report('YouTube player ready. Use its Play control to begin.');
+          },
           onStateChange: ({ data }) => {
+            if (![0, 1, 2, 3].includes(data)) return;
+            reportedState = true;
             if (data === 1) report('Playing on YouTube.');
             else if (data === 2) report('Playback paused.');
-            else if (data === 3) report('Buffering on YouTube…', 'YouTube is still buffering. Open the full playlist on YouTube if playback does not start.');
-            else if (data === 0) report('Playback ended. Choose another upload in the playlist.');
+            else if (data === 3) report('Buffering on YouTube…', 'YouTube is still buffering. ' + alternative);
+            else report(fullOpen ? 'Playback ended. Choose another upload in the playlist.' : 'Playback ended. Choose another song to keep listening.');
           },
-          onError: () => report(unavailable)
+          onError: () => {
+            reportedState = true;
+            report(unavailable);
+          }
         }
       });
     }).catch(() => report(unconfirmed));
@@ -162,25 +292,34 @@ function renderSevenClouds(target) {
     };
   }
 
-  function closePlaylist() {
+  function closePlayer(returnFocus = false) {
+    const choice = choices.get(selection[position]?.id) || choices.get(startSong) || query;
     releasePlayer?.();
     releasePlayer = undefined;
+    mode = '';
+    selection = [];
+    position = -1;
+    startSong = undefined;
     stage.replaceChildren();
     stage.hidden = true;
     status.hidden = true;
-    play.textContent = 'Load playlist player';
-    play.setAttribute('aria-expanded', 'false');
+    songDetails.hidden = true;
+    updateButtons();
+    if (returnFocus) choice.focus();
   }
 
-  section.append(actions, stage, status);
-  page.append(head, views, section);
+  query.addEventListener('input', () => {
+    visible = batchSize;
+    drawQueue();
+  });
+  drawQueue();
   target.replaceChildren(page);
-  return closePlaylist;
+  return closePlayer;
 }
 
 export function renderLyrics(target, params) {
   const view = params?.get('lyrics');
-  if (view === '7clouds' || view === 'channels') return renderSevenClouds(target);
+  if (view === '7clouds' || view === 'channels') return renderSevenClouds(target, params);
   let watchView = view === 'watch';
   const page = element('section', 'lyrics-library');
   const head = element('header', 'lyrics-heading');
