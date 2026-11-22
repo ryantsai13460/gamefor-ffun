@@ -27,6 +27,7 @@ const bookmarkNameLimit = 80;
 const closedTabLimit = 8;
 const closedEntryLimit = 24;
 const gamePageSize = 24;
+const gameQueryLimit = 80;
 const defaultGameFilters = { query: "", category: "", player: "", visibleEmbeds: gamePageSize };
 const youtubeApiUrl = "https://www.youtube.com/iframe_api";
 let viewerCount = 0;
@@ -347,7 +348,8 @@ function createBrowser() {
     panel.hidden = true;
     panels.append(panel);
     return { id, entries, index, panel, hidden: new WeakSet(hidden), preview: null,
-      draft: undefined, invalid: false, gameFilters: { ...defaultGameFilters } };
+      draft: undefined, invalid: false, gameFilters: { ...defaultGameFilters },
+      launchMode: "web", launchDrafts: {} };
   }
   let active = createTab();
   const items = [active];
@@ -698,13 +700,13 @@ function createBrowser() {
     renderTabs();
   }
 
-  function submit(value) {
+  function submit(value, { kind, onError = showAddressError } = {}) {
     const page = resolveBrowserAddress(value, window.location.href);
-    if (page) {
+    if (page && (!kind || page.kind === kind)) {
       recordVisit(page);
       visit(page);
     } else {
-      showAddressError(value);
+      onError(value);
     }
   }
 
@@ -741,7 +743,7 @@ function createBrowser() {
     filter.type = "search";
     filter.placeholder = "Find an in-page game";
     filter.setAttribute("aria-label", filter.placeholder);
-    filter.maxLength = 80;
+    filter.maxLength = gameQueryLimit;
     filter.value = state.query;
     tools.append(filter);
 
@@ -837,6 +839,114 @@ function createBrowser() {
       submit(gameLaunchAddress(onlyMatch));
     });
     syncGames();
+    return {
+      section,
+      findByTitle(query) {
+        filter.value = query;
+        category.value = "";
+        player.value = "";
+        applyFilters();
+        filter.focus();
+      }
+    };
+  }
+
+  function launcher(tab, findGame) {
+    const section = element("section", "proxy-launcher");
+    const title = element("h2", "proxy-launcher-title", "Start browsing");
+    title.id = `proxy-launcher-${viewerId}-${tab.id}`;
+    section.setAttribute("aria-labelledby", title.id);
+    const intro = element("p", "proxy-launcher-intro", "Open a website preview, watch a video, or find a game to play here.");
+    const form = element("form", "proxy-launcher-form");
+    const modes = element("fieldset", "proxy-launcher-modes");
+    modes.append(element("legend", "", "Launch mode"));
+    const label = element("label", "proxy-launcher-label");
+    const input = element("input", "proxy-launcher-input");
+    input.id = `${title.id}-target`;
+    input.type = "text";
+    input.autocapitalize = "off";
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    label.htmlFor = input.id;
+    const launch = element("button", "button proxy-launcher-submit");
+    launch.type = "submit";
+    const error = element("p", "proxy-launcher-error");
+    error.id = `${input.id}-error`;
+    error.setAttribute("role", "alert");
+    error.hidden = true;
+    const options = [
+      {
+        id: "web", title: "Web", label: "Website or search", placeholder: "example.com or a search term",
+        action: "Open", error: "Enter a public HTTPS address or a search term."
+      },
+      {
+        id: "youtube", title: "YouTube", label: "YouTube video link", placeholder: "Paste a YouTube link",
+        action: "Watch", error: "Enter a link to a YouTube video, Short, or livestream."
+      },
+      {
+        id: "games", title: "Games", label: "Game title (optional)", placeholder: "Try Pocket Circuit",
+        action: "Find games"
+      }
+    ];
+    let mode = options.find(option => option.id === tab.launchMode);
+
+    function setError(message) {
+      error.hidden = !message;
+      error.textContent = message;
+      if (message) {
+        input.setAttribute("aria-invalid", "true");
+        input.setAttribute("aria-describedby", error.id);
+        input.focus();
+      } else {
+        input.removeAttribute("aria-invalid");
+        input.removeAttribute("aria-describedby");
+      }
+    }
+
+    function selectMode(option) {
+      mode = option;
+      tab.launchMode = option.id;
+      label.textContent = option.label;
+      input.placeholder = option.placeholder;
+      input.enterKeyHint = option.id === "games" ? "search" : "go";
+      input.inputMode = option.id === "youtube" ? "url" : "text";
+      input.maxLength = option.id === "games" ? gameQueryLimit : addressLimit;
+      input.value = tab.launchDrafts[option.id] || "";
+      launch.textContent = option.action;
+      setError("");
+    }
+
+    for (const option of options) {
+      const choice = element("label", "proxy-launcher-mode");
+      const radio = element("input");
+      radio.type = "radio";
+      radio.name = "launch-mode";
+      radio.value = option.id;
+      radio.checked = option === mode;
+      radio.addEventListener("change", () => selectMode(option));
+      choice.append(radio, option.title);
+      modes.append(choice);
+    }
+    selectMode(mode);
+    input.addEventListener("input", () => {
+      tab.launchDrafts[mode.id] = input.value;
+      setError("");
+    });
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      const value = input.value.trim();
+      if (mode.id === "games") {
+        findGame(value);
+      } else if (!value) {
+        setError(mode.error);
+      } else {
+        submit(value, { kind: mode.id === "youtube" ? "youtube" : undefined, onError: () => setError(mode.error) });
+      }
+    });
+    const field = element("div", "proxy-launcher-field");
+    field.append(input, launch);
+    form.append(modes, label, field, error);
+    section.append(title, intro, form);
     return section;
   }
 
@@ -850,7 +960,7 @@ function createBrowser() {
 
   function landing(tab) {
     const content = element("div", "proxy-start");
-    const headline = element("h2", "", "Start browsing");
+    const games = playableGames(tab);
     const quick = element("section", "proxy-playable");
     const links = element("div", "proxy-shortcuts");
     for (const [label, url, type] of shortcuts) {
@@ -863,7 +973,7 @@ function createBrowser() {
       appLinks.append(startShortcut(app.title, app.description, app.embed));
     }
     apps.append(element("h2", "", "Apps"), appLinks);
-    content.append(headline, playableGames(tab), quick, apps);
+    content.append(launcher(tab, games.findByTitle), games.section, quick, apps);
     if (browsing.favorites.length) {
       const favoritesSection = element("section", "proxy-playable");
       const list = element("ul", "proxy-playable-list proxy-start-favorites");

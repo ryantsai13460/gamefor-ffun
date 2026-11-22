@@ -6,6 +6,69 @@ test.beforeEach(async ({ page }) => {
   await page.route('https://**/*', route => route.abort());
 });
 
+test('the start page launches websites with inline validation and keeps the viewer tab', async ({ page }) => {
+  await page.route('https://example.com/', route => route.fulfill({ contentType: 'text/html', body: '<h1>Example website</h1>' }));
+  await page.goto('/#browse');
+
+  const launcher = page.getByRole('region', { name: 'Start browsing' });
+  const website = launcher.getByRole('textbox', { name: 'Website or search' });
+  await expect(launcher.getByRole('radio', { name: 'Web' })).toBeChecked();
+  await website.fill('http://example.com');
+  await website.press('Enter');
+  await expect(launcher.getByRole('alert')).toHaveText('Enter a public HTTPS address or a search term.');
+  await expect(website).toBeFocused();
+  await expect(viewerAddress(page)).toHaveValue('');
+
+  await website.fill('example.com');
+  await expect(launcher.getByRole('alert')).toHaveCount(0);
+  await launcher.getByRole('button', { name: 'Open' }).click();
+  await expect(page.getByRole('tab', { name: 'example.com' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('.proxy-frame')).toHaveAttribute('src', 'https://example.com/');
+  await expect(page.locator('.proxy-frame')).toHaveAttribute('sandbox', 'allow-scripts');
+  expect(page.context().pages()).toHaveLength(1);
+});
+
+test('the start page accepts YouTube links and filters in-page games on a narrow screen', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.route('https://www.youtube-nocookie.com/embed/M7lc1UVf-VE?*', route => route.fulfill({
+    contentType: 'text/html', body: '<h1>Example player</h1>'
+  }));
+  await page.goto('/#browse');
+
+  const launcher = page.getByRole('region', { name: 'Start browsing' });
+  await launcher.getByRole('radio', { name: 'Web' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(launcher.getByRole('radio', { name: 'YouTube' })).toBeChecked();
+  const video = launcher.getByRole('textbox', { name: 'YouTube video link' });
+  await video.fill('example.com');
+  await video.press('Enter');
+  await expect(launcher.getByRole('alert')).toContainText('Enter a link to a YouTube video');
+  await video.fill('https://youtu.be/M7lc1UVf-VE?t=90');
+  await page.getByRole('button', { name: 'New tab', exact: true }).click();
+  await expect(launcher.getByRole('radio', { name: 'Web' })).toBeChecked();
+  const tabs = page.getByRole('tablist', { name: 'Browser tabs' });
+  await tabs.getByRole('tab').first().click();
+  await expect(launcher.getByRole('radio', { name: 'YouTube' })).toBeChecked();
+  await expect(video).toHaveValue('https://youtu.be/M7lc1UVf-VE?t=90');
+  await launcher.getByRole('button', { name: 'Watch' }).click();
+  await expect(page.locator('.proxy-frame')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/M7lc1UVf-VE\?start=90&/);
+
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  const picker = page.getByRole('region', { name: 'Play inside the arcade' });
+  const category = picker.getByRole('combobox', { name: 'Category' });
+  await category.selectOption('Puzzle');
+  await launcher.getByRole('radio', { name: 'Games' }).check();
+  await launcher.getByRole('textbox', { name: 'Game title (optional)' }).fill('Pocket Circuit');
+  await launcher.getByRole('button', { name: 'Find games' }).click();
+  const filter = picker.getByRole('searchbox', { name: 'Find an in-page game' });
+  await expect(filter).toBeFocused();
+  await expect(filter).toHaveValue('Pocket Circuit');
+  await expect(category).toHaveValue('');
+  await expect(picker.getByRole('button', { name: 'Play Pocket Circuit', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  expect(page.context().pages()).toHaveLength(1);
+});
+
 test('Proxy Gemini searches the connected provider and preserves the official fallback', async ({ page }) => {
   const headers = {
     'access-control-allow-origin': '*',
