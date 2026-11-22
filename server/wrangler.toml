@@ -11,6 +11,7 @@ OPENAI_MODEL = "gpt-4.1-mini"
 # OPENAI_ADVANCED_MODEL = "your-authorized-model"
 # OPENAI_ADVANCED_MAX_TOKENS = "1800"
 # OPENAI_ADVANCED_REASONING_EFFORT = "medium"
+# WORKERS_AI_ADVANCED_MODEL = "@cf/google/gemma-4-26b-a4b-it"
 
 [ai]
 binding = "AI"

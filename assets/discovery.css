@@ -36,7 +36,7 @@
 
 .home-media-lanes {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 222px), 1fr));
   align-items: start;
   gap: .9rem;
 }
@@ -55,6 +55,12 @@
 
 .home-media-lane[data-media="music"] { --home-media-cue: #c0abfc; }
 .home-media-lane[data-media="videos"] { --home-media-cue: #86d5e4; }
+.home-media-lane[data-media="shorts"] { --home-media-cue: #ffaca8; }
+.home-media-lane[data-media="shorts"] .home-media-art img { object-fit: contain; }
+
+@media (min-width: 861px) and (max-width: 1190px) {
+  .home-media-lanes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 .home-media-heading {
   display: flex;

@@ -57,8 +57,8 @@ test('MrBeast creator searches find official full videos and Shorts across name 
 
 test('the cinema catalog separates complete films from trailers and uses legitimate playback routes', () => {
   assert.equal(new Set(filmCatalog.map(({ id }) => id)).size, filmCatalog.length);
-  assert.equal(learningFilms.length, 29);
-  assert.equal(learningFilms.filter(({ format }) => format === 'feature').length, 16);
+  assert.equal(learningFilms.length, 53);
+  assert.equal(learningFilms.filter(({ format }) => format === 'feature').length, 26);
   assert.ok(learningFilms.every(film => filmPlayback(film) && !filmPlayback(film, true) && new URL(film.art).protocol === 'https:'));
   assert.ok(filmCatalog.filter(film => !film.regionLimited && filmPlayback(film)).length >= 100);
   assert.equal(filmCatalog.filter(film => !filmPlayback(film) && filmPlayback(film, true)).length, 12);

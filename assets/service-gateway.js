@@ -209,6 +209,9 @@ export async function getGatewayCapabilities(signal) {
   }
   const available = Object.fromEntries(flags.map(flag => [flag, data[flag]]));
   if (available.chat && ['workers-ai', 'openai'].includes(data.chatProvider)) available.chatProvider = data.chatProvider;
+  if (available.chatProvider === 'workers-ai' && available.advanced && data.advancedChatModel === 'gemma-4') {
+    available.advancedChatModel = data.advancedChatModel;
+  }
   if (available.research && data.customResearchQuery === true) available.customResearchQuery = true;
   for (const key of ['standardOutputTokens', 'maxStandardOutputTokens', 'advancedOutputTokens']) {
     if (Number.isInteger(data[key]) && data[key] > 0 && data[key] <= 2400) available[key] = data[key];

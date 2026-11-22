@@ -16,6 +16,8 @@ const maxResearchSources = 4;
 const standardOutputTokens = 700;
 const defaultAdvancedOutputTokens = 1_800;
 const workersAiModel = '@cf/ibm-granite/granite-4.0-h-micro';
+const workersAiAdvancedModel = '@cf/google/gemma-4-26b-a4b-it';
+const workersAiAdvancedOutputTokens = 1_600;
 const supportedEffort = new Set(['low', 'medium', 'high']);
 const encoder = new TextEncoder();
 
@@ -250,6 +252,10 @@ function chatProvider(env) {
   return null;
 }
 
+function workersAiAdvancedEnabled(env) {
+  return env.WORKERS_AI_ADVANCED_MODEL === workersAiAdvancedModel;
+}
+
 function chatStream(source, sources, signal, workersAi = false) {
   signal.throwIfAborted();
   const reader = source.getReader();
@@ -368,8 +374,8 @@ function chatStream(source, sources, signal, workersAi = false) {
 
 async function chat(input, request, env, origin) {
   const provider = chatProvider(env);
-  if (input.advanced && provider !== 'openai') {
-    throw new HttpError(400, 'Advanced replies require OpenAI on this gateway.');
+  if (input.advanced && provider !== 'openai' && !workersAiAdvancedEnabled(env)) {
+    throw new HttpError(400, 'Advanced replies are unavailable on this gateway.');
   }
   let sources;
   if (input.researchQuery) {
@@ -385,11 +391,14 @@ async function chat(input, request, env, origin) {
   }
   const signal = AbortSignal.any([request.signal, AbortSignal.timeout(input.advanced ? 75_000 : 45_000)]);
   if (provider === 'workers-ai') {
-    const result = await runWorkersAi(input, env, signal);
+    const profile = blipGenerationMode(input.mode);
+    const outputTokens = input.advanced ? workersAiAdvancedOutputTokens : profile.workersAiTokens;
+    const result = await runWorkersAi(input, env, signal, profile.temperature, outputTokens);
     if (input.stream) return streamingReply(result, sources, signal, origin, true);
-    const truncated = result?.finish_reason === 'length' ||
-      result?.usage?.completion_tokens >= blipGenerationMode(input.mode).workersAiTokens;
-    return textReply(result?.response, sources, origin, truncated);
+    const choice = result?.choices?.[0];
+    const truncated = (choice?.finish_reason ?? result?.finish_reason) === 'length' ||
+      result?.usage?.completion_tokens >= outputTokens;
+    return textReply(choice?.message?.content ?? choice?.message?.refusal ?? result?.response, sources, origin, truncated);
   }
 
   const model = env.OPENAI_MODEL || 'gpt-4.1-mini';
@@ -443,7 +452,7 @@ function textReply(text, sources, origin, truncated = false) {
   });
 }
 
-async function runWorkersAi(input, env, signal) {
+async function runWorkersAi(input, env, signal, temperature, outputTokens) {
   signal.throwIfAborted();
   let stop;
   const aborted = new Promise((_, reject) => {
@@ -451,12 +460,11 @@ async function runWorkersAi(input, env, signal) {
     signal.addEventListener('abort', stop, { once: true });
   });
   try {
-    const profile = blipGenerationMode(input.mode);
-    const inference = Promise.resolve(env.AI.run(workersAiModel, {
+    const inference = Promise.resolve(env.AI.run(input.advanced ? workersAiAdvancedModel : workersAiModel, {
       messages: input.messages,
       stream: input.stream,
-      max_tokens: profile.workersAiTokens,
-      temperature: profile.temperature,
+      temperature,
+      ...(input.advanced ? { max_completion_tokens: outputTokens, store: false } : { max_tokens: outputTokens }),
     })).then(result => {
       if (signal.aborted) {
         if (result instanceof ReadableStream) void result.cancel(signal.reason).catch(() => {});
@@ -583,7 +591,8 @@ const routes = new Map([
 function capabilities(_input, _request, env, origin) {
   const provider = chatProvider(env);
   const chat = Boolean(provider);
-  const advanced = provider === 'openai';
+  const workersAdvanced = provider === 'workers-ai' && workersAiAdvancedEnabled(env);
+  const advanced = provider === 'openai' || workersAdvanced;
   const search = Boolean(env.BRAVE_SEARCH_API_KEY);
   return json(origin, {
     chat,
@@ -595,7 +604,8 @@ function capabilities(_input, _request, env, origin) {
     ...(provider ? { chatProvider: provider } : {}),
     standardOutputTokens: provider === 'workers-ai' ? blipGenerationMode('quick').workersAiTokens : standardOutputTokens,
     ...(provider === 'workers-ai' ? { maxStandardOutputTokens: maxWorkersAiTokens } : {}),
-    ...(advanced ? { advancedOutputTokens: advancedOutputTokens(env) } : {}),
+    ...(advanced ? { advancedOutputTokens: workersAdvanced ? workersAiAdvancedOutputTokens : advancedOutputTokens(env) } : {}),
+    ...(workersAdvanced ? { advancedChatModel: 'gemma-4' } : {}),
     modes: replyModes,
   });
 }

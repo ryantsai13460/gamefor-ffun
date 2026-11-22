@@ -210,6 +210,15 @@ function recoverBrowsingData(pageUrl) {
   return data;
 }
 
+export function getBrowserLibraryState(pageUrl = window.location.href) {
+  const { favorites, history } = recoverBrowsingData(pageUrl);
+  const summary = address => {
+    const entry = resolveBrowserAddress(address, pageUrl);
+    return { address, title: entry.title };
+  };
+  return { favorites: favorites.map(summary), history: history.map(summary) };
+}
+
 function recoverClosedTabs(pageUrl) {
   try {
     const text = window.sessionStorage.getItem(closedTabsStorageKey);
@@ -1319,6 +1328,7 @@ function createBrowser() {
         showPage();
       }
       if (initialAddress && !destination) showAddressError(initialAddress);
+      if (["favorites", "history"].includes(options.savedPanel)) showSaved(options.savedPanel);
     },
     suspend() {
       for (const tab of items) unloadTab(tab);

@@ -254,6 +254,52 @@ test('Workers AI streams native response deltas in the shared gateway protocol',
   assert.equal(fetch.mock.callCount(), 0);
 });
 
+test('Workers AI Advanced uses the configured Gemma model and never forwards internal reasoning fields', async context => {
+  const upstream = context.mock.method(globalThis, 'fetch', async () => { throw new Error('Wrong provider'); });
+  const calls = [];
+  const env = settings({
+    CHAT_PROVIDER: 'workers-ai',
+    WORKERS_AI_ADVANCED_MODEL: '@cf/google/gemma-4-26b-a4b-it',
+    AI: {
+      async run(model, input) {
+        calls.push({ model, input });
+        if (input.stream) {
+          return new Response('data: {"choices":[{"delta":{"reasoning_content":"private upstream detail"}}]}\n\n' +
+            'data: {"choices":[{"delta":{"content":"Compare two lines."},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n').body;
+        }
+        return model.includes('gemma') ? { choices: [{ message: { content: 'Review a position.' }, finish_reason: 'stop' }] }
+          : { response: 'Play two games.' };
+      },
+    },
+  });
+  const features = await (await worker.fetch(post('/api/capabilities', {}), env)).json();
+  assert.equal(features.advanced, true);
+  assert.equal(features.advancedChatModel, 'gemma-4');
+  assert.equal(features.advancedOutputTokens, 1_600);
+  assert.equal(calls.length, 0);
+
+  const unsupported = { ...env, WORKERS_AI_ADVANCED_MODEL: 'unapproved-model' };
+  assert.equal((await worker.fetch(post('/api/chat', { messages: [userMessage], depth: 'advanced' }), unsupported)).status, 400);
+  const plain = await worker.fetch(post('/api/chat', { messages: [userMessage], model: 'malicious-selection' }), env);
+  assert.deepEqual(await plain.json(), { text: 'Play two games.' });
+  const advanced = await worker.fetch(post('/api/chat', { messages: [userMessage], depth: 'advanced' }), env);
+  assert.deepEqual(await advanced.json(), { text: 'Review a position.' });
+  const streaming = await worker.fetch(post('/api/chat', { messages: [userMessage], depth: 'advanced', stream: true, mode: 'code' }), env);
+  assert.deepEqual((await streaming.text()).trim().split('\n\n'), [
+    'data: {"choices":[{"delta":{"content":"Compare two lines."}}]}',
+    'data: {"choices":[{"finish_reason":"length"}]}', 'data: [DONE]',
+  ]);
+  assert.equal(calls[0].model, '@cf/ibm-granite/granite-4.0-h-micro');
+  assert.equal(calls[0].input.max_tokens, 512);
+  for (const { model, input } of calls.slice(1)) {
+    assert.equal(model, '@cf/google/gemma-4-26b-a4b-it');
+    assert.equal(input.max_completion_tokens, 1_600);
+    assert.equal(input.store, false);
+    assert.match(input.messages[0].content, /checkable rationale/);
+  }
+  assert.equal(upstream.mock.callCount(), 0);
+});
+
 test('Workers AI quota and timeout errors disclose no upstream detail and cannot switch to a billable provider', async context => {
   const fetch = context.mock.method(globalThis, 'fetch', async () => {
     throw new Error('Unwanted OpenAI fallback');

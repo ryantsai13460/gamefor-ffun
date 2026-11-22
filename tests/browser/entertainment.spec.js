@@ -21,13 +21,13 @@ test('the library searches across media and remembers the filtered route on game
   await expect(page.getByRole('heading', { name: 'Sintel', level: 1 })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Back to Movies' })).toBeVisible();
 
-  await page.goto('/#discover?q=Hall+of+Fame&type=music');
+  await page.goto('/#discover?q=the+lakes&type=music');
   await expect(page.getByRole('button', { name: 'Music', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  const song = page.locator('.discovery-card').filter({ hasText: 'Hall of Fame' }).first();
-  await expect(song).toHaveAttribute('href', '#music?view=videos&track=mk48xRzuNvA');
+  const song = page.locator('.discovery-card').filter({ hasText: 'the lakes' }).first();
+  await expect(song).toHaveAttribute('href', '#music?track=tOHcAc3r2kw');
   await song.click();
-  const player = page.getByRole('dialog', { name: 'Hall of Fame' });
-  await expect(player.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/mk48xRzuNvA/);
+  const player = page.getByRole('dialog', { name: 'the lakes' });
+  await expect(player.locator('iframe')).toHaveAttribute('src', /youtube-nocookie\.com\/embed\/tOHcAc3r2kw/);
   await player.getByRole('button', { name: 'Close', exact: true }).click();
 
   await page.goto('/#discover');
@@ -101,28 +101,30 @@ test('the mobile home shows lazy media shelves with the arcade links', async ({ 
   await expect(page.locator('.home-destinations').getByRole('link', { name: 'Proxy Gemini', exact: true })).toBeVisible();
   await page.locator('.home-media-shelves').scrollIntoViewIfNeeded();
   await expect(page.getByRole('heading', { name: 'Featured films', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: /Music (chart )?picks/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Lyric video picks' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Gaming videos', exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
 });
 
-test('Home keeps media routes available when all three catalogs fail', async ({ page }) => {
+test('Home keeps media routes available when the catalogs fail', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
-  await page.route(/\/assets\/(film-catalog|music-catalog|media)\.js(?:\?|$)/, route => route.abort());
+  await page.route(/\/assets\/(film-catalog|lyrics-library|media|shorts-catalog)\.js(?:\?|$)/, route => route.abort());
   await page.goto('/');
   const media = page.locator('.home-media-shelves');
   await media.scrollIntoViewIfNeeded();
   await expect(media.getByText('Media picks could not load.')).toBeVisible();
   await expect(media.getByRole('link', { name: 'Movies' })).toHaveAttribute('href', '#movies');
   await expect(media.getByRole('link', { name: 'YouTube' })).toHaveAttribute('href', '#youtube');
-  await expect(media.getByRole('link', { name: 'Music' })).toHaveAttribute('href', '#music?view=videos');
+  await expect(media.getByRole('link', { name: 'Music' })).toHaveAttribute('href', '#music');
+  await expect(media.getByRole('link', { name: 'Short Videos' })).toHaveAttribute('href', '#shorts');
 });
 
 test('the Home shortcuts open the main sections and lead to an in-page game', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 800 });
   const shortcuts = page.getByRole('navigation', { name: 'Browse the arcade' });
   for (const [label, heading] of [
-    ['Games', 'All Games'], ['Movies', 'Movies'], ['YouTube', 'YouTube'], ['Web Search', 'Web Search']
+    ['Games', 'All Games'], ['Movies', 'Movies'], ['YouTube', 'YouTube'], ['Web Search', 'Web Search'],
+    ['Music', 'Music'], ['Short Videos', 'Shorts'], ['Shopping', 'Shopping'], ['Community', 'Community']
   ]) {
     await page.goto('/#home');
     await shortcuts.getByRole('link', { name: new RegExp(`^${label}\\b`) }).click();

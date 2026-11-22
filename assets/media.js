@@ -213,6 +213,25 @@ export function getVideoLibraryState() {
   return { favorites: read(store.favorites), recent: read(store.recent, 30), watched: read(store.watched, 30), queue };
 }
 
+let shortVideoPreferences;
+
+export function getShortVideoPreferences() {
+  if (shortVideoPreferences) return shortVideoPreferences;
+  const store = preference(VIDEO_STORE);
+  return { favorites: storedVideoIds(store.favorites), watched: storedVideoIds(store.watched, 30) };
+}
+
+export function updateShortVideoPreference(id, list) {
+  if (!CURATED_VIDEOS.get(id)?.short || !['favorites', 'watched'].includes(list)) return;
+  const store = preference(VIDEO_STORE);
+  const preferences = getShortVideoPreferences();
+  const remaining = preferences[list].filter(value => value !== id);
+  preferences[list] = list === 'favorites' && remaining.length < preferences[list].length
+    ? remaining
+    : [id, ...remaining].slice(0, list === 'watched' ? 30 : 100);
+  shortVideoPreferences = persist(VIDEO_STORE, { ...store, ...preferences }) ? undefined : preferences;
+}
+
 function validChannels(channels) {
   if (!Array.isArray(channels)) return [];
   return channels.filter((channel) => channel && CHANNEL_ID.test(channel.id || '') &&
@@ -271,7 +290,7 @@ export function loadIframeApi() {
   return iframeApi;
 }
 
-function playEmbedded(stage, status, video, isOpen, hasDirectLink, autoplay = false, onPlaying) {
+function playEmbedded(stage, status, video, isOpen, hasDirectLink, autoplay = false, onPlaying, onReady) {
   const fallback = hasDirectLink ? ' Open the video on YouTube to check playback.' : '';
   if (video.embeddable === false) {
     status.textContent = 'The uploader has disabled embedded playback.' + fallback;
@@ -314,6 +333,7 @@ function playEmbedded(stage, status, video, isOpen, hasDirectLink, autoplay = fa
             event?.target?.mute();
             event?.target?.playVideo();
           }
+          onReady?.(event.target);
         },
         onStateChange: event => {
           if (!active() || event.data !== 1) return;
@@ -339,6 +359,10 @@ function playEmbedded(stage, status, video, isOpen, hasDirectLink, autoplay = fa
       frame.remove();
     }
   };
+}
+
+export function mountShortYouTubePlayer(stage, status, video, { onPlaying, onReady }) {
+  return playEmbedded(stage, status, { ...video, id: video.videoId }, () => stage.isConnected, true, true, onPlaying, onReady);
 }
 
 export function watchDialog(target, {title, subtitle, description, video, external, directLabel, details, short, onPlaying}) {

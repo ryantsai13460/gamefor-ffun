@@ -1,9 +1,10 @@
 const release = new URL(import.meta.url).search;
 const { normalize } = await import(`./library.js${release}`);
 const filler = new Set('a an by find for i in me movie movies film films music of please play show song songs the to track tracks watch'.split(' '));
+const shortFiller = new Set([...filler, 'clip', 'clips', 'short', 'shorts', 'video', 'videos']);
 const weights = [8, 5, 3, 1];
-let musicIndex;
 let filmIndex;
+let shortIndex;
 
 function entry(item, identity, ...fields) {
   const title = normalize(item.title);
@@ -11,10 +12,10 @@ function entry(item, identity, ...fields) {
   return { item, identity, title, words: text.map(value => value.split(' ')) };
 }
 
-function rank(index, query) {
+function rank(index, query, fillerWords = filler) {
   const text = normalize(query);
   if (!text) return [];
-  const terms = [...new Set(text.split(' ').filter(word => !filler.has(word)))];
+  const terms = [...new Set(text.split(' ').filter(word => !fillerWords.has(word)))];
   const phrase = terms.join(' ');
   const ranked = [];
   for (const candidate of index) {
@@ -44,9 +45,16 @@ function rank(index, query) {
 }
 
 export async function searchMusic(query) {
-  musicIndex ??= import(`./music-catalog.js${release}`).then(({ musicCatalog }) => musicCatalog.map(track =>
-    entry(track, `${normalize(track.title)}|${normalize(track.artist)}`, track.artist, [track.category, track.style].join(' '))));
-  return rank(await musicIndex, query);
+  const { findLyricVideos } = await import(`./lyrics-library.js${release}`);
+  return findLyricVideos(query);
+}
+
+export async function searchShorts(query) {
+  shortIndex ??= import(`./shorts-catalog.js${release}`).then(({ getShortCatalog, shortsLink, shortProviders }) => getShortCatalog().map(short => {
+    const item = { ...short, link: shortsLink(short), source: shortProviders[short.provider].label };
+    return entry(item, short.id, short.creator, [item.source, ...short.tags, ...short.categories].join(' '), short.description || '');
+  }));
+  return rank(await shortIndex, query, shortFiller);
 }
 
 export async function searchFilms(query) {

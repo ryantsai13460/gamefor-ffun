@@ -20,8 +20,8 @@ const resultFilters = {
   },
   videos: {
     key: 'format', label: 'Video format',
-    options: [['', 'Any format'], ['standard', 'Full videos'], ['shorts', 'Shorts']],
-    matches: (item, value) => item.short === (value === 'shorts')
+    options: [['', 'Any format'], ['standard', 'Full videos'], ['shorts', 'Shorts'], ['tiktok', 'TikTok'], ['instagram', 'Instagram Reels']],
+    matches: (item, value) => value === 'shorts' ? item.short : value === 'standard' ? !item.short : item.provider === value
   }
 };
 const batch = 24;
@@ -53,7 +53,7 @@ function route(name, params = {}) {
 
 const thumbnail = id => /^[a-z\d_-]{11}$/i.test(id) ? `https://i.ytimg.com/vi/${id}/mqdefault.jpg` : '';
 const filmLink = film => route('movies', { film: film.id });
-const musicLink = song => route('music', { view: 'videos', track: song.id });
+const musicLink = song => route('music', { track: song.id });
 const videoLink = video => route('youtube', { format: video.short ? 'shorts' : 'all', video: video.id });
 
 function item(type, title, subtitle, image, href, terms = '') {
@@ -72,8 +72,12 @@ function filmItem(film) {
 }
 
 function songItem(song) {
-  return item('music', song.title, song.artist, song.thumbnail || thumbnail(song.id), musicLink(song),
-    [song.category, song.style].filter(Boolean).join(' '));
+  return item('music', song.title, song.artist, song.thumbnail || thumbnail(song.id), song.href || musicLink(song),
+    [song.category, song.genre, song.kind, song.channel, song.style].filter(Boolean).join(' '));
+}
+
+function archiveSongItem(song) {
+  return { ...songItem(song), href: route('music', { view: 'videos', track: song.id }) };
 }
 
 function videoItem(video) {
@@ -81,6 +85,14 @@ function videoItem(video) {
     ...item('videos', video.title, [video.creator, video.short ? 'Short' : 'Video'].filter(Boolean).join(' · '),
       video.thumbnail || thumbnail(video.id), videoLink(video), video.tags?.join(' ')),
     short: Boolean(video.short)
+  };
+}
+
+function shortItem(short, provider, href) {
+  return {
+    ...item('videos', short.title, [short.creator, provider].filter(Boolean).join(' · '), short.thumbnail,
+      href, [...(short.tags || []), ...(short.categories || []), short.description].filter(Boolean).join(' ')),
+    short: true, provider: short.provider
   };
 }
 
@@ -150,8 +162,12 @@ function shelf(title, records, href, label, shortcut) {
 }
 
 const filmData = () => import(`./film-catalog.js${version}`);
-const musicData = () => import(`./music-catalog.js${version}`);
+const musicData = () => import(`./lyrics-library.js${version}`);
 const videoData = () => import(`./media.js${version}`);
+const shortData = () => import(`./shorts-catalog.js${version}`);
+
+const isSearchText = query => Boolean(query && !/^(?:[a-z][a-z\d+.-]*:)?\/\//i.test(query)
+  && !/^[\w-]+(?:\.[\w-]+)+[/?#]\S*$/u.test(query));
 
 function prepare(records) {
   return records.map(record => {
@@ -163,10 +179,27 @@ function prepare(records) {
   });
 }
 
+let mediaIndex;
+function prepareMedia() {
+  const types = ['movies', 'music', 'videos', 'videos'];
+  mediaIndex ??= Promise.allSettled([
+    filmData().then(({ filmCatalog }) => filmCatalog.map(filmItem)),
+    musicData().then(async ({ findLyricVideos }) => (await findLyricVideos('')).map(songItem)),
+    videoData().then(({ getCuratedVideos }) => getCuratedVideos().map(videoItem)),
+    shortData().then(({ getShortCatalog, shortsLink, shortProviders }) => getShortCatalog().filter(video => video.provider !== 'youtube')
+      .map(video => shortItem(video, shortProviders[video.provider].label, shortsLink(video))))
+  ]).then(results => {
+    const unavailable = [...new Set(types.filter((type, index) => results[index].status === 'rejected'))];
+    if (unavailable.length) mediaIndex = undefined;
+    return { index: prepare(results.flatMap(result => result.status === 'fulfilled' ? result.value : [])), unavailable };
+  });
+  return mediaIndex;
+}
+
 export function renderDiscovery(target, { params, games, showArtwork, rememberSearches = true, onRouteChange }) {
   let active = true;
   let prepared = prepare(games.map(game => gameItem(game, showArtwork)));
-  const unavailable = new Set();
+  let unavailable = [];
   let pending = true;
   let cachedHistory = rememberSearches ? history() : [];
   let selected = labels.has(params.get('type')) ? params.get('type') : 'all';
@@ -231,8 +264,11 @@ export function renderDiscovery(target, { params, games, showArtwork, rememberSe
     listing.children[first]?.focus({ preventScroll: true });
   });
   const web = link('Search the web', '#web-search', 'button');
+  const shopping = link('Search Shopping', '#shopping', 'button');
+  const blip = link('Ask Blip', '#blip', 'button');
+  const shorts = link('Browse Short Videos', '#shorts', 'button');
   const actions = element('div', 'interaction-row discovery-actions');
-  actions.append(more, web);
+  actions.append(more, web, shopping, shorts, blip);
   target.replaceChildren(header, form, filters, recent, status, listing, actions);
 
   function saveRoute() {
@@ -300,7 +336,7 @@ export function renderDiscovery(target, { params, games, showArtwork, rememberSe
         input.focus();
       }));
     }
-    const incomplete = [...unavailable].filter(key => selected === 'all' || selected === key).map(key => labels.get(key));
+    const incomplete = unavailable.filter(key => selected === 'all' || selected === key).map(key => labels.get(key));
     const total = matches.length
       ? `Showing ${Math.min(limit, matches.length)} of ${matches.length} results`
       : 'No matching titles';
@@ -312,6 +348,11 @@ export function renderDiscovery(target, { params, games, showArtwork, rememberSe
     if (focusedHref) [...listing.children].find(node => node.getAttribute('href') === focusedHref)?.focus({ preventScroll: true });
     more.hidden = limit >= matches.length;
     web.href = query ? route('web-search', { q: query }) : '#web-search';
+    const canDraft = isSearchText(query);
+    blip.hidden = !canDraft;
+    blip.href = canDraft ? route('blip', { draft: query, research: query }) : '#blip';
+    shopping.href = canDraft ? route('shopping', { q: query }) : '#shopping';
+    shorts.href = canDraft ? route('shorts', { q: query }) : '#shorts';
   }
 
   input.addEventListener('input', () => { clear.hidden = !input.value; });
@@ -322,18 +363,10 @@ export function renderDiscovery(target, { params, games, showArtwork, rememberSe
   rememberQuery();
   draw();
 
-  Promise.allSettled([
-    filmData().then(({ filmCatalog }) => filmCatalog.map(filmItem)),
-    musicData().then(({ musicCatalog }) => musicCatalog.map(songItem)),
-    videoData().then(({ getCuratedVideos }) => getCuratedVideos().map(videoItem))
-  ]).then(results => {
+  prepareMedia().then(result => {
     if (!active) return;
-    const media = [];
-    results.forEach((result, index) => {
-      if (result.status === 'fulfilled') media.push(...result.value);
-      else unavailable.add(kinds[index + 2][0]);
-    });
-    prepared = [...prepared, ...prepare(media)];
+    unavailable = result.unavailable;
+    prepared = [...prepared, ...result.index];
     pending = false;
     draw();
   });
@@ -344,7 +377,7 @@ export function renderSavedLibrary(target, { favorites, recent, showArtwork }) {
   let active = true;
   const sections = element('div', 'discovery-shelves');
   const loading = element('p', 'muted', 'Loading saved media…');
-  target.replaceChildren(heading('My library', 'Your saved games, media, and chats in this browser.'), sections, loading);
+  target.replaceChildren(heading('My library', 'Saved games, media, bookmarks, and chats on this device.'), sections, loading);
   const featured = (title, records, href, text) => {
     if (records.length) sections.append(shelf(title, records.slice(0, 6), href, text));
   };
@@ -363,22 +396,36 @@ export function renderSavedLibrary(target, { favorites, recent, showArtwork }) {
 
   Promise.allSettled([
     import(`./film-library.js${version}`).then(({ getFilmLibraryState }) => getFilmLibraryState()),
-    import(`./music-library.js${version}`).then(({ getMusicLibraryState }) => getMusicLibraryState()),
+    musicData().then(({ getLyricLibraryState }) => getLyricLibraryState()),
     videoData().then(({ getVideoLibraryState }) => getVideoLibraryState()),
-    import(`./blip.js${version}`).then(({ getBlipChatSummary }) => getBlipChatSummary())
-  ]).then(([films, music, videos, chats]) => {
+    import(`./blip.js${version}`).then(({ getBlipChatSummary }) => getBlipChatSummary()),
+    import(`./browser.js${version}`).then(({ getBrowserLibraryState }) => getBrowserLibraryState()),
+    import(`./shopping-data.js${version}`).then(({ getShoppingLibraryState, shoppingLink, shoppingCategory }) =>
+      ({ ...getShoppingLibraryState(), shoppingLink, shoppingCategory })),
+    import(`./music-library.js${version}`).then(({ getMusicLibraryState }) => getMusicLibraryState()),
+    Promise.all([import(`./shorts.js${version}`), shortData()]).then(([{ getShortLibraryState }, catalog]) =>
+      ({ ...getShortLibraryState(), ...catalog }))
+  ]).then(results => {
     if (!active) return;
+    const [films, music, videos, chats, browser, shopping, archive, shorts] = results;
     if (films.status === 'fulfilled') {
       featured('Saved movies', films.value.saved.map(filmItem), '#movies?collection=favorites', 'All saved movies');
       featured('Movie watchlist', films.value.watchlist.map(filmItem), '#movies?collection=watchlist', 'Open watchlist');
       featured('Continue watching', films.value.continuing.map(filmItem), '#movies?collection=continuing', 'Open Continue watching');
     }
     if (music.status === 'fulfilled') {
-      featured('Saved music', music.value.saved.map(songItem), '#music?view=saved', 'All saved music');
-      featured('Recently played music', music.value.recent.map(songItem), '#music?view=recent', 'All recently played music');
-      shortcuts('Music playlists', music.value.playlists.map(playlist => [
+      featured('Saved lyric videos', music.value.saved.map(songItem), '#music?collection=saved', 'All saved lyric videos');
+      featured('Recently played lyric videos', music.value.recent.map(songItem), '#music?collection=recent', 'All recently played lyric videos');
+      shortcuts('Lyric video playlists', music.value.playlists.map(playlist => [
+        playlist.name, route('music', { collection: 'playlists', playlist: playlist.id })
+      ]), '#music?collection=playlists', 'All lyric video playlists');
+    }
+    if (archive.status === 'fulfilled') {
+      featured('Saved music', archive.value.saved.map(archiveSongItem), '#music?view=saved', 'All saved archive music');
+      featured('Recently played music', archive.value.recent.map(archiveSongItem), '#music?view=recent', 'Open archive history');
+      shortcuts('Music playlists', archive.value.playlists.map(playlist => [
         playlist.name, route('music', { view: 'playlists', playlist: playlist.id })
-      ]), '#music?view=playlists', 'All music playlists');
+      ]), '#music?view=playlists', 'All archive playlists');
     }
     if (videos.status === 'fulfilled') {
       featured('YouTube watch queue', (videos.value.queue || []).map(video => ({
@@ -387,11 +434,28 @@ export function renderSavedLibrary(target, { favorites, recent, showArtwork }) {
       featured('Favorite videos', videos.value.favorites.map(videoItem), '#youtube?format=favorites', 'All favorite videos');
       featured('Recently watched videos', videos.value.watched.map(videoItem), '#youtube?format=recent', 'Recent videos');
     }
+    if (shorts.status === 'fulfilled') {
+      const { favorites: shortFavorites, recent: shortRecent, shortProviders, shortsLink } = shorts.value;
+      const toCard = video => shortItem(video, shortProviders[video.provider].label, shortsLink(video));
+      featured('Favorite short videos', shortFavorites.map(toCard), '#shorts?view=favorites', 'All favorite short videos');
+      featured('Recently watched short videos', shortRecent.map(toCard), '#shorts?view=watched', 'Recent short videos');
+    }
     if (chats.status === 'fulfilled') shortcuts('Blip chats', chats.value.map(chat => [chat.title, route('blip', { chat: chat.id })]), '#blip', 'Open blip.ai');
+    if (browser.status === 'fulfilled') {
+      shortcuts('Proxy Gemini bookmarks', browser.value.favorites.map(page => [page.title, route('browse', { address: page.address })]),
+        '#browse?panel=favorites', 'Manage bookmarks');
+      shortcuts('Proxy Gemini history', browser.value.history.map(page => [page.title, route('browse', { address: page.address })]),
+        '#browse?panel=history', 'Manage browsing history');
+    }
+    if (shopping.status === 'fulfilled') {
+      const { saved, shoppingLink, shoppingCategory } = shopping.value;
+      shortcuts('Saved shopping searches', saved.map(search => [search.query || shoppingCategory(search.category)?.title, shoppingLink(search)]),
+        '#shopping', 'Open Shopping');
+    }
     if (!sections.childElementCount) {
       sections.append(element('p', 'empty-state', 'Save a game, movie, song, video, or chat to see it here.'));
     }
-    loading.hidden = [films, music, videos, chats].every(result => result.status === 'fulfilled');
+    loading.hidden = results.every(result => result.status === 'fulfilled');
     loading.textContent = 'Some saved libraries are unavailable.';
     target.append(link('Theme and saved-game preferences', '#settings', 'button'));
   });
@@ -420,11 +484,11 @@ function homeMediaCard(record, featured) {
   return anchor;
 }
 
-function homeMediaLane({ title, records, href, browse, shortcut }) {
+function homeMediaLane({ title, records, href, browse, shortcut, kind }) {
   const [featured, ...more] = records;
   if (!featured) return null;
   const lane = element('section', 'home-media-lane');
-  lane.dataset.media = featured.type;
+  lane.dataset.media = kind || featured.type;
   const heading = element('header', 'home-media-heading');
   heading.append(element('h3', '', title), link(browse, href));
   lane.append(heading, homeMediaCard(featured, true));
@@ -454,10 +518,11 @@ function homeMediaPicks(catalog, preferred, format) {
 }
 
 export async function populateHomeMedia(target, { watching = false } = {}) {
-  const [films, music, videos] = await Promise.allSettled([
+  const [films, music, videos, shorts] = await Promise.allSettled([
     Promise.all([filmData(), import(`./film-playback.js${version}`)]),
-    musicData(),
-    videoData()
+    musicData().then(({ findLyricVideos }) => findLyricVideos('')),
+    videoData(),
+    shortData()
   ]);
   if (!target.isConnected) return;
   const shelves = element('div', 'home-media-lanes');
@@ -474,13 +539,21 @@ export async function populateHomeMedia(target, { watching = false } = {}) {
     if (lane) shelves.append(lane);
   }
   if (music.status === 'fulfilled') {
-    const { featuredTrack, musicCatalog } = music.value;
-    const chartPicks = musicCatalog.filter(song => song.chart).map(song => song.id);
     const lane = homeMediaLane({
-      title: 'Music picks',
-      records: homeMediaPicks(musicCatalog, [featuredTrack.id, ...chartPicks.slice(0, 2)], songItem),
-      href: '#music?view=videos', browse: 'Browse music',
-      shortcut: ['Watch lyrics', '#music?lyrics=watch']
+      title: 'Lyric video picks', records: homeMediaPicks(music.value, [], songItem),
+      href: '#music', browse: 'Browse music', shortcut: ['New lyric videos', '#music?collection=new']
+    });
+    if (lane) shelves.append(lane);
+  }
+  if (shorts.status === 'fulfilled') {
+    const { getShortCatalog, shortsLink, shortProviders } = shorts.value;
+    const catalog = getShortCatalog();
+    const providers = ['youtube', 'tiktok', 'instagram'];
+    const picks = providers.map(provider => catalog.find(video => video.provider === provider)?.id).filter(Boolean);
+    const lane = homeMediaLane({
+      title: 'Short Videos', kind: 'shorts', records: homeMediaPicks(catalog, picks,
+        video => shortItem(video, shortProviders[video.provider].label, shortsLink(video))),
+      href: '#shorts', browse: 'Open short feed'
     });
     if (lane) shelves.append(lane);
   }

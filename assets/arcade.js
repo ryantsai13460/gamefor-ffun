@@ -34,11 +34,14 @@ const mainCatalogCount = games.filter(game => game.collection === 'github' || ga
 const categories = [...library.categoryCounts.keys()].sort((a, b) => a.localeCompare(b));
 const altFeatured = ['lantern-shift', 'territorial', 'candy-box-2', 'terrace-workshop', 'tapamine-dash', 'voxelia', '2048', 'ffun-skyline-v1', 'snake', 'memory-match', 'pong'];
 const drawerMedia = matchMedia('(max-width: 860px)');
-const routes = new Set(['home', 'explore', 'discover', 'library', 'games', 'categories', 'trending', 'new', 'favorites', 'recent', 'youtube', 'movies', 'music', 'browse', 'web-search', 'blip', 'play-hub', 'settings', 'credits', 'play']);
+const discoveryRoutes = { shorts: 'renderShorts', community: 'renderCommunity', shopping: 'renderShopping' };
+const routes = new Set(['home', 'explore', 'discover', 'library', 'games', 'categories', 'trending', 'new', 'favorites', 'recent', 'youtube', 'movies', 'music', 'browse', 'web-search', 'blip', 'play-hub', 'settings', 'credits', 'play', ...Object.keys(discoveryRoutes)]);
+const gameSearchRoutes = new Set(['games', 'categories', 'trending', 'new', 'favorites', 'recent', 'play-hub']);
 const routeNames = {
   home: 'Home', explore: 'Explore', discover: 'Search the library', library: 'My library', games: 'All Games', categories: 'Categories', trending: 'Trending',
   new: 'New Games', favorites: 'Favorites', recent: 'Recently Played',
-  youtube: 'YouTube', movies: 'Movies', music: 'Music', browse: 'Proxy Gemini', 'web-search': 'Web Search', blip: 'blip.ai', 'play-hub': 'Play Hub',
+  youtube: 'YouTube', movies: 'Movies', music: 'Music', shorts: 'Short Videos', community: 'Community', shopping: 'Shopping',
+  browse: 'Proxy Gemini', 'web-search': 'Web Search', blip: 'blip.ai', 'play-hub': 'Play Hub',
   settings: 'Settings', credits: 'Credits'
 };
 const labels = { local: 'Built in', embed: 'In-page player', external: 'Catalog only', unverified: 'Play unavailable' };
@@ -57,6 +60,9 @@ const paths = {
   clock: '<circle cx="12" cy="12" r="8.6"/><path d="M12 7.5v5l3.3 2"/>',
   gamepad: '<path d="M7 7h10c3.1 0 4.2 3 5 7.7.6 3.4-2 4.8-4.3 2.4L15.5 15h-7l-2.2 2.1C4 19.5 1.4 18.1 2 14.7 2.8 10 3.9 7 7 7zM7.5 9.5v4m-2-2h4m6.5.9h.02m2.2-2.1h.02"/>',
   video: '<rect x="3" y="5.5" width="18" height="13" rx="3"/><path d="m10 9 5 3-5 3z"/>',
+  shorts: '<rect x="6" y="2.7" width="12" height="18.6" rx="3"/><path d="m10 8.5 5 3.5-5 3.5z"/>',
+  bag: '<path d="M5 8h14l1.5 12h-17zM9 9V6a3 3 0 1 1 6 0v3"/>',
+  chat: '<path d="M20 11a8 8 0 0 1-8.5 8 9 9 0 0 1-3.4-.7L4 20l1.3-4A7.4 7.4 0 0 1 3.5 11a8.3 8.3 0 0 1 16.5 0zM8 11h.01M12 11h.01M16 11h.01"/>',
   film: '<rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M7.5 4v16m9-16v16M3.5 9h4m-4 6h4m9-6h4m-4 6h4"/>',
   music: '<path d="M9 18V5l11-2v13M9 9l11-2"/><ellipse cx="6" cy="18" rx="3" ry="2.3"/><ellipse cx="17" cy="16" rx="3" ry="2.3"/>',
   globe: '<circle cx="12" cy="12" r="8.8"/><path d="M3.2 12h17.6M12 3.2c2.5 2.4 3.9 5.4 3.9 8.8s-1.4 6.4-3.9 8.8C9.5 18.4 8.1 15.4 8.1 12S9.5 5.6 12 3.2Z"/>',
@@ -105,6 +111,25 @@ function action(text, fn, className = 'button', iconName = '') {
   if (iconName) node.prepend(icon(iconName));
   node.addEventListener('click', fn);
   return node;
+}
+
+const featureStyles = new Map();
+function loadFeatureStyles(name) {
+  if (featureStyles.has(name)) return featureStyles.get(name);
+  const sheet = element('link');
+  sheet.rel = 'stylesheet';
+  sheet.href = new URL(`./${name}.css${assetVersion}`, import.meta.url);
+  const ready = new Promise(resolve => {
+    sheet.addEventListener('load', resolve, { once: true });
+    sheet.addEventListener('error', () => {
+      featureStyles.delete(name);
+      sheet.remove();
+      resolve();
+    }, { once: true });
+  });
+  featureStyles.set(name, ready);
+  document.head.append(sheet);
+  return ready;
 }
 
 function verifiedSource(raw) {
@@ -346,19 +371,23 @@ function homeDestinations() {
   const title = element('h2', '', 'Browse the arcade');
   title.id = 'home-destinations-title';
   const more = element('div', 'interaction-row');
-  more.append(link('Search the library', '#discover', 'text-action'), link('Explore', '#explore', 'text-action'));
+  more.append(link('Search the library', '#discover', 'text-action'));
   header.append(title, more);
   const primary = element('div', 'home-destination-grid');
   const secondary = element('div', 'home-utility-grid');
   for (const [label, destination, symbol, tone, description] of [
-    ['Games', '#games', 'gamepad', 'gold', `${games.length} games to browse`],
+    ['Games', '#games', 'gamepad', 'gold', `${games.length.toLocaleString('en-US')} games to browse`],
     ['Movies', '#movies', 'film', 'violet', 'Full films and family favorites'],
-    ['YouTube', '#youtube?format=all', 'video', 'coral', 'Creator videos and Shorts'],
-    ['Web Search', '#web-search', 'search', 'blue', 'Games, videos, and web sources'],
+    ['Music', '#music', 'music', 'pink', 'Lyric videos and visualizers'],
+    ['Short Videos', '#shorts', 'shorts', 'coral', 'Browse a vertical video feed'],
+    ['YouTube', '#youtube?format=all', 'video', 'coral'],
+    ['Web Search', '#web-search', 'search', 'blue'],
     ['blip.ai', '#blip', 'spark', 'mint'],
-    ['Music', '#music?view=videos', 'music', 'pink'],
     ['Proxy Gemini', '#browse', 'globe', 'blue'],
-    ['My library', '#library', 'heart', 'gold']
+    ['My library', '#library', 'heart', 'gold'],
+    ['Explore', '#explore', 'layers', 'violet'],
+    ['Community', '#community', 'chat', 'mint'],
+    ['Shopping', '#shopping', 'bag', 'gold']
   ]) {
     const item = link('', destination, description ? 'home-destination' : 'home-utility');
     item.dataset.tone = tone;
@@ -613,7 +642,7 @@ function mountHomeMedia(media, watching = false) {
       const fallback = element('div', 'info-panel');
       fallback.append(element('p', 'muted', 'Media picks could not load.'));
       const routes = element('div', 'interaction-row');
-      for (const [name, path] of [['Movies', '#movies'], ['YouTube', '#youtube'], ['Music', '#music?view=videos']]) {
+      for (const [name, path] of [['Movies', '#movies'], ['YouTube', '#youtube'], ['Music', '#music'], ['Short Videos', '#shorts']]) {
         routes.append(link(name, path, 'text-action'));
       }
       fallback.append(routes);
@@ -943,7 +972,7 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   input.addEventListener('input', updateSuggestions);
   updateSuggestions();
   const stage = element('div', 'proxy-stage web-search-stage');
-  const searchDescription = 'Find games, wiki references, YouTube videos, songs, and films together.';
+  const searchDescription = 'Find games, films, lyric videos, Shorts, and web sources. Continue product searches in Shopping.';
   const answer = element('section', 'web-search-answer');
   answer.setAttribute('aria-live', 'polite');
   const answerTitle = element('h2', '', 'Web & YouTube');
@@ -980,9 +1009,30 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   const noResults = element('p', 'muted');
   noResults.setAttribute('role', 'status');
   noResults.hidden = true;
-  const musicResults = link('Search Music', '#music?view=videos', 'button');
+  const musicResults = link('Search Music', '#music', 'button');
   musicResults.hidden = true;
-  const libraryPanels = new Map(['Music', 'Movies'].map(name => {
+  const shoppingPanel = element('section', 'web-search-videos');
+  const shoppingResults = link('Continue in Shopping', '#shopping', 'button', 'bag');
+  shoppingPanel.hidden = true;
+  shoppingPanel.append(element('h2', '', 'Shopping'),
+    element('p', 'muted', 'Compare this search on Amazon or eBay. Listings, prices, and checkout are on the retailer’s website.'), shoppingResults);
+  const librarySearches = {
+    Music: {
+      catalog: 'lyrics', empty: 'lyric videos', find: 'searchMusic',
+      detail: item => item.href || hashFor('music', { track: item.id }),
+      metadata: item => [item.artist, item.category], browse: q => hashFor('music', { q })
+    },
+    Movies: {
+      catalog: 'film', empty: 'films', find: 'searchFilms',
+      detail: item => hashFor('movies', { film: item.id }),
+      metadata: item => [item.viewing, item.year, ...item.genres], browse: q => hashFor('movies', { q })
+    },
+    'Short Videos': {
+      catalog: 'short video', empty: 'short videos', find: 'searchShorts',
+      detail: item => item.link, metadata: item => [item.creator, item.source], browse: q => hashFor('shorts', { q })
+    }
+  };
+  const libraryPanels = new Map(Object.keys(librarySearches).map(name => {
     const panel = element('section', 'web-search-videos');
     const status = element('p', 'muted');
     status.setAttribute('role', 'status');
@@ -1015,7 +1065,7 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
   const resultTools = element('div', 'interaction-row search-result-tools');
   resultTools.append(groups, musicResults, draftInAI, researchInBlip);
   stage.append(answer, recentPanel, resultTools, noResults, gamePanel, webPanel, videosPanel,
-    ...[...libraryPanels.values()].map(({ panel }) => panel), providerPanel);
+    ...[...libraryPanels.values()].map(({ panel }) => panel), shoppingPanel, providerPanel);
   renderGatewaySettings(stage, 'Connect a web search provider', () => { webProviderEnabled = gatewayConnected(); });
   searchPanel.append(form, stage);
 
@@ -1048,6 +1098,8 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
     videosPanel.hidden = !searched || !['All results', 'YouTube'].includes(group);
     providerPanel.hidden = !searched || !showProvider || !['All results', 'Web'].includes(group);
     webGroup.hidden = !showProvider;
+    shoppingGroup.hidden = !isReusableWebQuery(input.value);
+    shoppingPanel.hidden = !searched || group !== 'Shopping' || shoppingGroup.hidden;
     for (const [name, { panel, entries }] of libraryPanels) {
       panel.hidden = !searched || (group !== name && (group !== 'All results' || !entries.childElementCount));
     }
@@ -1063,7 +1115,8 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
     });
   }
   const webGroup = resultGroup('Web');
-  groups.append(...['All results', 'Games', 'Wiki', 'YouTube', 'Music', 'Movies'].map(resultGroup), webGroup);
+  const shoppingGroup = resultGroup('Shopping');
+  groups.append(...['All results', 'Games', 'Wiki', 'YouTube', ...Object.keys(librarySearches)].map(resultGroup), shoppingGroup, webGroup);
 
   function selectPanel(name) {
     for (const [label, panel] of panels) panel.hidden = label !== name;
@@ -1151,30 +1204,26 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
 
   async function loadLibraryResults(name, query, signal) {
     const { status, entries, browse } = libraryPanels.get(name);
-    const isMusic = name === 'Music';
-    const catalog = isMusic ? 'music' : 'film';
+    const { catalog, empty, find, detail, metadata, browse: browseHref } = librarySearches[name];
     entries.replaceChildren();
     browse.hidden = true;
     status.textContent = `Searching the ${catalog} catalog…`;
     try {
-      const { searchMusic, searchFilms } = await import(`./search-catalog.js${assetVersion}`);
+      const search = await import(`./search-catalog.js${assetVersion}`);
       if (signal.aborted) return;
-      const found = await (isMusic ? searchMusic(query) : searchFilms(query));
+      const found = await search[find](query);
       if (signal.aborted) return;
       const shown = found.slice(0, 6);
       entries.replaceChildren(...shown.map(item => {
-        const href = isMusic ? hashFor('music', { view: 'videos', q: item.title, artist: item.artist })
-          : hashFor('movies', { film: item.id });
-        const metadata = isMusic ? [item.artist, item.style] : [item.viewing, item.year, ...item.genres];
         const card = element('li');
-        card.append(link(item.title, href, 'button'), element('p', 'muted', metadata.filter(Boolean).join(' · ')));
-        if (!isMusic && item.description) card.append(element('p', 'muted', item.description));
+        card.append(link(item.title, detail(item), 'button'), element('p', 'muted', metadata(item).filter(Boolean).join(' · ')));
+        if (name !== 'Music' && item.description) card.append(element('p', 'muted', item.description));
         return card;
       }));
       status.textContent = found.length
         ? `${found.length} ${found.length === 1 ? 'match' : 'matches'}${found.length > shown.length ? ` · Showing ${shown.length}` : ''}`
-        : `No ${isMusic ? 'songs' : 'films'} in the arcade catalog match this search.`;
-      browse.href = isMusic ? hashFor('music', { view: 'videos', q: query }) : hashFor('movies', { q: query });
+        : `No ${empty} in the arcade catalog match this search.`;
+      browse.href = browseHref(query);
       browse.hidden = found.length <= shown.length;
     } catch {
       if (!signal.aborted) status.textContent = `The ${catalog} catalog could not load. Try searching again.`;
@@ -1337,7 +1386,8 @@ function mountSearchPanel(target, modules, { setTitle }, mode, initialQuery) {
       void loadProviderResults(providerRequest);
     }
     for (const name of libraryPanels.keys()) void loadLibraryResults(name, searchQuery, signal);
-    musicResults.href = hashFor('music', { view: 'videos', q: searchQuery });
+    musicResults.href = hashFor('music', { q: searchQuery });
+    shoppingResults.href = hashFor('shopping', { q: searchQuery });
     format = 'All';
     drawGames(matchingGames.map(({ game }) => game));
     drawReferences(references);
@@ -1494,14 +1544,21 @@ function renderSettings(target, params) {
     announce(`Search history ${remember.checked ? 'enabled' : 'paused'}`);
   });
   saveSearches.prepend(remember);
-  privacy.append(element('h3', '', 'Search history'), saveSearches, action('Clear search histories', () => {
+  privacy.append(element('h3', '', 'Search history'), saveSearches, action('Clear search histories', async () => {
     saveWebSearchHistory([]);
     try {
       localStorage.removeItem(discoverySearchHistoryKey);
-      announce('Web and library search histories cleared.');
     } catch {
       announce('Browser storage could not clear the library search history.');
+      return;
     }
+    let shoppingCleared = false;
+    try {
+      const { clearShoppingHistory } = await import(`./shopping.js${assetVersion}`);
+      shoppingCleared = clearShoppingHistory();
+    } catch {}
+    announce(shoppingCleared ? 'Web, library, and shopping search histories cleared.'
+      : 'Web and library search histories cleared. Shopping history could not be cleared.');
   }));
   row.append(visuals, home, privacy);
   target.append(row);
@@ -1847,9 +1904,9 @@ function updateGlobalSearchHint() {
   if (drawerMedia.matches) globalQuery.placeholder = 'Search…';
   else if (name === 'home' && prefs.mode === 'school') globalQuery.placeholder = 'Search a school topic…';
   else if (name === 'home' && prefs.mode === 'gaming') globalQuery.placeholder = 'Search in-page games…';
-  else if (['home', 'discover'].includes(name)) globalQuery.placeholder = 'Search library…';
   else if (['play', 'web-search'].includes(name)) globalQuery.placeholder = 'Search games, wikis, and videos…';
-  else globalQuery.placeholder = 'Search games…';
+  else if (gameSearchRoutes.has(name)) globalQuery.placeholder = 'Search games…';
+  else globalQuery.placeholder = 'Search the arcade…';
 }
 
 async function renderRoute(focus = true) {
@@ -1942,6 +1999,15 @@ async function renderRoute(focus = true) {
         if (token === version) cleanup = render(target, route.params);
         break;
       }
+      case 'shorts':
+      case 'community':
+      case 'shopping': {
+        target.append(element('p', 'boot-note', `Loading ${routeNames[route.name]}…`));
+        const [feature] = await Promise.all([import(`./${route.name}.js${assetVersion}`), loadFeatureStyles(route.name)]);
+        if (token === version) cleanup = feature[discoveryRoutes[route.name]](target, route.params,
+          { rememberSearches: prefs.rememberSearches }) || (() => {});
+        break;
+      }
       case 'blip': {
         target.append(element('p', 'boot-note', 'Loading blip.ai…'));
         const { renderBlip } = await import(`./blip.js${assetVersion}`);
@@ -1984,7 +2050,8 @@ async function renderRoute(focus = true) {
         browserModule = await import(`./browser.js${assetVersion}`);
         if (token === version) {
           browserModule.renderBrowser(target, route.params.get('address') || '', {
-            searchWeb: webProviderEnabled && gatewayConnected() ? searchGateway : undefined
+            searchWeb: webProviderEnabled && gatewayConnected() ? searchGateway : undefined,
+            savedPanel: route.params.get('panel')
           });
         }
         break;
@@ -2034,8 +2101,7 @@ document.getElementById('global-search').addEventListener('submit', event => {
     return;
   }
   const useWebSearch = ['play', 'web-search'].includes(current?.name);
-  const useLibrarySearch = ['home', 'discover'].includes(current?.name);
-  navigate(hashFor(useWebSearch ? 'web-search' : useLibrarySearch ? 'discover' : 'games', { q: search }));
+  navigate(hashFor(useWebSearch ? 'web-search' : gameSearchRoutes.has(current?.name) ? 'games' : 'discover', { q: search }));
 });
 mobileMenu.addEventListener('click', () => setDrawer(!document.body.classList.contains('drawer-open'), true));
 scrim.addEventListener('click', () => setDrawer(false, true));
