@@ -102,7 +102,7 @@ function gameItem(game, showArtwork) {
   const aliases = [game.id, ...(game.aliases || [])];
   return {
     ...item('games', game.title, game.category, showArtwork ? game.art : '', '#play/' + encodeURIComponent(game.id),
-      [game.description, ...aliases].filter(Boolean).join(' ')),
+      [game.description, ...aliases, ...(game.platformerTags || []), game.category === 'Parkour' ? 'platformer' : ''].filter(Boolean).join(' ')),
     id: game.id, aliases, availability: gameAvailability(game)
   };
 }

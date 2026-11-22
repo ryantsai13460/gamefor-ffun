@@ -34,7 +34,7 @@ test('the Lantern Shift release deep link opens the game and Back exits it', asy
   await game.getByLabel('Lantern Shift game').press('Space');
   await expect(game.getByRole('status')).toContainText('Lane outer');
 
-  await page.getByRole('link', { name: /Back to (?:browsing|games)/i }).click();
+  await page.getByRole('link', { name: 'Back to browsing', exact: true }).click();
   await expect(page).toHaveURL(/#home$/);
   await expect(game).toHaveCount(0);
 });

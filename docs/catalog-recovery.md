@@ -41,7 +41,8 @@ The catalog combines the preserved records in `assets/catalog.js` with the suppo
 | Candy Box 2 and A Dark Room | 2 |
 | Afternoon Games, S7GS, and Yuzool | 5 |
 | Gamffun 7.0 publisher additions | 17 |
-| **Current searchable catalog** | **1,602** |
+| Platformer expansion | 20 |
+| **Current searchable catalog** | **1,622** |
 
 The GitHub source is commit [`4deda5c`](https://github.com/ryantsai13460/gamefor-ffun/tree/4deda5c1ce9058184123d85792198fee5bc09a7c). Memory Match came from commit [`41ea241`](https://github.com/ryantsai13460/gamefor-ffun/commit/41ea241). The [public Base44 library](https://proxy-arcade-play.base44.app/library/games) supplied 58 records, including six titles already in the GitHub catalog. Slither.io appears in both Base44 sources and counts once. The [Base44 homepage](https://proxy-arcade-play.base44.app/) also lists Minecraft Classic and Suika Game, which are absent from both main libraries. Suika Game is the commercial original, with a separate listing from Suika Game: Merge Fruits. Catch the Star is the standalone clicker, while Catch the Stars is the built-in falling-stars game.
 
@@ -58,6 +59,8 @@ Fancade documents embedding shared play links. GameLake, Tibo Games, 360 PlayZon
 Eight existing listings now point to publisher-supplied players. CrazyGames designates OvO, Basket Random, Soccer Random, Cut the Rope, and Little Alchemy 2 for embedding. Slope uses the player published in Y8's directory for other websites. Drive Mad and Longcat use the Fancade iframe format with its documented sizing parameters. The **Play Here** view shows the 1,076 games configured for in-page play. Their existing catalog IDs and earlier listing links remain recognized. [OvO](https://www.crazygames.com/game/ovo) · [CrazyGames SDK](https://docs.crazygames.com/sdk/html5-v2/user/) · [Y8 embed directory](https://www.y8.com/games_for_your_website?page=46) · [Fancade embed documentation](https://www.fancade.com/wiki/Fancade_Web#Embedding)
 
 Live WebKit checks moved the character in OvO's first level and completed a Cut the Rope tutorial action inside the game sandbox. Slope opened its in-game credits. Basket Random and Soccer Random reached their player selection menus, Little Alchemy 2 rendered its board, and both Fancade players opened their first-use prompts. Some later requests returned HTTP 503, limiting repeat and gameplay checks. Other listings tested with missing game assets or an error inside the player remain in the full catalog.
+
+The platformer expansion adds Beacon Ascent, creator-hosted and creator-enabled in-page players, and official listings for requested games whose developers control distribution. See the new inventory, permissions, and input-test results. [Platformer expansion](platformer-library.md)
 
 The independent games use creator-hosted releases and keep their source and license credits. WordSash, Killer Sudoku, Pings Portal, Breachfield, and Pier Putt responded to game input in their original players on the development arcade. [Starter Kit Racing](https://github.com/mrdoob/Starter-Kit-Racing) · [Simon Tatham's Portable Puzzle Collection](https://www.chiark.greenend.org.uk/~sgtatham/puzzles/) · [Afternoon Games](https://afternoongames.com/free-games-for-your-website) · [S7GS](https://s7gs.com/Play/) · [Yuzool](https://www.yuzool.com/embed/)
 

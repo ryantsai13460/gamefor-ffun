@@ -1,9 +1,12 @@
 const release = new URL(import.meta.url).search;
-const [{ indieRacingGames }, { openWebGames }, { publisherGames }, { independentGames }] = await Promise.all([
+const [{ indieRacingGames }, { openWebGames }, { publisherGames }, { independentGames },
+  { platformerSpotlights, existingPlatformerDetails }, { platformerGames }] = await Promise.all([
   import(`./indie-racing.js${release}`),
   import(`./open-web-games.js${release}`),
   import(`./publisher-games.js${release}`),
-  import(`./independent-games.js${release}`)
+  import(`./independent-games.js${release}`),
+  import(`./platformer-catalog.js${release}`),
+  import(`./platformer-games.js${release}`)
 ]);
 
 // Recovered from the legacy Gamefor Ffun library and the public Proxy Arcade catalog.
@@ -576,5 +579,9 @@ const preservedGames = [
   {"id": "lantern-shift", "title": "Lantern Shift", "addedOn": "2026-11-22", "art": "./assets/local-art/lantern-shift.webp", "artCredit": "Gamefor Ffun gameplay", "description": "Switch lanes around a glowing circuit to collect lanterns across three quick courses.", "category": "Arcade", "collection": "original", "status": "local", "local": true, "isNew": true}
 ];
 
-const additions = [...indieRacingGames, ...openWebGames, ...publisherGames, ...independentGames].map(game => ({ ...game, isNew: true }));
-export const games = [...preservedGames, ...additions];
+const additions = [...indieRacingGames, ...openWebGames, ...publisherGames, ...independentGames, ...platformerSpotlights, ...platformerGames]
+  .map(game => ({ ...game, isNew: true }));
+export const games = [...preservedGames, ...additions].map(game => {
+  const details = existingPlatformerDetails[game.id];
+  return details ? { ...game, ...details } : game;
+});
