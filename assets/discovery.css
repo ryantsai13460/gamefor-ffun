@@ -2,6 +2,8 @@
 .discovery-form .field { flex: 1 1 16rem; min-width: 0; }
 .discovery-filters { margin-bottom: 12px; }
 .discovery-filters [aria-pressed="true"] { border-color: var(--accent-border); color: var(--accent); background: var(--accent-wash); }
+.discovery-result-filter { display: grid; gap: .2rem; max-width: 100%; color: var(--muted); font-size: .84rem; }
+.discovery-result-filter .field { width: min(100%, 16rem); min-width: 0; }
 .discovery-recent:not(:empty) { margin-bottom: 12px; }
 .discovery-status { margin: 12px 0; }
 .discovery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 175px), 1fr)); gap: 12px; }

@@ -32,7 +32,7 @@ const announce = text => { document.getElementById('announcement').textContent =
 const localCount = games.filter(game => game.local).length;
 const mainCatalogCount = games.filter(game => game.collection === 'github' || game.collection === 'base44-library').length;
 const categories = [...library.categoryCounts.keys()].sort((a, b) => a.localeCompare(b));
-const altFeatured = ['territorial', 'terrace-workshop', 'tapamine-dash', 'voxelia', '2048', 'ffun-skyline-v1', 'snake', 'memory-match', 'pong'];
+const altFeatured = ['lantern-shift', 'territorial', 'candy-box-2', 'terrace-workshop', 'tapamine-dash', 'voxelia', '2048', 'ffun-skyline-v1', 'snake', 'memory-match', 'pong'];
 const drawerMedia = matchMedia('(max-width: 860px)');
 const routes = new Set(['home', 'explore', 'discover', 'library', 'games', 'categories', 'trending', 'new', 'favorites', 'recent', 'youtube', 'movies', 'music', 'browse', 'web-search', 'blip', 'play-hub', 'settings', 'credits', 'play']);
 const routeNames = {
@@ -375,19 +375,23 @@ function homePlayPanel() {
   const title = element('h2', '', 'Play here');
   title.prepend(icon('gamepad'));
   const picks = element('ul', 'home-play-picks');
-  for (const game of records(['territorial', 'terrace-workshop'])) {
+  const latest = records(prefs.recent).find(isPlayable);
+  const suggestions = records([latest?.id || 'territorial', 'lantern-shift', 'terrace-workshop']);
+  for (const game of suggestions.slice(0, 2)) {
     const row = element('li');
-    const play = link('', gamePath(game), 'home-play-pick');
+    const play = link('', gameStartPath(game), 'home-play-pick');
     const thumb = artwork(game);
     thumb.classList.add('home-play-pick-art');
     const details = element('span');
-    details.append(element('strong', '', game.title), element('small', '', game.category));
+    details.append(element('strong', '', game.title), element('small', '', game === latest ? 'Play again' : labels[gameAvailability(game)]));
     play.append(thumb, details);
     row.append(play);
     picks.append(row);
   }
-  panel.append(title, element('p', '', `${playableCount.toLocaleString('en-US')} playable games`), picks,
-    link('In-page games', '#games?option=in-page', 'button'));
+  const actions = element('div', 'home-play-actions');
+  actions.append(link('In-page games', '#games?option=in-page', 'button'),
+    link('Built-in only', '#games?local=1', 'button'));
+  panel.append(title, element('p', '', `${playableCount.toLocaleString('en-US')} playable games`), picks, actions);
   return panel;
 }
 

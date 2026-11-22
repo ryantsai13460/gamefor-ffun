@@ -63,8 +63,9 @@ const CURATED_VIDEOS = new Map([...previousVideos, ...expansionVideos, ...discov
 const expandedIds = new Set([...learningVideos, ...discoveryVideos, ...expansionVideos].map(video => video.id));
 const videoFormats = new Map([
   ['shorts', 'Shorts'], ['videos', 'Full videos'], ['all', 'All videos'], ['new', 'New additions'],
-  ['favorites', 'Favorites'], ['recent', 'Recently opened'], ['watched', 'Recently watched']
+  ['favorites', 'Favorites'], ['queue', 'Watch queue'], ['recent', 'Recently opened'], ['watched', 'Recently watched']
 ]);
+const queueView = videoFormats.get('queue');
 
 export function getCuratedVideos() {
   return [...CURATED_VIDEOS.values()];
@@ -90,10 +91,13 @@ const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const CHANNEL_ID = /^UC[A-Za-z0-9_-]{22}$/;
 const YOUTUBE_HOSTS = ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'www.youtube-nocookie.com'];
 const VIDEO_STORE = 'ffun-video-library-v1';
+const VIDEO_QUEUE_STORE = 'ffun-video-watch-queue-v1';
 const CHANNEL_STORE = 'ffun-public-channels-v1';
 const DEFAULT_CREATORS = '@wemmbumc\n@ParrotX2\n@SpokeIsHere\n@FlameFragsMC';
 const PAGE_SIZE = 18;
+const QUEUE_LIMIT = 100;
 let iframeApi;
+let sessionQueue;
 
 function node(tag, content = '', className = '') {
   const element = document.createElement(tag);
@@ -188,6 +192,14 @@ function storedVideoIds(values, limit = 100) {
   return Array.isArray(values) ? [...new Set(values.filter(id => typeof id === 'string' && VIDEO_ID.test(id)))].slice(0, limit) : [];
 }
 
+function readWatchQueue() {
+  if (sessionQueue) return sessionQueue;
+  const raw = preference(VIDEO_QUEUE_STORE);
+  const videos = Array.isArray(raw.items) ? raw.items.slice(0, QUEUE_LIMIT).map(sanitizeVideo).filter(Boolean) : [];
+  const items = [...new Map(videos.map(video => [video.id, video])).values()];
+  return { items, last: items.some(video => video.id === raw.last) ? raw.last : '' };
+}
+
 function videoMap(extra, channels) {
   return new Map([...channels.flatMap(({items}) => items), ...extra, ...CURATED_VIDEOS.values()].map(video => [video.id, video]));
 }
@@ -197,7 +209,8 @@ export function getVideoLibraryState() {
   const extras = Array.isArray(store.extra) ? store.extra.map(sanitizeVideo).filter(Boolean).slice(-100) : [];
   const known = videoMap(extras, validChannels(preference(CHANNEL_STORE).channels));
   const read = (value, limit) => storedVideoIds(value, limit).map(id => known.get(id)).filter(Boolean);
-  return { favorites: read(store.favorites), recent: read(store.recent, 30), watched: read(store.watched, 30) };
+  const queue = readWatchQueue().items.map(video => known.get(video.id) || video);
+  return { favorites: read(store.favorites), recent: read(store.recent, 30), watched: read(store.watched, 30), queue };
 }
 
 function validChannels(channels) {
@@ -400,7 +413,7 @@ export function watchDialog(target, {title, subtitle, description, video, extern
   };
 }
 
-export function openShortsFeed(target, videos, { startIndex = 0, onVisit, onPlaying, inPageOnly = false } = {}) {
+export function openShortsFeed(target, videos, { startIndex = 0, onVisit, onPlaying, inPageOnly = false, extraAction } = {}) {
   if (!videos.length) return () => {};
   const dialog = node('dialog', '', 'media-dialog shorts-feed-dialog');
   dialog.setAttribute('aria-label', 'Shorts feed');
@@ -447,6 +460,7 @@ export function openShortsFeed(target, videos, { startIndex = 0, onVisit, onPlay
   let stopPlayback = () => {};
   let scrollTimer;
   let closed = false;
+  let activeAction;
   const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(align) : null;
 
   function activate(nextIndex) {
@@ -469,6 +483,13 @@ export function openShortsFeed(target, videos, { startIndex = 0, onVisit, onPlay
     source.href = lookup(video.id, true);
     previous.disabled = index === 0;
     next.disabled = index === videos.length - 1;
+    if (extraAction) {
+      const restoreFocus = activeAction && document.activeElement === activeAction;
+      activeAction?.remove();
+      activeAction = extraAction(video);
+      controls.append(activeAction);
+      if (restoreFocus) activeAction.focus({preventScroll: true});
+    }
     onVisit?.(video);
     stopPlayback = playEmbedded(stage, status, video, () => dialog.open && index === nextIndex, !inPageOnly, true,
       () => onPlaying?.(video));
@@ -883,6 +904,21 @@ function youtubePage(target, params) {
   notice.setAttribute('role', 'status');
   count.setAttribute('aria-live', 'polite');
   const grid = node('div', '', 'media-grid media-videos');
+  const queuePanel = node('section', '', 'media-watch-queue');
+  queuePanel.setAttribute('aria-label', queueView);
+  const queueHeader = node('header', '', 'media-watch-queue-header');
+  const queueSummary = node('p', '', 'media-meta');
+  queueSummary.setAttribute('role', 'status');
+  const queueStatus = node('p', '', 'media-meta');
+  queueStatus.setAttribute('role', 'status');
+  queueStatus.hidden = true;
+  const queueStart = button('Play queue', () => showQueuedVideo(queue.last || queue.items[0]?.id), 'button primary');
+  queueStart.setAttribute('aria-haspopup', 'dialog');
+  const queueList = node('ol', '', 'media-watch-queue-list');
+  queueList.setAttribute('role', 'list');
+  queueList.setAttribute('aria-label', 'Queued videos');
+  queueHeader.append(node('h2', queueView), queueStart);
+  queuePanel.append(queueHeader, queueSummary, queueStatus, queueList);
   const controls = node('div', '', 'media-actions media-pages');
   const loadMore = button('Load more', appendNextPage, 'button primary media-load-more');
   const scrollMoreLabel = node('label', '', 'media-scroll-more');
@@ -918,10 +954,12 @@ function youtubePage(target, params) {
   let onlineRequest;
   let onlineSearch;
   let currentShorts = [];
+  let queue = readWatchQueue();
+  let updateQueuePlayer;
   const scrollShorts = button('Scroll Shorts', () => {
     closeDialog?.();
     closeDialog = openShortsFeed(root, currentShorts, {
-      startIndex: page * PAGE_SIZE, onVisit: rememberVideo, onPlaying: rememberWatched
+      startIndex: page * PAGE_SIZE, onVisit: rememberVideo, onPlaying: rememberWatched, extraAction: video => queueToggle(video)
     });
   }, 'button primary shorts-feed-launch');
   scrollShorts.setAttribute('aria-haspopup', 'dialog');
@@ -932,13 +970,20 @@ function youtubePage(target, params) {
   });
 
   const viewButtons = new Map();
-  for (const tab of videoFormats.values()) {
+  for (const [format, tab] of videoFormats) {
     const choice = button(tab, () => {
+      const updateRoute = view === queueView || tab === queueView;
       resetOnlineSearch();
       notice.textContent = '';
       view = lastLocalView = tab;
       page = 0;
       visiblePages = 1;
+      if (updateRoute) {
+        const route = new URLSearchParams({format});
+        if (input.value.trim()) route.set('q', input.value.trim());
+        if (category.selectedIndex > 0) route.set('topic', category.value);
+        history.replaceState(null, '', `#youtube?${route}`);
+      }
       draw();
     }, 'button media-tab');
     viewButtons.set(tab, choice);
@@ -1014,11 +1059,159 @@ function youtubePage(target, params) {
   }
   tools.append(views, filters);
   root.append(heading('YouTube', `${catalogCount.toLocaleString()} videos and Shorts across gaming, music, science, and more.`),
-    feature, topicLinks, tools, count, grid, sentinel, controls, continuation, linkTools, notice, importer.section, connectedSearch);
+    feature, topicLinks, tools, count, grid, sentinel, controls, continuation, queuePanel, linkTools, notice, importer.section, connectedSearch);
   target.replaceChildren(root);
 
   function allVideos() {
     return videoMap(state.extra, state.channels);
+  }
+
+  function updateQueueToggle(control, saved) {
+    const compact = control.classList.contains('media-queue-card-action');
+    control.textContent = saved ? (compact ? 'Queued' : 'Remove from queue') : (compact ? '+ Queue' : 'Add to queue');
+    control.setAttribute('aria-pressed', String(saved));
+    control.disabled = !saved && queue.items.length >= QUEUE_LIMIT;
+    control.title = control.disabled ? `The watch queue holds up to ${QUEUE_LIMIT} videos.` : '';
+  }
+
+  function focusQueueEntry(focus) {
+    const row = queueList.querySelector(`[data-queue-item="${focus.id}"]`) ||
+      queueList.children[Math.min(focus.index || 0, queueList.children.length - 1)];
+    const command = row?.querySelector(`[data-queue-command="${focus.command}"]`);
+    const target = command && !command.disabled ? command : row?.querySelector('[data-queue-command="play"]') || viewButtons.get(queueView);
+    target?.focus({preventScroll: true});
+  }
+
+  function drawQueue(focus) {
+    const library = allVideos();
+    const items = queue.items.map(video => library.get(video.id) || video);
+    queueStart.hidden = !items.length;
+    queueStart.textContent = queue.last ? 'Continue queue' : 'Play queue';
+    queueSummary.textContent = items.length ? `${items.length} queued ${items.length === 1 ? 'video' : 'videos'}.`
+      : 'Add a video or Short to build your watch queue.';
+    queueStatus.hidden = !sessionQueue;
+    queueStatus.textContent = sessionQueue ? 'Browser storage is unavailable. Queue changes are kept for this session.' : '';
+    queueList.replaceChildren(...items.map((video, index) => {
+      const item = node('li', '', 'media-watch-queue-entry');
+      item.dataset.queueItem = video.id;
+      const order = node('span', String(index + 1), 'media-watch-queue-order');
+      order.setAttribute('aria-hidden', 'true');
+      const start = button('', () => showQueuedVideo(video.id), 'media-watch-queue-launch');
+      start.dataset.queueCommand = 'play';
+      start.setAttribute('aria-label', `Watch ${video.title} from queue`);
+      start.setAttribute('aria-haspopup', 'dialog');
+      const playIcon = node('span', '▶', 'media-watch-queue-play-icon');
+      playIcon.setAttribute('aria-hidden', 'true');
+      const label = node('span', '', 'media-watch-queue-label');
+      label.append(node('strong', video.title), node('span', [video.creator, video.short ? 'Short' : 'Video',
+        video.id === queue.last && 'Last opened'].filter(Boolean).join(' · '), 'media-meta'));
+      start.append(playIcon, label);
+      const earlier = button('Move earlier', () => moveQueuedVideo(video.id, -1));
+      const later = button('Move later', () => moveQueuedVideo(video.id, 1));
+      const remove = button('Remove', () => changeQueue(current => ({
+        items: current.items.filter(({id}) => id !== video.id), last: current.last === video.id ? '' : current.last
+      }), { id: video.id, index, command: 'remove' }));
+      earlier.dataset.queueCommand = 'earlier';
+      earlier.disabled = index === 0;
+      earlier.setAttribute('aria-label', `Move ${video.title} earlier`);
+      later.dataset.queueCommand = 'later';
+      later.disabled = index === items.length - 1;
+      later.setAttribute('aria-label', `Move ${video.title} later`);
+      remove.dataset.queueCommand = 'remove';
+      remove.setAttribute('aria-label', `Remove ${video.title} from queue`);
+      const actions = node('div', '', 'media-actions media-watch-queue-actions');
+      actions.append(earlier, later, remove);
+      item.append(order, start, actions);
+      return item;
+    }));
+    if (focus) focusQueueEntry(focus);
+  }
+
+  function syncQueue(focus) {
+    const ids = new Set(queue.items.map(video => video.id));
+    viewButtons.get(queueView).textContent = ids.size ? `${queueView} (${ids.size})` : queueView;
+    for (const control of root.querySelectorAll('[data-video-queue-id]')) updateQueueToggle(control, ids.has(control.dataset.videoQueueId));
+    if (view === queueView) drawQueue(focus);
+    updateQueuePlayer?.();
+  }
+
+  function queueFocus() {
+    const active = document.activeElement;
+    const row = active?.closest('[data-queue-item]');
+    return row && queueList.contains(row)
+      ? {id: row.dataset.queueItem, index: Array.from(queueList.children).indexOf(row), command: active.dataset.queueCommand} : undefined;
+  }
+
+  function changeQueue(update, focus = queueFocus()) {
+    const latest = readWatchQueue();
+    queue = update(latest);
+    if (queue !== latest) sessionQueue = persist(VIDEO_QUEUE_STORE, queue) ? undefined : queue;
+    syncQueue(focus);
+  }
+
+  function syncFromStorage(event) {
+    if (event.storageArea !== localStorage || (event.key !== null && event.key !== VIDEO_QUEUE_STORE) || sessionQueue) return;
+    queue = readWatchQueue();
+    syncQueue(queueFocus());
+  }
+
+  function queueToggle(video, compact = false) {
+    const control = button('', () => changeQueue(current => {
+      if (current.items.some(({id}) => id === video.id)) {
+        return {items: current.items.filter(({id}) => id !== video.id), last: current.last === video.id ? '' : current.last};
+      }
+      const entry = sanitizeVideo(video);
+      return entry && current.items.length < QUEUE_LIMIT ? {...current, items: [...current.items, entry]} : current;
+    }), compact ? 'media-queue-card-action' : 'button');
+    control.dataset.videoQueueId = video.id;
+    control.setAttribute('aria-label', `Queue ${video.title}`);
+    updateQueueToggle(control, queue.items.some(({id}) => id === video.id));
+    return control;
+  }
+
+  function moveQueuedVideo(id, direction) {
+    changeQueue(current => {
+      const index = current.items.findIndex(video => video.id === id);
+      const destination = index + direction;
+      if (index < 0 || destination < 0 || destination >= current.items.length) return current;
+      const items = [...current.items];
+      const [moving] = items.splice(index, 1);
+      items.splice(destination, 0, moving);
+      return {...current, items};
+    }, {id, command: direction === -1 ? 'earlier' : 'later'});
+  }
+
+  function showQueuedVideo(id) {
+    changeQueue(current => current.last === id || !current.items.some(video => video.id === id) ? current : {...current, last: id});
+    const queued = queue.items.find(video => video.id === id);
+    if (!queued) return;
+    const known = allVideos().get(id);
+    if (!known) {
+      state.extra = [...state.extra, queued].slice(-100);
+      updateCreatorOptions();
+    }
+    showVideo(known || queued, true);
+  }
+
+  function queueNavigation(id) {
+    const container = node('div', '', 'media-actions media-queue-navigation');
+    const position = node('span', '', 'media-meta');
+    position.setAttribute('aria-live', 'polite');
+    const neighbor = change => {
+      const index = queue.items.findIndex(video => video.id === id);
+      if (index !== -1) showQueuedVideo(queue.items[index + change]?.id);
+    };
+    const previous = button('Previous in queue', () => neighbor(-1));
+    const next = button('Next in queue', () => neighbor(1));
+    container.append(previous, position, next);
+    updateQueuePlayer = () => {
+      const index = queue.items.findIndex(video => video.id === id);
+      previous.disabled = index <= 0;
+      next.disabled = index === -1 || index === queue.items.length - 1;
+      position.textContent = index === -1 ? 'Removed from watch queue.' : `${index + 1} of ${queue.items.length} in queue`;
+    };
+    updateQueuePlayer();
+    return container;
   }
 
   function rememberOnlineVideo(video) {
@@ -1041,22 +1234,27 @@ function youtubePage(target, params) {
     if (view === 'Recently watched') draw();
   }
 
-  function showVideo(video) {
+  function showVideo(video, fromQueue = false) {
     closeDialog?.();
+    updateQueuePlayer = undefined;
     rememberVideo(video);
     if (view === 'Recently opened') {
       const launchId = grid.contains(document.activeElement) ? document.activeElement.dataset.videoId : null;
       draw();
       if (launchId) grid.querySelector(`[data-video-id="${launchId}"]`)?.focus({preventScroll: true});
     }
-    const details = node('section', '', 'media-related');
+    const details = node('div', '', 'media-video-details');
+    if (fromQueue) details.append(queueNavigation(video.id));
+    details.append(queueToggle(video));
     const sameCreator = item => Boolean(video.creator && item.creator === video.creator);
     const related = [...new Map([...currentResults, ...allVideos().values()].map(item => [item.id, item])).values()]
       .filter(item => item.id !== video.id && (sameCreator(item) || item.tags.some(tag => video.tags.includes(tag))))
       .sort((first, second) => Number(sameCreator(second)) - Number(sameCreator(first))).slice(0, 4);
     if (related.length) {
-      details.append(node('h3', 'Related videos'));
-      for (const item of related) details.append(button(`Watch ${item.title}`, () => showVideo(item)));
+      const recommendations = node('section', '', 'media-related');
+      recommendations.append(node('h3', 'Related videos'));
+      for (const item of related) recommendations.append(button(`Watch ${item.title}`, () => showVideo(item)));
+      details.append(recommendations);
     }
     closeDialog = watchDialog(root, {
       title: video.title,
@@ -1065,9 +1263,16 @@ function youtubePage(target, params) {
       external: lookup(video.id, video.short),
       directLabel: 'Watch on YouTube',
       short: video.short,
-      details: related.length ? details : undefined,
+      details,
       onPlaying: () => rememberWatched(video),
     });
+    const updateNavigation = updateQueuePlayer;
+    root.querySelector('dialog[open]')?.addEventListener('close', () => {
+      if (updateQueuePlayer === updateNavigation) updateQueuePlayer = undefined;
+      if (active && view === queueView && !root.querySelector('dialog[open]') && (fromQueue || !queuePanel.contains(document.activeElement))) {
+        focusQueueEntry({id: fromQueue ? video.id : queue.last, command: 'play'});
+      }
+    }, {once: true});
   }
 
   function updateCreatorOptions() {
@@ -1110,12 +1315,22 @@ function youtubePage(target, params) {
       favorite.setAttribute('aria-label', `${saved ? 'Remove from' : 'Add to'} favorites: ${video.title}`);
     }
     updateFavorite();
-    item.append(watch, favorite);
+    item.append(watch, favorite, queueToggle(video, true));
     return item;
   }
 
   function draw() {
+    const queueMode = view === queueView;
+    queuePanel.hidden = !queueMode;
+    feature.hidden = topicLinks.hidden = filters.hidden = count.hidden = grid.hidden = sentinel.hidden = continuation.hidden = linkTools.hidden = queueMode;
+    importer.section.hidden = connectedSearch.hidden = queueMode;
     for (const [name, choice] of viewButtons) choice.setAttribute('aria-pressed', String(view === name));
+    syncQueue();
+    if (queueMode) {
+      currentResults = currentShorts = [];
+      scrollShorts.hidden = controls.hidden = true;
+      return;
+    }
     for (const topicLink of topicLinks.children) {
       if (topicLink.dataset.topic === category.value) topicLink.setAttribute('aria-current', 'true');
       else topicLink.removeAttribute('aria-current');
@@ -1311,6 +1526,7 @@ function youtubePage(target, params) {
   });
   updateCreatorOptions();
   draw();
+  window.addEventListener('storage', syncFromStorage);
   const observer = canAutoLoad ? new IntersectionObserver(entries => {
     if (active && scrollMore.checked && view !== 'Connected search' && entries.some(entry => entry.isIntersecting)) appendNextPage();
   }, { rootMargin: '120px 0px' }) : null;
@@ -1321,12 +1537,14 @@ function youtubePage(target, params) {
   const addressedVideo = params.get('video');
   if (VIDEO_ID.test(addressedVideo || '')) {
     const known = allVideos().get(addressedVideo);
-    if (known) showVideo(known);
+    if (view === queueView && queue.items.some(video => video.id === addressedVideo)) showQueuedVideo(addressedVideo);
+    else if (known) showVideo(known);
     else notice.replaceChildren(document.createTextNode('This video is outside the current library. '),
       link('Open the original YouTube link', lookup(addressedVideo), 'media-credit'));
   }
   return () => {
     active = false;
+    window.removeEventListener('storage', syncFromStorage);
     observer?.disconnect();
     videoCheck?.abort();
     importer.stop();

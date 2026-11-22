@@ -3,6 +3,7 @@ import { createHarborDispatch, createTidalRescue } from "./harbor-games.js";
 import { createKiteBreeze, createPicnicPack } from "./family-games.js";
 import { createCloverRoll } from "./clover-roll.js";
 import { createClockCourier, createFractionKitchen } from "./learning-games.js";
+import { createLanternShift } from "./lantern-shift.js";
 
 const storageKey = "ffun-original-games-v1";
 const directions = {
@@ -2002,6 +2003,7 @@ const localGames = {
   "clover-roll": { title: "Clover Roll", run: context => playCanvas(context, createCloverRoll) },
   "fraction-kitchen": { title: "Fraction Kitchen", run: context => playCanvas(context, createFractionKitchen) },
   "clock-courier": { title: "Clock Courier", run: context => playCanvas(context, createClockCourier) },
+  "lantern-shift": { title: "Lantern Shift", run: context => playCanvas(context, createLanternShift) },
   "terrace-workshop": {
     title: "Terrace Workshop",
     run: terraceWorkshop,

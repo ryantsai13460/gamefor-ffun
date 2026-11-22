@@ -1,7 +1,29 @@
+import { createGameAddressLookup } from './game-play-policy.js';
+
 const version = new URL(import.meta.url).search;
-const { normalize } = await import(`./library.js${version}`);
+const [{ gameAvailability, normalize }, { filmPlayback }] = await Promise.all([
+  import(`./library.js${version}`), import(`./film-playback.js${version}`)
+]);
 const kinds = [['all', 'All'], ['games', 'Games'], ['movies', 'Movies'], ['music', 'Music'], ['videos', 'Videos']];
 const labels = new Map(kinds);
+const playLabels = { local: 'Built in', embed: 'In-page player', external: 'Catalog only', unverified: 'Play unavailable' };
+const resultFilters = {
+  games: {
+    key: 'play', label: 'Game player',
+    options: [['', 'Any play option'], ['in-page', 'Playable here'], ['local', 'Built in'], ['embed', 'In-page player']],
+    matches: (item, value) => value === 'in-page' ? ['local', 'embed'].includes(item.availability) : item.availability === value
+  },
+  movies: {
+    key: 'watch', label: 'Movie playback',
+    options: [['', 'Any movie'], ['full', 'Full movies'], ['embedded', 'Full movies playable here'], ['trailer', 'Trailer-only listings']],
+    matches: (item, value) => value === 'full' ? ['embedded', 'provider'].includes(item.playback) : item.playback === value
+  },
+  videos: {
+    key: 'format', label: 'Video format',
+    options: [['', 'Any format'], ['standard', 'Full videos'], ['shorts', 'Shorts']],
+    matches: (item, value) => item.short === (value === 'shorts')
+  }
+};
 const historyKey = 'ffun.discovery.history';
 const batch = 24;
 
@@ -40,8 +62,14 @@ function item(type, title, subtitle, image, href, terms = '') {
 }
 
 function filmItem(film) {
-  return item('movies', film.title, [film.year, film.fullVideo || film.embed || film.fullWatch ? film.genres?.[0] : 'Trailer'].filter(Boolean).join(' · '), film.art, filmLink(film),
-    [film.genres, film.description, film.credit].flat().filter(Boolean).join(' '));
+  const full = filmPlayback(film);
+  const playback = full?.embed ? 'embedded' : full ? 'provider' : filmPlayback(film, true) ? 'trailer' : '';
+  const subtitle = [film.year, full ? film.genres?.[0] : playback === 'trailer' ? 'Trailer' : 'Catalog listing'];
+  return {
+    ...item('movies', film.title, subtitle.filter(Boolean).join(' · '), film.art, filmLink(film),
+      [film.genres, film.description, film.credit].flat().filter(Boolean).join(' ')),
+    playback
+  };
 }
 
 function songItem(song) {
@@ -50,13 +78,20 @@ function songItem(song) {
 }
 
 function videoItem(video) {
-  return item('videos', video.title, [video.creator, video.short ? 'Short' : 'Video'].filter(Boolean).join(' · '),
-    video.thumbnail || thumbnail(video.id), videoLink(video), video.tags?.join(' '));
+  return {
+    ...item('videos', video.title, [video.creator, video.short ? 'Short' : 'Video'].filter(Boolean).join(' · '),
+      video.thumbnail || thumbnail(video.id), videoLink(video), video.tags?.join(' ')),
+    short: Boolean(video.short)
+  };
 }
 
 function gameItem(game, showArtwork) {
-  return item('games', game.title, game.category, showArtwork ? game.art : '', '#play/' + encodeURIComponent(game.id),
-    [game.id, game.description, ...(game.aliases || [])].filter(Boolean).join(' '));
+  const aliases = [game.id, ...(game.aliases || [])];
+  return {
+    ...item('games', game.title, game.category, showArtwork ? game.art : '', '#play/' + encodeURIComponent(game.id),
+      [game.description, ...aliases].filter(Boolean).join(' ')),
+    id: game.id, aliases, availability: gameAvailability(game)
+  };
 }
 
 function history() {
@@ -89,7 +124,8 @@ function card(record) {
   }
   const info = element('div', 'discovery-card-copy');
   info.append(element('p', 'discovery-kind', labels.get(record.type)), element('h3', '', record.title));
-  if (record.subtitle) info.append(element('p', 'muted', record.subtitle));
+  const subtitle = [record.subtitle, playLabels[record.availability]].filter(Boolean).join(' · ');
+  if (subtitle) info.append(element('p', 'muted', subtitle));
   anchor.append(artwork, info);
   return anchor;
 }
@@ -121,7 +157,10 @@ const videoData = () => import(`./media.js${version}`);
 function prepare(records) {
   return records.map(record => {
     const title = normalize(record.title);
-    return { record, title, searchable: normalize([record.title, record.subtitle, record.terms].join(' ')) };
+    return {
+      record, title, aliases: (record.aliases || []).map(normalize),
+      searchable: normalize([record.title, record.subtitle, record.terms].join(' '))
+    };
   });
 }
 
@@ -134,6 +173,7 @@ export function renderDiscovery(target, { params, games, showArtwork, onRouteCha
   let selected = labels.has(params.get('type')) ? params.get('type') : 'all';
   let query = (params.get('q') || '').slice(0, 150);
   let limit = batch;
+  const gameAtAddress = createGameAddressLookup(games);
 
   const header = heading('Search the library', 'Find games, movies, songs, and videos from the arcade catalogs.');
   const form = element('form', 'discovery-form');
@@ -165,6 +205,21 @@ export function renderDiscovery(target, { params, games, showArtwork, onRouteCha
     })
   ]));
   filters.append(...typeButtons.values());
+  const filterControls = new Map(Object.entries(resultFilters).map(([type, config]) => {
+    const label = element('label', 'discovery-result-filter', config.label);
+    const field = element('select', 'field');
+    field.append(...config.options.map(([value, text]) => new Option(text, value)));
+    const initial = params.get(config.key);
+    if (config.options.some(([value]) => value === initial)) field.value = initial;
+    field.addEventListener('change', () => {
+      limit = batch;
+      saveRoute();
+      draw();
+    });
+    label.append(field);
+    filters.append(label);
+    return [type, { ...config, label, field }];
+  }));
 
   const recent = element('div', 'interaction-row discovery-recent');
   const status = element('p', 'muted discovery-status');
@@ -185,16 +240,22 @@ export function renderDiscovery(target, { params, games, showArtwork, onRouteCha
     const parameters = {};
     if (query) parameters.q = query;
     if (selected !== 'all') parameters.type = selected;
+    const filter = filterControls.get(selected);
+    if (filter?.field.value) parameters[filter.key] = filter.field.value;
     const hash = route('discover', parameters);
     window.history.replaceState(null, '', hash);
     onRouteChange(hash, query);
   }
 
   function rememberQuery() {
-    if (!query) return;
+    if (!query || /^https?:\/\//i.test(query) || matchingGame(query)) return;
     const normalizedQuery = normalize(query);
     cachedHistory = [query, ...cachedHistory.filter(term => normalize(term) !== normalizedQuery)].slice(0, 8);
     saveHistory(cachedHistory);
+  }
+
+  function matchingGame(value) {
+    return value.includes('.') && (gameAtAddress(value) || gameAtAddress('https://' + value));
   }
 
   function applyQuery() {
@@ -209,14 +270,20 @@ export function renderDiscovery(target, { params, games, showArtwork, onRouteCha
     if (!active) return;
     const text = normalize(query);
     const terms = text.split(' ').filter(Boolean);
+    const addressMatch = matchingGame(query);
+    const filter = filterControls.get(selected);
+    const filterValue = filter?.field.value;
     const matches = prepared.filter(({ record, searchable }) =>
-      (selected === 'all' || selected === record.type) && terms.every(term => searchable.includes(term)));
-    if (text) matches.sort((left, right) => score(right.title) - score(left.title));
-    function score(title) {
-      return (title === text ? 40 : title.startsWith(text) ? 22 : title.includes(text) ? 12 : 0)
+      (selected === 'all' || selected === record.type) && (!filterValue || filter.matches(record, filterValue)) &&
+      ((addressMatch && record.id === addressMatch.id) || terms.every(term => searchable.includes(term))));
+    if (text) matches.sort((left, right) => score(right) - score(left));
+    function score({ record, title, aliases }) {
+      if (addressMatch && record.id === addressMatch.id) return 80;
+      return (title === text ? 40 : aliases.includes(text) ? 32 : title.startsWith(text) ? 22 : title.includes(text) ? 12 : 0)
         + terms.filter(term => title.includes(term)).length * 3;
     }
     for (const [key, control] of typeButtons) control.setAttribute('aria-pressed', String(key === selected));
+    for (const [key, control] of filterControls) control.label.hidden = selected !== key;
     clear.hidden = !input.value;
     recent.replaceChildren();
     if (!query && cachedHistory.length) {
@@ -238,10 +305,12 @@ export function renderDiscovery(target, { params, games, showArtwork, onRouteCha
     const total = matches.length
       ? `Showing ${Math.min(limit, matches.length)} of ${matches.length} results`
       : 'No matching titles';
-    status.textContent = pending && selected !== 'games'
+    status.textContent = pending && selected !== 'games' && !addressMatch
       ? 'Loading media catalogs…'
       : total + (incomplete.length ? `. Unavailable catalogs include ${incomplete.join(', ')}.` : '');
+    const focusedHref = listing.contains(document.activeElement) && document.activeElement.getAttribute('href');
     listing.replaceChildren(...matches.slice(0, limit).map(({ record }) => card(record)));
+    if (focusedHref) [...listing.children].find(node => node.getAttribute('href') === focusedHref)?.focus({ preventScroll: true });
     more.hidden = limit >= matches.length;
     web.href = query ? route('web-search', { q: query }) : '#web-search';
   }
@@ -313,6 +382,9 @@ export function renderSavedLibrary(target, { favorites, recent, showArtwork }) {
       ]), '#music?view=playlists', 'All music playlists');
     }
     if (videos.status === 'fulfilled') {
+      featured('YouTube watch queue', (videos.value.queue || []).map(video => ({
+        ...videoItem(video), href: route('youtube', { format: 'queue', video: video.id })
+      })), '#youtube?format=queue', 'Open watch queue');
       featured('Favorite videos', videos.value.favorites.map(videoItem), '#youtube?format=favorites', 'All favorite videos');
       featured('Recently watched videos', videos.value.watched.map(videoItem), '#youtube?format=recent', 'Recent videos');
     }

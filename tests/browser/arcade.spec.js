@@ -258,7 +258,7 @@ test('video and film search, official fallback, playback review, catalog report'
   await page.goto('/');
   await go(page, 'YouTube');
   await page.getByRole('searchbox', { name: 'Search titles, creators, or topics' }).fill('minecraft');
-  await page.getByRole('button', { name: /^Watch / }).first().click();
+  await page.locator('.media-videos').getByRole('button', { name: /^Watch / }).first().click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('link', { name: /YouTube/ }).first()).toHaveAttribute('href', /https:\/\/www\.youtube\.com\//);
@@ -291,7 +291,7 @@ test('the expanded YouTube tabs show the curated catalog and support pagination'
   await expect(page.getByRole('dialog').locator('iframe')).toHaveAttribute('src', /embed\/NWjkbAQOGY8/);
   await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
   const count = page.locator('.media-result-count');
-  const watch = page.getByRole('button', { name: /^Watch / });
+  const watch = page.locator('.media-videos').getByRole('button', { name: /^Watch / });
   const firstWatch = await watch.first().getAttribute('aria-label');
   await expect(watch).toHaveCount(18);
   await page.getByRole('button', { name: 'Load more', exact: true }).click();

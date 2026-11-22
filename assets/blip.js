@@ -1,5 +1,7 @@
 const assetVersion = new URL(import.meta.url).search;
-const [{ BLIP_FILE_ACCEPT, BLIP_FILE_LIMITS, normalizeBlipAttachments, readBlipFiles }, { BLIP_LIMITS, createBlipStore }, {
+const [{ BLIP_FILE_ACCEPT, BLIP_FILE_LIMITS, normalizeBlipAttachments, readBlipFiles }, {
+  BLIP_BACKUP_FILE_BYTES, BLIP_LIMITS, createBlipStore
+}, {
   answerBlip, blipModelAvailability, blipModes, cpuBlipAvailability, portableBlipAvailability,
   prepareBlipModel, prepareCpuBlipModel, preparePortableBlipModel,
   releaseCpuBlipModel, releasePortableBlipModel
@@ -61,6 +63,18 @@ function button(text, action, className) {
   return node;
 }
 
+function downloadBlipFile(contents, name, type) {
+  const url = URL.createObjectURL(new Blob([contents], { type }));
+  const download = element('a');
+  download.download = name;
+  download.href = url;
+  download.hidden = true;
+  document.body.append(download);
+  download.click();
+  download.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function downloadTranscript(chat) {
   const entries = chat.messages.map(message => {
     const parts = [message.role === 'user' ? 'You' : 'blip.ai', message.text];
@@ -72,16 +86,8 @@ function downloadTranscript(chat) {
     return parts.filter(Boolean).join('\n\n');
   });
   const contents = [chat.title, ...entries].join('\n\n────────\n\n');
-  const url = URL.createObjectURL(new Blob([contents], { type: 'text/plain;charset=utf-8' }));
-  const download = element('a');
   const name = chat.title.trim().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
-  download.download = `${name || 'blip-chat'}.txt`;
-  download.href = url;
-  download.hidden = true;
-  document.body.append(download);
-  download.click();
-  download.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  downloadBlipFile(contents, `${name || 'blip-chat'}.txt`, 'text/plain;charset=utf-8');
 }
 
 function messageView(message, { onEdit, onRetry, onContinue } = {}) {
@@ -227,6 +233,8 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
               <div class="blip-popover-content">
                 <button class="blip-button" type="button" data-blip="pin">Pin chat</button>
                 <button class="blip-button" type="button" data-blip="download">Download transcript</button>
+                <button class="blip-button" type="button" data-blip="back-up">Back up conversations</button>
+                <button class="blip-button" type="button" data-blip="restore">Restore from backup</button>
                 <label class="blip-theme-control">Chat theme
                   <select data-blip="theme"><option value="dark">Dark</option><option value="light">Light</option></select>
                 </label>
@@ -310,6 +318,18 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
         <button class="blip-button" type="button" data-blip="close-attachment">Close</button>
       </div>
     </dialog>
+    <dialog class="blip-dialog" data-blip="backup-dialog" aria-labelledby="blip-backup-title" aria-describedby="blip-backup-description">
+      <form data-blip="backup-form">
+        <h2 id="blip-backup-title">Restore conversations</h2>
+        <p id="blip-backup-description">Add copies of saved chats and their attachment excerpts from a Blip JSON backup. The file is read on this device.</p>
+        <label class="blip-backup-file" data-blip="backup-file-label">Blip backup file</label>
+        <p class="blip-backup-status" data-blip="backup-status" role="status"></p>
+        <div class="blip-dialog-actions">
+          <button class="blip-button" data-blip="cancel-restore" type="button">Cancel</button>
+          <button class="blip-button blip-button--primary" data-blip="confirm-restore" type="submit" disabled>Add conversations</button>
+        </div>
+      </form>
+    </dialog>
     <dialog class="blip-dialog" data-blip="chat-dialog" aria-labelledby="blip-dialog-title">
       <form data-blip="chat-edit">
         <h2 id="blip-dialog-title" data-blip="edit-title"></h2>
@@ -347,6 +367,11 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
   const dialog = part('chat-dialog');
   const attachmentDialog = part('attachment-dialog');
   const shortcutsDialog = part('shortcuts-dialog');
+  const backupDialog = part('backup-dialog');
+  const backupFile = element('input');
+  backupFile.type = 'file';
+  backupFile.accept = '.json,application/json';
+  let backupRead;
   const nameInput = part('chat-name');
   const nameLabel = nameInput.closest('label');
   const theme = part('theme');
@@ -683,7 +708,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
   part('toggle').addEventListener('click', () => showChats(layout.dataset.chatsOpen !== 'true'));
   part('shortcuts').addEventListener('click', () => shortcutsDialog.showModal());
   root.addEventListener('keydown', event => {
-    if (dialog.open || attachmentDialog.open || shortcutsDialog.open || event.isComposing) return;
+    if (dialog.open || attachmentDialog.open || shortcutsDialog.open || backupDialog.open || event.isComposing) return;
     if (event.key === 'Escape') {
       const menu = root.querySelector('.blip-popover[open]');
       if (menu) {
@@ -744,6 +769,81 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
   part('download').addEventListener('click', () => {
     const chat = currentChat();
     if (chat?.messages.length) downloadTranscript(chat);
+  });
+  part('back-up').addEventListener('click', () => {
+    const tools = part('chat-actions');
+    tools.open = false;
+    tools.querySelector('summary').focus({ preventScroll: true });
+    try {
+      const day = new Date().toISOString().slice(0, 10);
+      downloadBlipFile(store.exportBackup(), `blip-chats-${day}.json`, 'application/json;charset=utf-8');
+      status.textContent = 'The backup includes saved messages and attachment excerpts.';
+    } catch (error) {
+      status.textContent = error.message;
+    }
+  });
+  const confirmRestore = part('confirm-restore');
+  const backupStatus = part('backup-status');
+  function resetRestore() {
+    backupRead = undefined;
+    backupStatus.textContent = '';
+    confirmRestore.disabled = true;
+    backupFile.disabled = false;
+    backupFile.value = '';
+    backupFile.remove();
+  }
+  part('restore').addEventListener('click', () => {
+    const tools = part('chat-actions');
+    tools.open = false;
+    tools.querySelector('summary').focus({ preventScroll: true });
+    resetRestore();
+    part('backup-file-label').append(backupFile);
+    backupDialog.showModal();
+    backupFile.focus();
+  });
+  part('cancel-restore').addEventListener('click', () => backupDialog.close());
+  backupDialog.addEventListener('close', () => {
+    if (!backupDialog.open) resetRestore();
+  });
+  backupFile.addEventListener('change', () => {
+    backupStatus.textContent = '';
+    confirmRestore.disabled = !backupFile.files.length;
+  });
+  part('backup-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const file = backupFile.files[0];
+    if (!file || backupRead) return;
+    if (file.size > BLIP_BACKUP_FILE_BYTES) {
+      backupStatus.textContent = 'This backup exceeds the Blip size limit.';
+      return;
+    }
+    backupFile.disabled = confirmRestore.disabled = true;
+    backupStatus.textContent = 'Reading backup…';
+    backupRead = file;
+    try {
+      let raw;
+      try {
+        raw = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
+      } catch {
+        throw new Error('Choose a readable Blip JSON backup.');
+      }
+      if (lifetime.signal.aborted || backupRead !== file || !backupDialog.open) return;
+      const id = currentChat()?.id;
+      const hasDraft = drafts.get(id)?.trim() || draftFiles.get(id)?.length || readingFiles.has(id) || revisions.has(id);
+      const added = store.importBackup(raw, { emptyChatId: hasDraft ? undefined : id });
+      backupDialog.close();
+      chatSearch.value = '';
+      draw();
+      input.focus({ preventScroll: true });
+      status.textContent = `Added ${added} ${added === 1 ? 'conversation' : 'conversations'}${store.isPersistent() ? '.' : ' for this visit.'}`;
+    } catch (error) {
+      if (!lifetime.signal.aborted && backupRead === file && backupDialog.open) backupStatus.textContent = error.message;
+    } finally {
+      if (backupRead === file && backupDialog.open) {
+        backupRead = undefined;
+        backupFile.disabled = confirmRestore.disabled = false;
+      }
+    }
   });
   fileInput.addEventListener('change', async () => {
     const id = store.getState().activeId;
@@ -1234,6 +1334,7 @@ export function renderBlip(target, { draft = '', chat: requestedChat = '' } = {}
     if (dialog.open) dialog.close();
     if (attachmentDialog.open) attachmentDialog.close();
     if (shortcutsDialog.open) shortcutsDialog.close();
+    if (backupDialog.open) backupDialog.close();
     stopMusic();
     void releaseCpuBlipModel();
     void releasePortableBlipModel();

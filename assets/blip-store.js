@@ -9,6 +9,10 @@ export const BLIP_LIMITS = Object.freeze({ chats: 40, messages: 100, title: 100,
 const defaultTitle = 'New chat';
 const version = 1;
 const maxSerializedLength = 2_000_000;
+const backupFormat = 'gamefor-ffun-blip-backup';
+const backupVersion = 1;
+const maxBackupLength = maxSerializedLength + 256;
+export const BLIP_BACKUP_FILE_BYTES = maxBackupLength * 3 + 3;
 const roles = new Set(['user', 'assistant']);
 const answerKinds = new Set(['model', 'hosted', 'local', 'calculator', 'conversion', 'wikipedia', 'unavailable']);
 const idPattern = /^[a-z0-9_-]{1,96}$/i;
@@ -117,21 +121,11 @@ function snapshot(activeId, chats) {
   return Object.freeze({ activeId, chats: Object.freeze(chats) });
 }
 
-function restoreState(raw) {
-  if (typeof raw !== 'string' || raw.length > maxSerializedLength) return snapshot(null, []);
-
-  let saved;
-  try {
-    saved = JSON.parse(raw);
-  } catch {
-    return snapshot(null, []);
-  }
-  if (!isObject(saved) || saved.version !== version || !Array.isArray(saved.chats)) return snapshot(null, []);
-
+function restoreChats(records) {
   const now = Date.now();
   const chats = [];
   const seen = new Set();
-  for (const chat of saved.chats) {
+  for (const chat of records) {
     if (chats.length === BLIP_LIMITS.chats) break;
     if (!isObject(chat) || !validId(chat.id) || seen.has(chat.id)) continue;
 
@@ -155,7 +149,50 @@ function restoreState(raw) {
     }));
   }
   chats.sort((first, second) => second.updatedAt - first.updatedAt);
-  return snapshot(seen.has(saved.activeId) ? saved.activeId : chats[0]?.id ?? null, chats);
+  return chats;
+}
+
+function restoreState(raw) {
+  if (typeof raw !== 'string' || raw.length > maxSerializedLength) return snapshot(null, []);
+
+  let saved;
+  try {
+    saved = JSON.parse(raw);
+  } catch {
+    return snapshot(null, []);
+  }
+  if (!isObject(saved) || saved.version !== version || !Array.isArray(saved.chats)) return snapshot(null, []);
+
+  const chats = restoreChats(saved.chats);
+  return snapshot(chats.some(chat => chat.id === saved.activeId) ? saved.activeId : chats[0]?.id ?? null, chats);
+}
+
+function readBackup(raw) {
+  if (typeof raw !== 'string' || raw.length > maxBackupLength) {
+    throw new Error('This backup exceeds the Blip size limit.');
+  }
+  let saved;
+  try { saved = JSON.parse(raw.replace(/^\uFEFF/, '')); } catch {
+    throw new Error('Choose a readable Blip JSON backup.');
+  }
+  if (!isObject(saved) || saved.format !== backupFormat || saved.version !== backupVersion || !Array.isArray(saved.chats)) {
+    throw new Error('Choose a supported Blip conversation backup.');
+  }
+  if (!saved.chats.length || saved.chats.length > BLIP_LIMITS.chats) {
+    throw new Error('A Blip backup must contain 1 to 40 conversations.');
+  }
+  const chats = restoreChats(saved.chats);
+  const previous = new Map(saved.chats.map(chat => [chat?.id, chat]));
+  const complete = chats.length === saved.chats.length && chats.every(chat => {
+    const messages = previous.get(chat.id).messages;
+    if (!Array.isArray(messages) || messages.length !== chat.messages.length) return false;
+    return chat.messages.every((message, index) => {
+      const saved = messages[index];
+      return message.id === saved.id && (message.attachments?.length || 0) === (saved.attachments?.length || 0);
+    });
+  });
+  if (!complete) throw new Error('This backup has invalid conversations or messages.');
+  return chats;
 }
 
 function browserStorage() {
@@ -170,10 +207,12 @@ export function createBlipStore({ storage = browserStorage() } = {}) {
   let persistent = false;
   let state = snapshot(null, []);
   let idSuffix = 0;
+  let lastSaved;
 
   try {
     if (storage && typeof storage.setItem === 'function') {
-      state = restoreState(storage.getItem(BLIP_STORE_KEY));
+      lastSaved = storage.getItem(BLIP_STORE_KEY);
+      state = restoreState(lastSaved);
       persistent = true;
     }
   } catch {
@@ -191,6 +230,7 @@ export function createBlipStore({ storage = browserStorage() } = {}) {
         return;
       }
       storage.setItem(BLIP_STORE_KEY, serialized);
+      lastSaved = serialized;
       persistent = true;
     } catch {
       persistent = false;
@@ -224,6 +264,49 @@ export function createBlipStore({ storage = browserStorage() } = {}) {
   return Object.freeze({
     getState: () => state,
     isPersistent: () => persistent,
+
+    exportBackup() {
+      if (!state.chats.length) throw new Error('There are no conversations to back up.');
+      const serialized = JSON.stringify({ format: backupFormat, version: backupVersion, chats: state.chats });
+      if (serialized.length > maxBackupLength) throw new Error('This library is too large for a Blip backup. Try downloading transcripts for your longest chats.');
+      return serialized;
+    },
+
+    importBackup(raw, { emptyChatId } = {}) {
+      const restored = readBackup(raw);
+      const only = state.chats.length === 1 ? state.chats[0] : null;
+      const replacePlaceholder = only && only.id === emptyChatId && only.title === defaultTitle &&
+        !only.messages.length && !only.pinned && !only.localOnly && only.mode === DEFAULT_BLIP_MODE;
+      const existing = replacePlaceholder ? [] : state.chats;
+      if (existing.length + restored.length > BLIP_LIMITS.chats) {
+        throw new Error('This backup would exceed the 40-conversation limit.');
+      }
+
+      const ids = new Set([...state.chats, ...restored].map(chat => chat.id));
+      const added = restored.map(chat => {
+        const id = newId('chat', candidate => ids.has(candidate));
+        ids.add(id);
+        return Object.freeze({ ...chat, id, unread: false });
+      });
+      const chats = [...added, ...existing].sort((first, second) => second.updatedAt - first.updatedAt);
+      const next = snapshot(added[0].id, chats);
+      const serialized = JSON.stringify({ version, ...next });
+      if (serialized.length > maxSerializedLength) throw new Error('These conversations would exceed the Blip storage limit.');
+      if (storage) {
+        let current;
+        try { current = storage.getItem(BLIP_STORE_KEY); } catch {
+          throw new Error('The browser could not read the saved conversations.');
+        }
+        if (current !== lastSaved) throw new Error('Saved conversations changed. Reload Blip before restoring this backup.');
+        try { storage.setItem(BLIP_STORE_KEY, serialized); } catch {
+          throw new Error('The browser could not save the restored conversations.');
+        }
+        lastSaved = serialized;
+      }
+      state = next;
+      persistent = Boolean(storage);
+      return added.length;
+    },
 
     createChat({ title = defaultTitle, mode = DEFAULT_BLIP_MODE } = {}) {
       if (state.chats.length >= BLIP_LIMITS.chats || !BLIP_MODES.includes(mode)) return null;

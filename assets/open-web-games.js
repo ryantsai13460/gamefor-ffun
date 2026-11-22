@@ -191,5 +191,37 @@ export const openWebGames = [
     license: 'GPL-3.0',
     licenseUrl: 'https://github.com/GabrieleMaurina/annex/blob/main/LICENSE'
   },
+  {
+    id: 'candy-box-2',
+    title: 'Candy Box 2',
+    category: 'Adventure',
+    creator: 'Aniwey',
+    collection: 'open-web',
+    url: 'https://candybox2.github.io/',
+    embed: 'https://candybox2.github.io/',
+    status: 'embed',
+    description: 'Collect candy, explore an ASCII world, and discover new items and quests as the adventure opens up.',
+    source: 'https://candybox2.github.io/source_code.html',
+    license: 'GPL-3.0',
+    licenseUrl: 'https://candybox2.github.io/source_code.html',
+    addedOn: '2026-11-22'
+  },
+  {
+    id: 'a-dark-room',
+    title: 'A Dark Room',
+    category: 'Adventure',
+    creator: 'Doublespeak Games',
+    collection: 'open-web',
+    description: 'Light a fire and keep it burning as a text adventure slowly unfolds into a survival story.',
+    url: 'https://adarkroom.doublespeakgames.com/',
+    embed: 'https://adarkroom.doublespeakgames.com/',
+    status: 'embed',
+    source: 'https://press.doublespeakgames.com/adr/index.html',
+    license: 'MPL-2.0',
+    licenseUrl: 'https://github.com/doublespeakgames/adarkroom/blob/main/LICENSE.md',
+    art: 'https://press.doublespeakgames.com/adr/images/header.png',
+    artCredit: 'Doublespeak Games press kit',
+    addedOn: '2026-11-22'
+  },
   ...tathamPuzzles
 ];

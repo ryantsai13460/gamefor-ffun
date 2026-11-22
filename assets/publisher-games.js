@@ -951,6 +951,14 @@ const fancadeTitles = [
 
 // Original games from Tapamine's published embed snippets.
 const tapamineTitles = [
+  ["putt","Putt","Sports","Lock your aim, hold to set the power, and sink the ball before your strokes run out.","2026-11-22"],
+  ["curl","Curl","Sports","Release the curling stone, then sweep it toward the target.","2026-11-22"],
+  ["traffic","Traffic","Puzzle","Switch the traffic light to keep cars moving safely through a busy intersection.","2026-11-22"],
+  ["wire","Wire","Arcade","Balance on a tightrope while wind gusts and landing birds nudge you off course.","2026-11-22"],
+  ["echo","Echo","Puzzle","Watch the lights flash, then repeat their colors in order.","2026-11-22"],
+  ["reel","Reel","Simulation","Raise or lower your catch bar to keep a fish inside until you reel it in.","2026-11-22"],
+  ["toss","Toss","Physics","Charge your throw and flip a bottle upright onto tables, stools, and shelves.","2026-11-22"],
+  ["climb","Climb","Racing","Drive across steep hills, land on your wheels, and collect fuel along the way.","2026-11-22"],
   ["dash","Dash (Tapamine)","Platformer","Jump over spikes and onto blocks to the beat in a fast one-tap rhythm runner."],
   ["bridge","Bridge","Arcade","Hold to grow a bridge, then let go when it is long enough to reach the next platform."],
   ["tempo","Tempo","Music","Tap and hold notes in one lane to play a new generated song each day."],
@@ -967,12 +975,12 @@ const tapamineTitles = [
 ];
 
 export const publisherGames = [
-  ...tapamineTitles.map(([slug, title, category, description]) => ({
+  ...tapamineTitles.map(([slug, title, category, description, addedOn = '2026-11-21']) => ({
     id: 'tapamine-' + slug, title, category, description, creator: 'Tapamine', collection: 'tapamine',
     url: 'https://tapamine.com/games/' + slug + '/',
     embed: 'https://tapamine.com/embed/' + slug + '/',
     art: 'https://tapamine.com/og/' + slug + '.png',
-    artCredit: 'Tapamine', attribution: true, status: 'embed', addedOn: '2026-11-21'
+    artCredit: 'Tapamine', attribution: true, status: 'embed', addedOn
   })),
   ...publisherTitles.map(([id, title, category, creator, url, embed, collection, attribution]) => ({
     id, title, category, creator, url, embed, collection, attribution, status: 'embed'

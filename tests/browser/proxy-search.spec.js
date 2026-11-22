@@ -199,7 +199,7 @@ test('Proxy Gemini recovers from a blocked preview and finds in-page games on mo
   await expect(page.getByRole('button', { name: 'Play Snake' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
   await filter.fill('publisher blocked game');
-  await expect(page.getByText('No in-page games match this search.')).toBeVisible();
+  await expect(page.getByText('No in-page games match these filters.')).toBeVisible();
   const address = viewerAddress(page);
   await address.fill(original);
   await address.press('Enter');
@@ -226,6 +226,61 @@ test('Proxy Gemini recovers from a blocked preview and finds in-page games on mo
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(filter).toHaveValue('2048');
   expect(requests).toBe(2);
+});
+
+test('Proxy Gemini keeps game filters and expanded results with their viewer tab', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.goto('/#browse');
+  const picker = page.getByRole('region', { name: 'Play inside the arcade' });
+  const filter = picker.getByRole('searchbox', { name: 'Find an in-page game' });
+  const category = picker.getByRole('combobox', { name: 'Category' });
+  const player = picker.getByRole('combobox', { name: 'Play option' });
+  const tabs = page.getByRole('tablist', { name: 'Browser tabs' });
+
+  await category.selectOption('Puzzle');
+  await player.selectOption('local');
+  await expect(picker.getByRole('button', { name: 'Play 2048', exact: true })).toBeVisible();
+  await expect(picker.getByRole('button', { name: 'Play Snake', exact: true })).toHaveCount(0);
+  await expect(picker.getByRole('heading', { name: 'Official in-page players' })).toHaveCount(0);
+  await filter.fill('2048');
+  await filter.press('Enter');
+  await expect(viewerAddress(page)).toHaveValue('arcade:2048');
+  await expect(page.getByRole('group', { name: '2048 controls' })).toBeVisible();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(filter).toHaveValue('2048');
+  await expect(category).toHaveValue('Puzzle');
+  await expect(player).toHaveValue('local');
+
+  await page.getByRole('button', { name: 'New tab', exact: true }).click();
+  await expect(filter).toHaveValue('');
+  await expect(category).toHaveValue('');
+  await expect(player).toHaveValue('');
+  await tabs.getByRole('tab').first().click();
+  await expect(filter).toHaveValue('2048');
+  await picker.getByRole('button', { name: 'Clear filters', exact: true }).click();
+  await expect(filter).toBeFocused();
+  await expect(category).toHaveValue('');
+  await expect(player).toHaveValue('');
+
+  await player.selectOption('embed');
+  const hosted = picker.locator('.proxy-playable-group:visible li');
+  await expect(hosted).toHaveCount(24);
+  await picker.getByRole('button', { name: 'Show more in-page games' }).click();
+  await expect(hosted).toHaveCount(48);
+  await expect(hosted.nth(24).getByRole('button')).toBeFocused();
+  await tabs.getByRole('tab').last().click();
+  await expect(player).toHaveValue('');
+  await tabs.getByRole('tab').first().click();
+  await expect(player).toHaveValue('embed');
+  await expect(hosted).toHaveCount(48);
+  await page.getByRole('button', { name: 'Duplicate current tab', exact: true }).click();
+  await expect(player).toHaveValue('embed');
+  await expect(hosted).toHaveCount(48);
+  await picker.getByRole('button', { name: 'Clear filters', exact: true }).click();
+  await tabs.getByRole('tab').first().click();
+  await expect(player).toHaveValue('embed');
+  await expect(hosted).toHaveCount(48);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
 });
 
 test('Google search offers a direct destination and clears the current search', async ({ page }) => {
