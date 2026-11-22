@@ -237,5 +237,39 @@ export const archiveFilms = [
     "fullWatch": "https://www.loc.gov/item/2024600507/",
     "license": "National Screening Room stream",
     "addedAt": "2026-11-21"
+  },
+  {
+    "id": "the-black-pirate-1926",
+    "title": "The Black Pirate",
+    "year": 1926,
+    "collection": "features",
+    "format": "feature",
+    "duration": "94 min 57 sec",
+    "genres": ["Classic", "Adventure"],
+    "description": "A shipwreck survivor joins a pirate crew to bring its leader to justice and rescue a captive princess.",
+    "art": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/83/The_Black_Pirate_%281926%29.webm/500px--The_Black_Pirate_%281926%29.webm.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo",
+    "credit": "Wikimedia Commons",
+    "director": "Albert Parker",
+    "source": "https://commons.wikimedia.org/wiki/File:The_Black_Pirate_(1926).webm",
+    "fullWatch": "https://commons.wikimedia.org/wiki/File:The_Black_Pirate_(1926).webm",
+    "license": "Public domain in the U.S. · silent print",
+    "addedAt": "2026-11-22T17:31:26Z"
+  },
+  {
+    "id": "the-mark-of-zorro-1920",
+    "title": "The Mark of Zorro",
+    "year": 1920,
+    "collection": "features",
+    "format": "feature",
+    "duration": "106 min 40 sec",
+    "genres": ["Classic", "Adventure"],
+    "description": "Don Diego presents himself as a bored aristocrat while his masked alter ego stands up to corrupt officials in Spanish California.",
+    "art": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/26/The_Mark_of_Zorro_%281920%29.webm/500px--The_Mark_of_Zorro_%281920%29.webm.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo",
+    "credit": "Wikimedia Commons",
+    "director": "Fred Niblo",
+    "source": "https://commons.wikimedia.org/wiki/File:The_Mark_of_Zorro_(1920).webm",
+    "fullWatch": "https://commons.wikimedia.org/wiki/File:The_Mark_of_Zorro_(1920).webm",
+    "license": "Public domain in the U.S. · silent print",
+    "addedAt": "2026-11-22T17:31:26Z"
   }
 ];

@@ -96,3 +96,40 @@ test('a play link auto-opens a built-in game and never launches a catalog-only g
   await expect(page.locator('main iframe')).toHaveCount(0);
   expect(portalRequests).toEqual([]);
 });
+
+test('a slow publisher resource does not interrupt the in-page player', async ({ page }) => {
+  const player = 'https://s7gs.com/Play/bat-hunt.html';
+  const slowImage = 'https://s7gs.com/test-delayed-player-image.png';
+  let finishImage;
+  const imageReady = new Promise(resolve => { finishImage = resolve; });
+  await page.clock.install();
+  await page.route('https://**/*', route => route.abort());
+  await page.route(player, route => route.fulfill({
+    contentType: 'text/html',
+    body: `<button>Publisher start control</button><img src="${slowImage}" alt="">`
+  }));
+  await page.route(slowImage, async route => {
+    await imageReady;
+    await route.fulfill({ status: 204, body: '' });
+  });
+
+  try {
+    await page.goto('/#play/s7gs-bat-hunt');
+    const pending = page.waitForRequest(slowImage);
+    await page.getByRole('button', { name: 'Play game', exact: true }).click();
+    await pending;
+    const frame = page.frameLocator('iframe[title="Bat Hunt"]');
+    await expect(frame.getByRole('button', { name: 'Publisher start control' })).toBeVisible();
+    await page.clock.fastForward(11_000);
+
+    await expect(page.locator('.player-status')).toHaveText('The official player is still loading. Use its controls as soon as they appear.');
+    await expect(frame.getByRole('button', { name: 'Publisher start control' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Restart', exact: true })).toBeEnabled();
+    await expect(page.getByRole('link', { name: 'Open game page', exact: true })).toHaveAttribute('href', 'https://s7gs.com/Arcade/bat-hunt.html');
+    await expect(page).toHaveURL(/#play\/s7gs-bat-hunt$/);
+    finishImage();
+    await expect(page.locator('.player-status')).toHaveText('If the official player appears, use its controls to start.');
+  } finally {
+    finishImage();
+  }
+});

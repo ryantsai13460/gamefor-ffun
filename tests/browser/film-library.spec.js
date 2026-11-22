@@ -142,6 +142,34 @@ test('invalid movie filter values drop from detail links and leave default disco
   await expect(page.getByText('No films match your search.')).toBeVisible();
 });
 
+test('classic and documentary shelves link to complete-film collections', async ({ page }) => {
+  await page.goto('/#movies');
+  const results = page.locator('.film-results');
+  await expect(results.getByRole('heading', { name: 'Classic films', exact: true })).toBeVisible();
+  await expect(results.getByRole('heading', { name: 'Documentaries', exact: true })).toBeVisible();
+  await results.getByRole('button', { name: 'View all classic films' }).click();
+  await expect(page).toHaveURL(/#movies\?collection=classics$/);
+  const query = page.getByRole('searchbox', { name: 'Search films' });
+  await query.fill('The General');
+  await page.getByRole('link', { name: 'Open The General film page', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Back to Movies' })).toHaveAttribute('href', /collection=classics/);
+  await page.goto('/#movies?collection=documentaries&playback=provider');
+  await query.fill('Cosmic Dawn');
+  await expect(page.getByRole('link', { name: 'Watch Full Movie' })).toHaveAttribute(
+    'href', 'https://plus.nasa.gov/video/cosmic-dawn-the-untold-story-of-the-james-webb-space-telescope/'
+  );
+});
+
+test('official filmmaker shorts use the Vimeo player and retain their source page', async ({ page }) => {
+  await page.goto('/#movies?film=the-present-2014');
+  const player = page.locator('.film-detail-play');
+  await expect(page.getByRole('heading', { name: 'The Present', level: 1 })).toBeVisible();
+  await player.getByRole('button', { name: 'Play full short', exact: true }).click();
+  await expect(player.locator('iframe')).toHaveAttribute('src', 'https://player.vimeo.com/video/152985022?app_id=122963&dnt=1');
+  await expect(player.getByRole('link', { name: 'Watch on Vimeo' })).toHaveAttribute('href', 'https://vimeo.com/152985022');
+  await expect(page).toHaveURL(/#movies\?film=the-present-2014$/);
+});
+
 test('YouTube film progress starts on playback and resumes with working fullscreen controls', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 820 });
   await page.route('https://www.youtube-nocookie.com/embed/eRsGyueVLvQ?*', route => route.fulfill({

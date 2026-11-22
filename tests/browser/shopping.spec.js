@@ -153,3 +153,38 @@ test('Amazon search finds catalog picks and falls back to the full retailer sear
   await expect(page.getByText('That item is outside the Gamffun catalog.')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Open on Amazon' })).toHaveCount(0);
 });
+
+test('Amazon sorting deep links preserve catalog order through filters and item details', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.goto('/#shopping?retailer=amazon');
+  const catalog = page.getByRole('region', { name: 'Amazon picks' });
+  const sort = catalog.getByRole('combobox', { name: 'Sort Amazon picks' });
+  const apply = catalog.getByRole('button', { name: 'Apply sort', exact: true });
+  const titles = catalog.locator('.shopping-product-title');
+  await expect(sort).toHaveValue('');
+  await sort.selectOption('name');
+  await apply.click();
+  await expect(page).toHaveURL(/#shopping\?retailer=amazon&sort=name$/);
+  await expect(titles.first()).toHaveText('Plugable 4-in-1 USB-C Hub');
+
+  await sort.selectOption('brand');
+  await apply.click();
+  await expect(page).toHaveURL(/#shopping\?retailer=amazon&sort=brand$/);
+  await expect(titles.first()).toHaveText('8BitDo Ultimate 2C Bluetooth Controller');
+  await catalog.getByRole('link', { name: 'Computers & accessories', exact: true }).click();
+  await expect(sort).toHaveValue('brand');
+  await expect(titles).toHaveText(['Plugable 4-in-1 USB-C Hub', 'Plugable 9-in-1 USB-C Hub', 'Plugable Triple 4K USB-C Docking Station']);
+  await catalog.getByRole('link', { name: 'Plugable 9-in-1 USB-C Hub', exact: true }).click();
+  await expect(page).toHaveURL(/category=computers&retailer=amazon&product=B0D9R5SNG1&sort=brand$/);
+  await page.getByRole('button', { name: 'Save item', exact: true }).click();
+  await page.getByRole('link', { name: 'Back to Amazon picks', exact: true }).click();
+  await expect(page).toHaveURL(/category=computers&retailer=amazon&sort=brand$/);
+  await page.reload();
+  await expect(sort).toHaveValue('brand');
+  await expect(page.getByRole('heading', { name: 'Saved Amazon items' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+
+  await page.getByRole('navigation', { name: 'Retailers' }).getByRole('link', { name: 'eBay', exact: true }).click();
+  await expect(page).toHaveURL(/category=computers&retailer=ebay$/);
+  await expect(sort).toHaveCount(0);
+});

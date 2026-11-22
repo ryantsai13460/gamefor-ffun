@@ -1,3 +1,5 @@
+import { clipBlipContext } from './blip-context.js';
+
 const WORD = /[\p{L}\p{N}]+(?:[-’'][\p{L}\p{N}]+)*/gu;
 const SUMMARY = /\b(?:summari[sz](?:e|ing|ation)|summary|overview|key points|main (?:points|ideas)|describe the contents|what(?:'s| is) (?:this|the file|the document|the attachment) about)\b/i;
 const TABLE = /\b(?:profil(?:e|ing)|overview|statistics|stats|columns?|rows?|headers?|missing values?|empty (?:cells|values)|numeric|mean|median|average|minimum|maximum|min|max|analy[sz]e|inspect|sum|total)\b/i;
@@ -76,16 +78,33 @@ function summary(file) {
   return fromLoadedText(file, ['Key excerpts', ...selected.map(({item}) => `- Line ${item.line} · ${excerpt(item.text)}`)].join('\n'));
 }
 
-function matchingExcerpt(item, query) {
+function matchingExcerpt(item, query, length = 280) {
   const tokens = [...item.text.matchAll(WORD)];
   const token = tokens.find(match => query.includes(key(match[0])));
-  if (!token || token.index < 110) return excerpt(item.text);
-  const start = item.text.lastIndexOf(' ', token.index - 60) + 1;
-  return `${start > 0 ? '…' : ''}${excerpt(item.text.slice(start))}`;
+  if (!token || token.index < Math.min(110, length / 3)) return excerpt(item.text, length);
+  const offset = token.index - Math.min(60, Math.floor(length / 4));
+  const boundary = item.text.lastIndexOf(' ', offset);
+  const start = boundary < 0 ? token.index : boundary + 1;
+  return `${start > 0 ? '…' : ''}${excerpt(item.text.slice(start), length - Number(start > 0))}`;
+}
+
+function rankedFilePassages(text, query, count) {
+  return selectedPassages(passages(text), item => query.reduce((score, word) => score + Number(item.terms.includes(word)), 0), count);
+}
+
+export function fileContextExcerpt(text, question, budget) {
+  if (text.length <= budget) return text;
+  const query = terms(question);
+  const count = Math.min(3, Math.floor(budget / 180));
+  const matches = query.length && count ? rankedFilePassages(text, query, count) : [];
+  if (!matches.length) return clipBlipContext(text, budget);
+  const perPassage = Math.floor(budget / matches.length) - 20;
+  return matches.sort((a, b) => a.index - b.index).map(({ item }) =>
+    `Line ${item.line}: ${matchingExcerpt(item, query, perPassage)}`).join('\n\n');
 }
 
 function lookup(file, query) {
-  const selected = selectedPassages(passages(file.text), item => query.reduce((score, word) => score + Number(item.terms.includes(word)), 0), 3);
+  const selected = rankedFilePassages(file.text, query, 3);
   return fromLoadedText(file, selected.length
     ? ['Matching excerpts', ...selected.map(({item}) => `- Line ${item.line} · ${matchingExcerpt(item, query)}`)].join('\n')
     : 'No excerpts matched the question’s terms in the loaded text.');

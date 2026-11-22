@@ -21,7 +21,7 @@ const site = 'https://ryantsai13460.github.io/gamefor-ffun/#browse';
 
 test('the video expansions preserve the library and use unique official player IDs', () => {
   const library = getVideoCollections();
-  assert.equal(library.count, 1546);
+  assert.equal(library.count, 1560);
   assert.equal(library.added, 749);
   assert.equal(expansionVideos.length, 500);
   assert.equal(expansionVideos.filter(({ short }) => short).length, 250);
@@ -29,8 +29,8 @@ test('the video expansions preserve the library and use unique official player I
   assert.equal(discoveryVideos.filter(({ short }) => short).length, 50);
   assert.equal(entertainmentVideos.length, 100);
   assert.equal(entertainmentVideos.filter(({ short }) => short).length, 51);
-  assert.equal(familyVideos.length, 44);
-  assert.equal(familyVideos.filter(({ short }) => short).length, 24);
+  assert.equal(familyVideos.length, 58);
+  assert.equal(familyVideos.filter(({ short }) => short).length, 29);
   assert.equal(learningVideos.length, 149);
   assert.equal(learningVideos.filter(({ short }) => short).length, 57);
   for (const video of [...expansionVideos, ...discoveryVideos, ...entertainmentVideos, ...familyVideos, ...learningVideos]) {
@@ -42,6 +42,22 @@ test('the video expansions preserve the library and use unique official player I
     assert.equal(findCuratedVideos(video.id)[0], video);
   }
   assert.equal(library.topics.filter(({ count }) => count > 0).length, 10);
+});
+
+test('official family gaming uploads are discoverable in their verified video formats', () => {
+  const examples = [
+    ['uy4ODVT6-fk', 'Minecraft', true],
+    ['u2in2iTZnl0', 'Roblox', false],
+    ['p-e1qxdWufA', 'Brawl Stars', true]
+  ];
+  for (const [id, creator, short] of examples) {
+    const video = familyVideos.find(video => video.id === id);
+    assert.equal(video.creator, creator);
+    assert.equal(video.short, short);
+    assert.ok(video.tags.includes('Gaming') && video.tags.includes('Family'));
+    assert.equal(video.provenance, `https://www.youtube.com/${short ? 'shorts/' : 'watch?v='}${id}`);
+    assert.equal(findCuratedVideos(id)[0], video);
+  }
 });
 
 test('MrBeast creator searches find official full videos and Shorts across name variants', () => {
@@ -57,8 +73,8 @@ test('MrBeast creator searches find official full videos and Shorts across name 
 
 test('the cinema catalog separates complete films from trailers and uses legitimate playback routes', () => {
   assert.equal(new Set(filmCatalog.map(({ id }) => id)).size, filmCatalog.length);
-  assert.equal(learningFilms.length, 53);
-  assert.equal(learningFilms.filter(({ format }) => format === 'feature').length, 26);
+  assert.ok(learningFilms.length >= 91);
+  assert.ok(learningFilms.filter(({ format }) => format === 'feature').length >= 38);
   assert.ok(learningFilms.every(film => filmPlayback(film) && !filmPlayback(film, true) && new URL(film.art).protocol === 'https:'));
   assert.ok(filmCatalog.filter(film => !film.regionLimited && filmPlayback(film)).length >= 100);
   assert.equal(filmCatalog.filter(film => !filmPlayback(film) && filmPlayback(film, true)).length, 12);
@@ -75,10 +91,30 @@ test('the cinema catalog separates complete films from trailers and uses legitim
     }
     if (film.embed) {
       const embed = new URL(film.embed);
-      assert.equal(embed.origin, 'https://www.nfb.ca');
-      assert.ok(embed.pathname.endsWith('/embed/player/'));
+      if (embed.origin === 'https://player.vimeo.com') {
+        assert.match(embed.pathname, /^\/video\/[1-9]\d*$/);
+        assert.equal(filmPlayback(film)?.provider, 'Vimeo');
+      } else {
+        assert.equal(embed.origin, 'https://www.nfb.ca');
+        assert.ok(embed.pathname.endsWith('/embed/player/'));
+      }
     }
   }
+});
+
+test('filmmaker Vimeo embeds require a matching public watch URL', () => {
+  const film = {
+    embed: 'https://player.vimeo.com/video/152985022?app_id=122963',
+    fullWatch: 'https://vimeo.com/152985022'
+  };
+  assert.deepEqual(filmPlayback(film), {
+    provider: 'Vimeo',
+    external: film.fullWatch,
+    embed: 'https://player.vimeo.com/video/152985022?app_id=122963&dnt=1'
+  });
+  assert.equal(filmPlayback({ ...film, fullWatch: 'https://vimeo.com/194276412' })?.embed, undefined);
+  assert.equal(filmPlayback({ ...film, embed: 'https://player.vimeo.com/video/152985022?h=private' })?.embed, undefined);
+  assert.equal(filmPlayback({ ...film, embed: 'https://player.vimeo.com.example.org/video/152985022' })?.embed, undefined);
 });
 
 test('the expanded music catalog has unique provider IDs and attributable chart ranks', () => {
@@ -171,7 +207,13 @@ test('the independent games use their exact publisher-approved player URLs and c
     ['afternoon-killer-sudoku', 'https://afternoongames.com/embed/killer-sudoku', 'https://afternoongames.com/free-games-for-your-website', true],
     ['s7gs-pings-portal', 'https://s7gs.com/Play/pings-portal.html', 'https://s7gs.com/Play/', false],
     ['s7gs-breachfield', 'https://s7gs.com/Play/breachfield.html', 'https://s7gs.com/Play/', false],
-    ['yuzool-pier-putt', 'https://www.yuzool.com/pier-putt/?embed=1', 'https://www.yuzool.com/embed/', true]
+    ['s7gs-bat-hunt', 'https://s7gs.com/Play/bat-hunt.html', 'https://s7gs.com/Play/', false],
+    ...['kakuro', 'canasta', 'yukon-solitaire'].map(slug => [
+      `afternoon-${slug}`, `https://afternoongames.com/embed/${slug}`, 'https://afternoongames.com/free-games-for-your-website', true
+    ]),
+    ...['pier-putt', 'atlas-dash', 'sum-rocket', 'wordloom', 'planet-dash', 'wandoku', 'gembay', 'boxwood'].map(slug => [
+      `yuzool-${slug}`, `https://www.yuzool.com/${slug}/?embed=1`, 'https://www.yuzool.com/embed/', true
+    ])
   ];
   for (const [id, embed, source, attribution] of approved) {
     const game = library.byId.get(id);
@@ -181,6 +223,25 @@ test('the independent games use their exact publisher-approved player URLs and c
     assert.equal(Boolean(game.attribution), attribution);
     assert.ok(game.creator && game.isNew);
   }
+});
+
+test('the new games keep distinct titles and expand searchable genres', () => {
+  for (const id of ['yuzool-atlas-dash', 'yuzool-sum-rocket', 'yuzool-planet-dash']) {
+    assert.ok(queryLibrary(library, { category: 'Learning', availability: 'in-page' }).some(game => game.id === id));
+  }
+  assert.equal(library.byId.get('s7gs-bat-hunt').category, 'Action');
+  assert.equal(library.byId.get('yuzool-boxwood').category, 'Strategy');
+  assert.equal(library.byId.get('tapamine-rally').category, 'Arcade');
+  assert.equal(library.byId.get('tapamine-kart').category, 'Racing');
+  for (const slug of ['rally', 'vault', 'ski', 'skate', 'kart']) {
+    const game = library.byId.get(`tapamine-${slug}`);
+    assert.equal(arcadeEmbed(game), `https://tapamine.com/embed/${slug}/`);
+    assert.equal(game.attribution, true);
+  }
+  const trimps = library.byId.get('trimps');
+  assert.equal(arcadeEmbed(trimps), 'https://trimps.github.io/');
+  assert.equal(trimps.license, 'GPL-2.0');
+  assert.equal(trimps.licenseUrl, 'https://github.com/Trimps/Trimps.github.io/blob/master/license.txt');
 });
 
 test('publisher destinations preserve recovered game identities and identify the closed Spinz.io service', () => {

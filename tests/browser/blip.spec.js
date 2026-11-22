@@ -258,6 +258,41 @@ test('blip.ai keeps attached text in its saved chat and skips external lookup', 
   await expect(attachment.getByText(/A cello has four strings/)).toBeVisible();
 });
 
+test('Blip retrieves relevant late passages for private file follow-ups', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.filePrompts = [];
+    Object.defineProperty(window, 'LanguageModel', {
+      configurable: true,
+      value: {
+        availability: async () => 'available',
+        create: async () => ({
+          prompt(text) { window.filePrompts.push(text); return 'A reply from the on-device model fixture.'; },
+          destroy() {}
+        })
+      }
+    });
+  });
+  await page.goto('/#blip');
+  const latePassage = 'The observatory telescope opens at 7 p.m. on Thursdays.';
+  await page.locator('input[type=file]').setInputFiles({
+    name: 'observatory.txt', mimeType: 'text/plain',
+    buffer: Buffer.from(`${'The building has a parking lot and a small reception room.\n'.repeat(93)}\n${latePassage}\nA walking path surrounds the park.\n`)
+  });
+  const input = page.getByRole('textbox', { name: 'Message blip.ai' });
+  await input.fill('Summarize the attachment.');
+  await input.press('Enter');
+  await expect(page.getByText('A reply from the on-device model fixture.')).toBeVisible();
+  await input.fill('When does the telescope open?');
+  await input.press('Enter');
+  await expect(page.getByText('A reply from the on-device model fixture.')).toHaveCount(2);
+  const prompt = await page.evaluate(() => window.filePrompts.at(-1));
+  const [attachment] = JSON.parse(prompt.slice(prompt.indexOf('\n[') + 1));
+  expect(attachment).toMatchObject({ name: 'observatory.txt', excerptTruncated: true });
+  expect(attachment.excerpt).toContain(latePassage);
+  expect(attachment.excerpt.length).toBeLessThanOrEqual(4000);
+  expect(attachment.excerpt).not.toContain('parking lot');
+});
+
 test('replies stay with their original chat, and Stop cancels an in-progress reply', async ({ page }) => {
   await page.addInitScript(() => {
     window.blipJobs = {};

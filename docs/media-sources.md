@@ -22,7 +22,9 @@ The YouTube section preserves the 24 original Unstable SMP and Minecraft creator
 
 ## Movies
 
-The cinema catalog has 227 complete films, including 55 features and 172 shorts. A separate collection preserves 12 studio trailers. The catalog uses the official YouTube and NFB players for supported entries and opens the archive or provider for direct viewing. Film detail pages link to the source and credits. [Blender Studio Films](https://studio.blender.org/films/) · [Pixar Films](https://www.pixar.com/feature-films) · [DreamWorks Movies](https://www.dreamworks.com/movies)
+The cinema catalog has 302 complete films, including 69 features and 233 shorts. There are 260 in-page players, 42 official viewing pages, and 12 separate trailer or release listings. Film detail pages link to the source and credits. [Blender Studio Films](https://studio.blender.org/films/) · [Pixar Films](https://www.pixar.com/feature-films) · [DreamWorks Movies](https://www.dreamworks.com/movies)
+
+Gamffun 7.0 adds 62 National Film Board of Canada films, seven NASA+ documentaries, four filmmaker-published Vimeo shorts, and two public-domain silent features. Vimeo playback uses the publisher’s public player with Vimeo’s Do Not Track parameter. The NASA+ and Wikimedia Commons titles open on their providers’ websites. [NFB embedding instructions](https://help.nfb.ca/knowledge-base/how-can-i-embed-videos-on-my-blog-social-networking-site-etc/) · [NASA+ Documentaries](https://plus.nasa.gov/topics/documentaries/) · [Vimeo player parameters](https://help.vimeo.com/hc/en-us/articles/12426260232977-About-Player-Parameters)
 
 The 10 new National Film Board of Canada animations use the official embed code for personal and noncommercial use. Each film played through the official player inside the development arcade. [NFB terms](https://help.nfb.ca/terms/) · [NFB embedding instructions](https://help.nfb.ca/knowledge-base/how-can-i-embed-videos-on-my-blog-social-networking-site-etc/)
 

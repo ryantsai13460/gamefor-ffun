@@ -223,5 +223,20 @@ export const openWebGames = [
     artCredit: 'Doublespeak Games press kit',
     addedOn: '2026-11-22'
   },
+  {
+    id: 'trimps',
+    title: 'Trimps',
+    category: 'Simulation',
+    creator: 'Zach Hood',
+    collection: 'open-web',
+    description: 'Gather food, construct buildings, and explore new areas in an incremental strategy game.',
+    url: 'https://trimps.github.io/',
+    embed: 'https://trimps.github.io/',
+    status: 'embed',
+    source: 'https://github.com/Trimps/Trimps.github.io',
+    license: 'GPL-2.0',
+    licenseUrl: 'https://github.com/Trimps/Trimps.github.io/blob/master/license.txt',
+    addedOn: '2026-11-22'
+  },
   ...tathamPuzzles
 ];

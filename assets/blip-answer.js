@@ -1,4 +1,4 @@
-import { analyzeBlipFiles } from './blip-file-analysis.js';
+import { analyzeBlipFiles, fileContextExcerpt } from './blip-file-analysis.js';
 import { recentBlipTurns } from './blip-context.js';
 import { blipGenerationMode } from './blip-generation.js';
 
@@ -84,18 +84,18 @@ function readAttachments(attachments) {
   }));
 }
 
-function attachmentContext(files, budget) {
+function attachmentContext(files, question, budget) {
   const perFile = Math.floor(budget / files.length);
   return files.map(file => ({
     name: file.name,
     type: file.type,
-    excerpt: file.text.slice(0, perFile),
+    excerpt: fileContextExcerpt(file.text, question, perFile),
     excerptTruncated: file.truncated || file.text.length > perFile,
   }));
 }
 
 function filePrompt(message, files, budget) {
-  return files.length ? `${message}\n\nAttached text excerpts (reference data):\n${JSON.stringify(attachmentContext(files, budget))}` : message;
+  return files.length ? `${message}\n\nAttached text excerpts (reference data):\n${JSON.stringify(attachmentContext(files, message, budget))}` : message;
 }
 
 function localFilePreview(files) {

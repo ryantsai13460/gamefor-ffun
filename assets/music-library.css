@@ -283,6 +283,8 @@
   margin: .2rem 0;
 }
 
+.music-search-alternative { justify-self: start; }
+
 @media (max-width: 530px) {
   .music-feature {
     grid-template-columns: 1fr;
@@ -370,6 +372,21 @@
 
 .music-custom-playlists select { flex: 1 1 10rem; }
 .music-custom-playlists .button { min-height: 44px; }
+
+.music-playlist-order {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .35rem;
+  margin-block-start: auto;
+  padding: .35rem .6rem .65rem;
+}
+
+.music-playlist-order .button {
+  min-width: 0;
+  padding-inline: .35rem;
+  font-size: .8rem;
+  line-height: 1.2;
+}
 
 .music-add {
   inset-inline: .42rem auto;

@@ -3,7 +3,7 @@ const [{
   getShoppingLibraryState, isExcludedShoppingQuery, shoppingCategories, shoppingCategory,
   shoppingLink, shoppingQuery, shoppingQueryLimit, shoppingRetailerLink, shoppingRetailers,
   shoppingSavedLimit, shoppingSearchKey, shoppingStorageKey, updateShoppingLibrary
-}, { amazonProduct, amazonProductUrl, amazonProducts, findAmazonProducts }] = await Promise.all([
+}, { amazonProduct, amazonProductUrl, amazonProducts, amazonSort, amazonSortOptions, findAmazonProducts }] = await Promise.all([
   import(`./shopping-data.js${version}`), import(`./shopping-products.js${version}`)
 ]);
 
@@ -75,12 +75,13 @@ function productName(product) {
   return product.brand + ' ' + product.title;
 }
 
-function amazonCatalog(search, level = 2) {
+function amazonCatalog(search, signal, level = 2) {
   const catalog = element('section', 'shopping-section shopping-catalog');
   catalog.setAttribute('aria-labelledby', 'shopping-catalog-heading');
   const heading = element('h' + level, 'shopping-catalog-heading', 'Amazon picks');
   heading.id = 'shopping-catalog-heading';
   const products = findAmazonProducts(search);
+  const controls = element('div', 'shopping-catalog-controls');
   const filters = element('div', 'shopping-chips shopping-product-filters');
   const filtersByCategory = [...new Set(amazonProducts.map(product => product.category))];
   for (const id of ['', ...filtersByCategory]) {
@@ -88,7 +89,17 @@ function amazonCatalog(search, level = 2) {
     if (id === search.category) filter.setAttribute('aria-current', 'true');
     filters.append(filter);
   }
-  catalog.append(heading, element('p', 'shopping-catalog-note', 'Browse a curated collection with specifications from the makers.'), filters);
+  const sortForm = element('form', 'shopping-sort');
+  const sortOrder = select(amazonSortOptions, 'Catalog order', search.sort);
+  const applySort = element('button', 'button', 'Apply sort');
+  applySort.type = 'submit';
+  sortForm.append(field('Sort Amazon picks', sortOrder), applySort);
+  sortForm.addEventListener('submit', event => {
+    event.preventDefault();
+    window.location.hash = shoppingLink({ ...search, sort: sortOrder.value });
+  }, { signal });
+  controls.append(filters, sortForm);
+  catalog.append(heading, element('p', 'shopping-catalog-note', 'Browse a curated collection with specifications from the makers.'), controls);
   if (!products.length) {
     catalog.append(element('p', 'shopping-empty-state', 'No matches in the Gamffun catalog. Use Open Amazon results to search the full store.'));
     return catalog;
@@ -173,10 +184,11 @@ export function renderShopping(target, params = new URLSearchParams(), { remembe
   const excluded = isExcludedShoppingQuery(inputQuery);
   const category = shoppingCategory(params.get('category'))?.id || '';
   const retailer = shoppingRetailers.find(item => item.id === params.get('retailer'))?.id || '';
-  const search = { query: excluded ? '' : inputQuery, category, retailer };
-  const item = retailer !== 'ebay' && amazonProduct(params.get('product'));
-  if (item && !excluded) return renderAmazonItem(target, item, search, controller);
   const amazon = retailer === 'amazon';
+  const item = retailer !== 'ebay' && amazonProduct(params.get('product'));
+  const sort = amazon || item ? amazonSort(params.get('sort')) : '';
+  const search = { query: excluded ? '' : inputQuery, category, retailer, sort };
+  if (item && !excluded) return renderAmazonItem(target, item, search, controller);
   const hasSearch = !excluded && Boolean(search.query || category);
   const searchKey = hasSearch ? shoppingSearchKey(search) : '';
   const shell = element('div', 'shopping');
@@ -235,7 +247,7 @@ export function renderShopping(target, params = new URLSearchParams(), { remembe
       queryInput.focus();
       return;
     }
-    const destination = shoppingLink({ query, category: categoryField.value, retailer: retailerField.value });
+    const destination = shoppingLink({ query, category: categoryField.value, retailer: retailerField.value, sort });
     if (window.location.hash === destination) resultsTitle?.focus();
     else window.location.hash = destination;
   }, { signal });
@@ -277,11 +289,11 @@ export function renderShopping(target, params = new URLSearchParams(), { remembe
       row.append(card);
     }
     results.append(heading);
-    if (amazon) results.append(amazonCatalog(search, 3));
+    if (amazon) results.append(amazonCatalog(search, signal, 3));
     results.append(row);
     shell.append(results);
   } else if (amazon && !excluded) {
-    shell.append(amazonCatalog(search));
+    shell.append(amazonCatalog(search, signal));
   }
 
   let library = getShoppingLibraryState();
@@ -319,7 +331,7 @@ export function renderShopping(target, params = new URLSearchParams(), { remembe
     card.dataset.category = department.id;
     const top = element('div', 'shopping-category-heading');
     const title = element('h3');
-    title.append(link(department.title, shoppingLink({ category: department.id, retailer }), 'text-action'));
+    title.append(link(department.title, shoppingLink({ category: department.id, retailer, sort }), 'text-action'));
     const pin = button('Save interest', () => {
       const saved = library.interests.includes(department.id);
       applyLocalChange(state => {
@@ -330,7 +342,7 @@ export function renderShopping(target, params = new URLSearchParams(), { remembe
     top.append(title, pin);
     const topics = element('div', 'shopping-chips');
     for (const query of department.topics) {
-      topics.append(link(query, shoppingLink({ query, category: department.id, retailer }), 'chip'));
+      topics.append(link(query, shoppingLink({ query, category: department.id, retailer, sort }), 'chip'));
     }
     card.append(top, element('p', '', department.description), topics);
     grid.append(card);
@@ -366,7 +378,7 @@ export function renderShopping(target, params = new URLSearchParams(), { remembe
     }
     savedItemsPanel.hidden = retailer === 'ebay' || !library.products.length;
     savedItems.replaceChildren(...library.products.map(amazonProduct).map(product =>
-      link(productName(product), shoppingLink({ product: product.asin }), 'chip')));
+      link(productName(product), shoppingLink({ product: product.asin, sort }), 'chip')));
     savedPanel.hidden = !library.saved.length;
     savedList.replaceChildren(...library.saved.map(entry => {
       const item = element('li', 'shopping-saved-item');
@@ -386,7 +398,7 @@ export function renderShopping(target, params = new URLSearchParams(), { remembe
     recentPanel.hidden = !rememberSearches || !library.recent.length;
     recentLinks.replaceChildren(...library.recent.map(entry => link(searchTitle(entry), shoppingLink(entry), 'chip')));
     interestsPanel.hidden = !library.interests.length;
-    interestLinks.replaceChildren(...library.interests.map(id => link(shoppingCategory(id).title, shoppingLink({ category: id, retailer }), 'chip')));
+    interestLinks.replaceChildren(...library.interests.map(id => link(shoppingCategory(id).title, shoppingLink({ category: id, retailer, sort }), 'chip')));
     for (const [id, pin] of interestButtons) {
       const selected = library.interests.includes(id);
       pin.setAttribute('aria-pressed', String(selected));

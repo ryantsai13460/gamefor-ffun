@@ -1,5 +1,5 @@
 const release = new URL(import.meta.url).search;
-const { normalize } = await import(`./library.js${release}`);
+const { browserBrowsingStorageKey, normalize } = await import(`./library.js${release}`);
 const filler = new Set('a an by find for i in me movie movies film films music of please play show song songs the to track tracks watch'.split(' '));
 const shortFiller = new Set([...filler, 'clip', 'clips', 'short', 'shorts', 'video', 'videos']);
 const weights = [8, 5, 3, 1];
@@ -47,6 +47,39 @@ function rank(index, query, fillerWords = filler) {
 export async function searchMusic(query) {
   const { findLyricVideos } = await import(`./lyrics-library.js${release}`);
   return findLyricVideos(query);
+}
+
+export async function searchProducts(query = '') {
+  const [{ findAmazonProducts }, { isExcludedShoppingQuery, shoppingCategory, shoppingLink }] = await Promise.all([
+    import(`./shopping-products.js${release}`), import(`./shopping-data.js${release}`)
+  ]);
+  if (isExcludedShoppingQuery(query)) return [];
+  return findAmazonProducts({ query }).map(product => ({
+    ...product, id: product.asin, title: `${product.brand} ${product.title}`,
+    categoryName: shoppingCategory(product.category)?.title,
+    retailer: 'Amazon U.S.', link: shoppingLink({ product: product.asin }),
+    aliases: [product.title, product.asin]
+  }));
+}
+
+export async function searchBookmarks(query = '') {
+  try {
+    if (!window.localStorage.getItem(browserBrowsingStorageKey)) return [];
+  } catch {
+    return [];
+  }
+  const { getBrowserLibraryState } = await import(`./browser.js${release}`);
+  const records = getBrowserLibraryState().favorites.map(({ title, address }) => ({
+    id: address, title, address, link: '#browse?' + new URLSearchParams({ address })
+  }));
+  const terms = normalize(query).split(' ').filter(Boolean);
+  const matching = records.filter(({ title, address }) => {
+    const text = normalize(`${title} ${address}`);
+    return terms.every(term => text.includes(term));
+  });
+  const exact = normalize(query);
+  const score = ({ title, address }) => Number(normalize(title) === exact || normalize(address) === exact);
+  return matching.sort((a, b) => score(b) - score(a));
 }
 
 export async function searchShorts(query) {

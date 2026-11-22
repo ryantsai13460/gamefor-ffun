@@ -3,6 +3,7 @@ import { arcadeModes } from './arcade-modes.js';
 
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 export const discoverySearchHistoryKey = 'ffun.discovery.history';
+export const browserBrowsingStorageKey = 'gamefor-ffun-proxy-v1';
 export const defaultProfileName = 'user_12345';
 
 export function validateProfileName(value) {

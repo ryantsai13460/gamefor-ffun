@@ -147,6 +147,15 @@ function artistChannel(track) {
   }
 }
 
+function visualReference(track) {
+  try {
+    const url = new URL(track.visualSource);
+    return url.protocol === 'https:' && !url.username && !url.password ? url.href : '';
+  } catch {
+    return '';
+  }
+}
+
 export function renderMusicDiscovery(target, params, profile) {
   const { tracks, featured, storageKey, byId, catalogPosition, artistTracks, featuredArtists, latestAddition,
     chartDate, categories: genres, collections, maxTracks, find, lyrics } = profile;
@@ -317,6 +326,13 @@ export function renderMusicDiscovery(target, params, profile) {
   const list = element('ul', 'music-track-list');
   list.setAttribute('aria-label', 'Music tracks');
   const empty = element('p', 'music-empty');
+  const showInstrumentals = lyrics ? action('Show matching instrumentals', () => {
+    section = 'visualizers';
+    category = 'All music';
+    draw();
+    count.focus();
+  }) : null;
+  showInstrumentals?.classList.add('music-search-alternative');
   const nextBatch = element('div', 'music-more');
   const loadMore = action('Load more tracks', (event) => {
     const firstNew = addTracks();
@@ -324,7 +340,9 @@ export function renderMusicDiscovery(target, params, profile) {
   });
   loadMore.classList.add('music-load-more');
   nextBatch.append(loadMore);
-  page.append(heading, feature, artists, filters, playlistTools, listHead, notice, list, empty, nextBatch, playlistDialog);
+  page.append(heading, feature, artists, filters, playlistTools, listHead, notice, list, empty);
+  if (showInstrumentals) page.append(showInstrumentals);
+  page.append(nextBatch, playlistDialog);
   if (lyrics) {
     const sources = element('details', 'music-sources');
     const archiveLink = element('a', 'button', 'Music archive');
@@ -445,7 +463,7 @@ export function renderMusicDiscovery(target, params, profile) {
     }
   }
 
-  function card(track) {
+  function card(track, position) {
     const item = element('li', 'music-track');
     const launch = action(`Play ${track.title}`, () => openTrack(track));
     launch.className = 'music-track-launch';
@@ -488,13 +506,42 @@ export function renderMusicDiscovery(target, params, profile) {
     playlistAction.setAttribute('aria-label', inPlaylist ? `Remove ${track.title} from playlist` : `Add ${track.title} to playlist`);
     if (!inPlaylist) playlistAction.setAttribute('aria-haspopup', 'dialog');
     item.append(launch, save, playlistAction);
+    if (lyrics && inPlaylist && !query.value.trim() && !artist.value && !sort.value && matches.length > 1) {
+      const order = element('div', 'music-playlist-order');
+      const earlier = action('Move earlier', () => movePlaylistTrack(track, -1));
+      const later = action('Move later', () => movePlaylistTrack(track, 1));
+      earlier.dataset.musicOrder = 'earlier';
+      later.dataset.musicOrder = 'later';
+      earlier.setAttribute('aria-label', `Move ${track.title} earlier`);
+      later.setAttribute('aria-label', `Move ${track.title} later`);
+      earlier.disabled = position === 0;
+      later.disabled = position === matches.length - 1;
+      order.append(earlier, later);
+      item.append(order);
+    }
     return item;
   }
 
-  function addTracks() {
+  function movePlaylistTrack(track, direction) {
+    const playlist = activePlaylist();
+    if (!playlist) return;
+    const position = playlist.tracks.indexOf(track.id);
+    const destination = position + direction;
+    if (position < 0 || destination < 0 || destination >= playlist.tracks.length) return;
+    [playlist.tracks[position], playlist.tracks[destination]] = [playlist.tracks[destination], playlist.tracks[position]];
+    notice.textContent = `Moved ${track.title} to position ${destination + 1}.`;
+    notice.hidden = false;
+    persist();
+    draw(Math.max(shown, destination + 1));
+    const item = saveButtons.get(track.id)?.parentElement;
+    const move = item?.querySelector(`[data-music-order="${direction < 0 ? 'earlier' : 'later'}"]`);
+    (move && !move.disabled ? move : item?.querySelector('.music-track-launch'))?.focus();
+  }
+
+  function addTracks(amount = pageSize) {
     if (closed) return null;
-    const end = Math.min(matches.length, shown + pageSize);
-    const batch = matches.slice(shown, end).map(card);
+    const end = Math.min(matches.length, shown + amount);
+    const batch = matches.slice(shown, end).map((track, index) => card(track, shown + index));
     list.append(...batch);
     shown = end;
     nextBatch.hidden = shown >= matches.length;
@@ -503,7 +550,7 @@ export function renderMusicDiscovery(target, params, profile) {
     return batch[0] || null;
   }
 
-  function draw() {
+  function draw(visibleTracks = pageSize) {
     for (const [id, node] of sectionButtons) node.setAttribute('aria-pressed', String(id === section));
     const isCatalog = ['discover', 'new', 'chart', 'visualizers'].includes(section);
     const kind = section === 'visualizers' ? 'visualizer' : 'lyrics';
@@ -548,10 +595,14 @@ export function renderMusicDiscovery(target, params, profile) {
     empty.hidden = matches.length > 0;
     empty.textContent = query.value.trim() || artist.value ? collections[0].empty
       : section === 'playlists' && !playlist ? 'Create a playlist to save a listening queue.' : collections.find(({id}) => id === section).empty;
+    if (showInstrumentals) {
+      showInstrumentals.hidden = section !== 'discover' || matches.length > 0 || !(query.value.trim() || artist.value) ||
+        !results.some(track => track.kind === 'visualizer');
+    }
     saveButtons.clear();
     list.replaceChildren();
     shown = 0;
-    addTracks();
+    addTracks(visibleTracks);
   }
 
   async function openTrack(track, queue = matches) {
@@ -596,7 +647,15 @@ export function renderMusicDiscovery(target, params, profile) {
       channelLink.rel = 'noopener noreferrer';
       details.append(channelLink);
     }
-    const related = tracks.filter(candidate => candidate.id !== track.id &&
+    const reference = lyrics && visualReference(track);
+    if (reference) {
+      const visualLink = element('a', 'button', 'About the visuals');
+      visualLink.href = reference;
+      visualLink.target = '_blank';
+      visualLink.rel = 'noopener noreferrer';
+      details.append(visualLink);
+    }
+    const related = tracks.filter(candidate => candidate.id !== track.id && (!lyrics || candidate.kind === track.kind) &&
       (candidate.artist === track.artist || candidate.category === track.category))
       .sort((first, second) => Number(second.artist === track.artist) - Number(first.artist === track.artist)).slice(0, 4);
     if (related.length) {
@@ -632,9 +691,9 @@ export function renderMusicDiscovery(target, params, profile) {
     }, {once: true});
   }
 
-  query.addEventListener('input', draw);
-  artist.addEventListener('change', draw);
-  sort.addEventListener('change', draw);
+  query.addEventListener('input', () => draw());
+  artist.addEventListener('change', () => draw());
+  sort.addEventListener('change', () => draw());
   draw();
   const observer = typeof IntersectionObserver === 'function' ? new IntersectionObserver((entries) => {
     if (entries.some(entry => entry.isIntersecting) && shown < matches.length) addTracks();

@@ -1,5 +1,5 @@
 const version = new URL(import.meta.url).search;
-const { amazonProduct } = await import(`./shopping-products.js${version}`);
+const { amazonProduct, amazonSort } = await import(`./shopping-products.js${version}`);
 
 export const shoppingCategories = [
   {
@@ -62,7 +62,7 @@ export function shoppingCategory(id) {
   return categoriesById.get(id);
 }
 
-export function shoppingLink({ query, category, retailer, product } = {}) {
+export function shoppingLink({ query, category, retailer, product, sort } = {}) {
   const params = new URLSearchParams();
   const text = shoppingQuery(query);
   const item = amazonProduct(product);
@@ -72,6 +72,8 @@ export function shoppingLink({ query, category, retailer, product } = {}) {
     params.set('retailer', 'amazon');
     params.set('product', item.asin);
   } else if (retailersById.has(retailer)) params.set('retailer', retailer);
+  const order = amazonSort(sort);
+  if (order && (item || retailer === 'amazon')) params.set('sort', order);
   const queryString = params.toString();
   return '#shopping' + (queryString ? '?' + queryString : '');
 }
@@ -100,7 +102,8 @@ function restoredSearch(value) {
   const category = categoriesById.has(value.category) ? value.category : '';
   if ((!query && !category) || isExcludedShoppingQuery(query)) return null;
   const retailer = retailersById.has(value.retailer) ? value.retailer : '';
-  return { query, category, retailer };
+  const sort = retailer === 'amazon' && amazonSort(value.sort);
+  return sort ? { query, category, retailer, sort } : { query, category, retailer };
 }
 
 function restoredSearches(values, limit) {

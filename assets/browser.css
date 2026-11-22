@@ -580,6 +580,10 @@
   flex: none;
 }
 
+.proxy-recovery .proxy-action {
+  white-space: normal;
+}
+
 .proxy-saved {
   width: min(32rem, calc(100% - 1.5rem));
   max-height: min(35rem, calc(100% - 1.5rem));
@@ -713,6 +717,41 @@
 
 .proxy-saved-link:focus-visible {
   outline-offset: -2px;
+}
+
+.proxy-bookmark-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35rem;
+}
+
+.proxy-bookmark-rename {
+  padding-inline: .65rem;
+  font-size: .82rem;
+}
+
+.proxy-bookmark-editor {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: .55rem;
+  margin: .15rem 0 .35rem;
+  padding: .65rem;
+  border: 1px solid var(--line-soft, #26262e);
+  border-radius: .55rem;
+  background: var(--panel-deep, #121217);
+}
+
+.proxy-bookmark-editor label {
+  display: grid;
+  gap: .3rem;
+  min-width: 0;
+  font-size: .86rem;
+}
+
+.proxy-bookmark-editor .field {
+  width: 100%;
+  min-width: 0;
 }
 
 .proxy-clear-history {

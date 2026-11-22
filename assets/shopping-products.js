@@ -68,6 +68,12 @@ export const amazonProducts = [
 ];
 
 const byAsin = new Map(amazonProducts.map(product => [product.asin, product]));
+export const amazonSortOptions = [
+  { id: 'name', title: 'Product name A–Z' },
+  { id: 'brand', title: 'Brand A–Z' },
+];
+
+const alphabetic = new Intl.Collator('en-US', { numeric: true, sensitivity: 'base' });
 const searchableWords = text => text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 const productSearch = amazonProducts.map(product => ({
   product,
@@ -83,12 +89,21 @@ export function amazonProductUrl(asin) {
   return product ? 'https://www.amazon.com/dp/' + product.asin : '';
 }
 
-export function findAmazonProducts({ query = '', category = '' } = {}) {
+export function amazonSort(value) {
+  return amazonSortOptions.some(option => option.id === value) ? value : '';
+}
+
+export function findAmazonProducts({ query = '', category = '', sort = '' } = {}) {
   const terms = searchableWords(query);
   if (query && !terms.length) return [];
-  return productSearch.filter(({ product, words }) => {
+  const matches = productSearch.filter(({ product, words }) => {
     if (category && product.category !== category) return false;
     return terms.every(term => words.includes(term) ||
       (term.length >= 4 && words.some(word => word.startsWith(term) || term === word + 's')));
   }).map(({ product }) => product);
+  const compareName = (first, second) => alphabetic.compare(first.title, second.title);
+  const compareBrand = (first, second) => alphabetic.compare(first.brand, second.brand);
+  if (sort === 'name') matches.sort((first, second) => compareName(first, second) || compareBrand(first, second));
+  if (sort === 'brand') matches.sort((first, second) => compareBrand(first, second) || compareName(first, second));
+  return matches;
 }
