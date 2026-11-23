@@ -29,6 +29,11 @@ export function arcadeEmbed(game) {
   return isMiniplayAddress(url) ? undefined : url;
 }
 
+export function localGameFile(game) {
+  if (typeof game.local !== 'string') return undefined;
+  return game.local.match(/^(?:\.\/)?((?:assets\/(?:[\w-]+\/)+)?[\w-][\w.-]*\.html)$/)?.[1];
+}
+
 export function gamepadPermission(game) {
   return ['gamepad', ...(game.gamepadOrigins || [])].join(' ');
 }

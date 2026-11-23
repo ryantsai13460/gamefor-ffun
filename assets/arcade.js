@@ -5,7 +5,7 @@ const [{ games }, { createLibrary, defaultProfileName, discoverySearchHistoryKey
   queryLibrary, restorePreferences, themeOptions, validateProfileName },
   { gatewayConnected, renderGatewaySettings, searchGateway, searchGatewayPage },
   { gameBackgroundOptions, readGameBackground, saveGameBackground, showGameBackground, prepareGameBackground },
-  { arcadeModes }, { arcadeEmbed, gamepadPermission }, { createGameAddressLookup, isGamePortalAddress }] = await Promise.all([
+  { arcadeModes }, { arcadeEmbed, gamepadPermission, localGameFile }, { createGameAddressLookup, isGamePortalAddress }] = await Promise.all([
   import(`./catalog.js${assetVersion}`),
   import(`./library.js${assetVersion}`),
   import(`./service-gateway.js${assetVersion}`),
@@ -1818,7 +1818,7 @@ function renderGame(target, id, startFromLink) {
   const embedUrl = verifiedSource(arcadeEmbed(game));
   const sourceUrl = verifiedSource(game.url);
   const relatedUrl = !sourceUrl && game.relatedLabel && verifiedSource(game.relatedUrl);
-  const localFile = typeof game.local === 'string' && game.local.match(/^(?:\.\/)?([\w.-]+\.html)$/)?.[1];
+  const localFile = localGameFile(game);
   const header = element('header', 'player-heading game-backdrop');
   showGameBackground(header, gameBackground);
   const headingCopy = element('div');
@@ -1989,6 +1989,7 @@ function renderGame(target, id, startFromLink) {
     }
 
     const frame = element('iframe');
+    if (game.id === 'petverse-online') frame.className = 'petverse-player';
     frame.title = game.title;
     frame.allow = `fullscreen; autoplay; ${gamepadPermission(game)}`;
     frame.allowFullscreen = true;

@@ -4,7 +4,7 @@ import test from 'node:test';
 import { games } from '../assets/catalog.js';
 import { createLibrary, gameAvailability, normalize, platformerCollections, queryLibrary, restorePreferences } from '../assets/library.js';
 import { resolveBrowserAddress } from '../assets/browser.js';
-import { arcadeEmbed } from '../assets/embedded-content.js';
+import { arcadeEmbed, localGameFile } from '../assets/embedded-content.js';
 import { findCuratedVideos, getVideoCollections, parseYouTubeVideo } from '../assets/media.js';
 import { expansionVideos } from '../assets/media-expansion.js';
 import { discoveryVideos } from '../assets/media-discovery-videos.js';
@@ -154,7 +154,7 @@ test('the catalog preserves the earlier library and exposes at least 1,000 disti
   assert.equal(games.filter(({ collection }) => collection === 'github' || collection === 'base44-library').length, 548);
   assert.equal(games.filter(({ collection }) => collection === 'base44-home').length, 2);
   assert.equal(games.filter(({ collection }) => collection === 'history').length, 1);
-  assert.equal(games.filter(({ collection }) => collection === 'original').length, 16);
+  assert.equal(games.filter(({ collection }) => collection === 'original').length, 17);
   assert.equal(new Set(games.map(({ id }) => id)).size, games.length);
   assert.equal(new Set(games.map(({ title }) => normalize(title))).size, games.length);
   assert.equal([...library.categoryCounts.values()].reduce((sum, count) => sum + count, 0), games.length);
@@ -195,7 +195,7 @@ test('catalog records have distinct sources, correct status, and safe relative a
     }
     if (typeof game.local === 'string') await readFile(new URL(game.local, new URL('../', import.meta.url)));
   }
-  assert.equal(statusCounts.local, 29);
+  assert.equal(statusCounts.local, 30);
   assert.ok(statusCounts.embed >= 975);
   assert.equal(statusCounts.external, 531);
   assert.equal(statusCounts.unverified, 3);
@@ -331,6 +331,12 @@ test('legacy preferences migrate IDs, discard malformed data and sort by actual 
 
 test('Proxy Gemini resolves website previews, official embeds, local play and restricted destinations', () => {
   assert.equal(resolveBrowserAddress('catch-the-star.html', site).url, 'https://ryantsai13460.github.io/gamefor-ffun/catch-the-star.html');
+  const petverse = resolveBrowserAddress('arcade:petverse-online', site);
+  assert.equal(petverse.kind, 'local');
+  assert.equal(petverse.url, 'https://ryantsai13460.github.io/gamefor-ffun/assets/petverse/index.html');
+  for (const local of ['../index.html', 'assets/pets/../../index.html', 'https://example.com/game.html']) {
+    assert.equal(localGameFile({ local }), undefined);
+  }
   assert.equal(resolveBrowserAddress('wikipedia.org', site).embed, 'https://wikipedia.org/');
   assert.equal(resolveBrowserAddress('wikipedia.org', site).kind, 'website');
   assert.equal(resolveBrowserAddress('https://support.miniclip.com/hc/en-us/articles/360019766978-Blash-io', site).kind, 'website');
