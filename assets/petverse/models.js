@@ -5,6 +5,32 @@ const mutationColors = {
   obsidian: '#655081', titanium: '#d3e0ff', mythic: '#f5a9ed'
 };
 
+const mutationScales = { metallic: 1.13, gold: 1.29, diamond: 1.50, obsidian: 1.80, titanium: 3, mythic: 1.65 };
+export function petScale(variant) { return mutationScales[variant] || 1; }
+
+// A small procedural sky supplies soft reflection bands without a remote texture or a second camera.
+function steelReflection() {
+  const width = 128;
+  const height = 64;
+  const pixels = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const elevation = y / (height - 1);
+    const longitude = x / width * Math.PI * 2;
+    const panel = Math.pow(Math.max(0, Math.cos(longitude - elevation * 3.02)), 17);
+    const horizon = Math.exp(-((elevation - .49) ** 2) * 170);
+    const sky = Math.max(0, elevation - .30) * 74;
+    const light = 34 + 153 * panel + 31 * horizon + sky;
+    const index = (y * width + x) * 4;
+    pixels.set([Math.min(255, light * .86), Math.min(255, light * 1.05), Math.min(255, light * 1.18), 255], index);
+  }
+  const texture = new THREE.DataTexture(pixels, width, height);
+  texture.mapping = THREE.EquirectangularReflectionMapping;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.minFilter = texture.magFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+  return texture;
+}
+
 /** Shared geometry and materials keep custom meshes inexpensive as the party grows. */
 export function createModelKit() {
   const geometries = {
@@ -18,6 +44,7 @@ export function createModelKit() {
     ring: new THREE.TorusGeometry(1, .065, 6, 40)
   };
   const materials = new Map();
+  let reflection;
   function paint(color, emissive = 0, metalness = 0) {
     const hex = new THREE.Color(color).getHex();
     const key = `${hex}:${emissive}:${metalness}`;
@@ -38,7 +65,20 @@ export function createModelKit() {
     return part;
   }
 
-  return { mesh, paint, geometries, materials };
+  function steel(color, polished = false) {
+    const hex = new THREE.Color(color).getHex();
+    const key = `steel:${hex}:${polished}`;
+    if (!materials.has(key)) {
+      reflection ||= steelReflection();
+      materials.set(key, new THREE.MeshStandardMaterial({
+        color: hex, flatShading: true, metalness: polished ? .85 : .75, roughness: polished ? .23 : .34,
+        envMap: reflection, envMapIntensity: 1.5
+      }));
+    }
+    return materials.get(key);
+  }
+
+  return { mesh, paint, steel, geometries, materials };
 }
 
 export function createTraveler(kit, remote = false) {
@@ -71,14 +111,15 @@ export function createTraveler(kit, remote = false) {
 
 /** The silhouettes come from separate facial and anatomical pieces for each family. */
 export function createPet(spec, variant, kit) {
-  const { mesh, paint } = kit;
+  const { mesh, paint, steel } = kit;
   const pet = new THREE.Group();
   const hue = new THREE.Color(spec.color || '#76c491');
   const special = mutationColors[variant];
-  if (special) hue.lerp(new THREE.Color(special), variant === 'shiny' ? .36 : .65);
-  const accent = spec.accent || '#fff1cc';
-  const shell = paint(hue, special ? .065 : 0, ['metallic', 'titanium', 'gold'].includes(variant) ? .45 : 0);
-  const inner = '#efb8a6';
+  const titanium = variant === 'titanium';
+  if (special) hue.lerp(new THREE.Color(titanium ? '#90a2b8' : special), titanium ? .82 : variant === 'shiny' ? .36 : .65);
+  const accent = titanium ? steel('#b8cbd0', true) : spec.accent || '#fff1cc';
+  const shell = titanium ? steel(hue) : paint(hue, special ? .065 : 0, ['metallic', 'gold'].includes(variant) ? .45 : 0);
+  const inner = titanium ? '#85b1b5' : '#efb8a6';
   const face = '#352a43';
   const body = (shape, material, x, y, z, w, h, d, rot) => mesh(pet, shape, material, x, y, z, w, h, d, rot);
   const silhouette = spec.shape;
@@ -183,9 +224,18 @@ export function createPet(spec, variant, kit) {
   }
 
   if (special) {
-    const aura = body('ring', paint(special, .33, .1), 0, .20, 0, .84, .84, .84, [Math.PI / 2, 0, 0]);
+    const glow = titanium ? '#7be4ca' : special;
+    const aura = body('ring', paint(glow, titanium ? .19 : .33, .1), 0, .20, 0, .84, .84, .84, [Math.PI / 2, 0, 0]);
     pet.userData.aura = aura;
-    for (const side of [-1, 1]) body('gem', paint(special, .35), side * .76, 1.12, -.2, .09, .15, .09);
+    if (titanium) {
+      const shellPlate = steel('#526980', true);
+      for (const side of [-1, 1]) {
+        body('facet', shellPlate, side * .48, .77, -.20, .20, .27, .39, [.18, side * .24, side * .1]);
+        body('box', paint(glow, .42), side * .63, .77, -.19, .027, .033, .26, [0, side * .15, 0]);
+        body('gem', paint(glow, .34), side * .55, .99, -.18, .035, .055, .038);
+      }
+    } else for (const side of [-1, 1]) body('gem', paint(glow, .35), side * .76, 1.12, -.2, .09, .15, .09);
   }
+  pet.scale.multiplyScalar(petScale(variant));
   return pet;
 }

@@ -8,6 +8,16 @@ const movementInterval = 100;
 const loopbackHosts = new Set(["localhost", "127.0.0.1"]);
 const tradeSteps = new Set(["invite", "accept", "cancel", "offer", "confirm"]);
 const tradeStates = new Set(["invited", "open", "closed"]);
+const roomSteps = new Set(["regenerate", "close"]);
+const roomCodePattern = /^PET-[0-9A-F]{10}$/;
+const metricPattern = /^[a-z][a-zA-Z0-9-]{0,47}$/;
+const positionActions = new Set(["gather", "collect", "rebirth"]);
+
+export function normalizeRoomCode(value) {
+  if (typeof value !== "string") return null;
+  const code = value.trim().toUpperCase();
+  return roomCodePattern.test(code) ? code : null;
+}
 
 function normalizeEndpoint(value) {
   if (typeof value !== "string") return null;
@@ -106,6 +116,38 @@ function readTrade(value) {
   };
 }
 
+function readRoom(value, selfId) {
+  if (!value || typeof value.id !== "string" || !value.id || value.id.length > 64 ||
+      typeof value.hostId !== "string" || !value.hostId || value.hostId.length > 64 ||
+      !Number.isInteger(value.maxPlayers) || value.maxPlayers < 2 || value.maxPlayers > 32 ||
+      !Number.isInteger(value.playerCount) || value.playerCount < 1 || value.playerCount > value.maxPlayers ||
+      !Number.isSafeInteger(value.expiresAt) || value.expiresAt < 0) return null;
+  const { id, hostId, maxPlayers, playerCount, expiresAt } = value;
+  const room = { id, hostId, maxPlayers, playerCount, expiresAt };
+  if (hostId === selfId) {
+    const code = normalizeRoomCode(value.code);
+    if (!code) return null;
+    room.code = code;
+  }
+  return room;
+}
+
+function readResourceCooldowns(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).slice(0, 64).filter(([nodeId, until]) =>
+    /^[a-z0-9][a-z0-9-]{0,63}$/.test(nodeId) && Number.isSafeInteger(until) && until >= 0));
+}
+
+function readLeaderboard(message, metric) {
+  const { entries } = message;
+  if (message.metric !== metric || !Array.isArray(entries) || entries.length > 32 ||
+      entries.some(entry => !entry || typeof entry.id !== "string" || !entry.id ||
+        typeof entry.name !== "string" || !Number.isFinite(entry.score) || entry.score < 0)) return null;
+  return { metric, entries: entries.map(({ id, name, score }) => ({
+    id: id.slice(0, 64), name: name.trim().slice(0, 36), score
+  })) };
+}
+
 function parseMessage(value) {
   if (typeof value !== "string" || value.length > 400_000) return null;
   try {
@@ -116,7 +158,7 @@ function parseMessage(value) {
   }
 }
 
-export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, onClose } = {}) {
+export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, onRoom, onRoomClosed, onResources, onClose } = {}) {
   let active;
   let destroyed = false;
 
@@ -153,6 +195,10 @@ export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, o
     if (active !== session || !session.connected || session.pending || !session.queue.length) return;
     const request = session.queue.shift();
     session.pending = request;
+    if (session.nextMove && positionActions.has(request.message.action?.type)) {
+      clearTimeout(session.moveTimer);
+      flushMove(session);
+    }
     if (!send(session, { ...request.message, requestId: request.id })) {
       close(session, clientError("The connection to Petverse was interrupted.", "connection_lost"), true);
       return;
@@ -170,15 +216,35 @@ export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, o
     if (!session.connected) {
       if (message.type === "error") return close(session, serverError(message, "Petverse refused the connection."), true);
       const self = readActor(message.self);
-      if (message.type !== "welcome" || !self || typeof message.token !== "string" ||
+      const room = self && readRoom(message.room, self.id);
+      if (message.type !== "welcome" || !self || !room || typeof message.token !== "string" ||
           !tokenPattern.test(message.token) || !isProgress(message.progress)) return protocolError(session);
       session.connected = true;
+      session.selfId = self.id;
+      session.roomId = room.id;
       clearTimeout(session.connectTimer);
       storeToken(session.endpoint, message.token);
-      session.resolve({ endpoint: session.endpoint, self, progress: message.progress, peers: readPeers(message.peers) });
+      session.resolve({ endpoint: session.endpoint, self, progress: message.progress, peers: readPeers(message.peers),
+        room, nodeReadyAt: readResourceCooldowns(message.nodeReadyAt) });
       return;
     }
 
+    if (message.type === "room") {
+      const room = readRoom(message.room, session.selfId);
+      if (!room || room.id !== session.roomId) return protocolError(session);
+      onRoom?.(room);
+      return;
+    }
+    if (message.type === "room-closed") {
+      const error = serverError(message, "This private meadow has closed.");
+      close(session, error, true, !onRoomClosed);
+      onRoomClosed?.({ message: error.message });
+      return;
+    }
+    if (message.type === "resources") {
+      onResources?.(readResourceCooldowns(message.nodeReadyAt));
+      return;
+    }
     if (message.type === "peers") {
       onPeers?.(readPeers(message.peers));
       return;
@@ -219,15 +285,36 @@ export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, o
       return;
     }
 
-    const result = message.type === "result" ? { progress: message.progress, event: message.event } : undefined;
+    let result;
+    if (message.type === "result") result = { progress: message.progress, event: message.event };
+    if (message.type === "leaderboard-result") {
+      result = readLeaderboard(message, request.message.metric);
+      if (!result) {
+        request.reject(clientError("The meadow rankings could not be read.", "protocol_error"));
+        return protocolError(session);
+      }
+    }
     request.resolve(result);
     sendNext(session);
-    if (result) onProgress?.(result.progress, result.event);
+    if (message.type === "result") onProgress?.(result.progress, result.event);
   }
 
-  async function connect(value, { newGuest = false } = {}) {
+  async function connect(value, { mode, code, maxPlayers, newGuest = false } = {}) {
     if (destroyed) throw clientError("This Petverse player has been closed.", "closed");
-    if (active) throw clientError("Leave your current online session first.", "already_connected");
+    if (active) throw clientError("Leave your current private meadow first.", "already_connected");
+    if (mode !== "create" && mode !== "join") {
+      throw clientError("Create a private meadow or join with a friend's code.", "invalid_room_mode");
+    }
+    const hello = { type: "hello", mode };
+    if (mode === "join") {
+      hello.code = normalizeRoomCode(code);
+      if (!hello.code) throw clientError("Enter the full PET- invitation code.", "invalid_code");
+    } else if (maxPlayers !== undefined) {
+      if (!Number.isInteger(maxPlayers) || maxPlayers < 2 || maxPlayers > 32) {
+        throw clientError("Choose a player limit from 2 to 32.", "invalid_room_limit");
+      }
+      hello.maxPlayers = maxPlayers;
+    }
     const endpoint = normalizeEndpoint(value);
     if (!endpoint) throw clientError("Enter a secure Petverse server address, starting with wss://.", "invalid_endpoint");
 
@@ -239,7 +326,7 @@ export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, o
       session.connectTimer = setTimeout(() => {
         close(session, clientError("The Petverse server did not answer in time.", "connect_timeout"), true);
       }, connectionTimeout);
-      socket.addEventListener("open", () => send(session, { type: "hello", token }));
+      socket.addEventListener("open", () => send(session, { ...hello, token }));
       socket.addEventListener("message", event => receive(session, event.data));
       socket.addEventListener("close", () => {
         close(session, clientError("The Petverse server closed the connection.", "connection_lost"), true);
@@ -280,6 +367,18 @@ export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, o
     return request({ type: "trade", step, peerId, tradeId, petIds, revision }, "trade-result");
   }
 
+  async function room(step) {
+    if (!roomSteps.has(step)) throw clientError("Choose a valid private meadow action.", "invalid_action");
+    return request({ type: "room", step }, "room-result");
+  }
+
+  async function leaderboard(metric) {
+    if (typeof metric !== "string" || !metricPattern.test(metric)) {
+      throw clientError("Choose a valid leaderboard category.", "invalid_action");
+    }
+    return request({ type: "leaderboard", metric }, "leaderboard-result");
+  }
+
   function flushMove(session) {
     session.moveTimer = undefined;
     if (active !== session || !session.nextMove) return;
@@ -314,5 +413,5 @@ export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, o
     if (active) close(active, clientError("The Petverse player was closed.", "closed"), false, false);
   }
 
-  return { connect, command, trade, move, disconnect, destroy };
+  return { connect, command, trade, room, leaderboard, move, disconnect, destroy };
 }

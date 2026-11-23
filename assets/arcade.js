@@ -2039,7 +2039,7 @@ function renderGame(target, id, startFromLink) {
       if (token === revision) showFrameError('The player failed to load.');
     }, { once: true });
     if (record && !game.local) launch(game);
-    frame.src = localFile ? `./${localFile}` : embedUrl;
+    frame.src = localFile ? `./${localFile}${game.id === 'petverse-online' ? assetVersion : ''}` : embedUrl;
     stage.append(frame);
     if (embedUrl) {
       embedHelp.hidden = false;

@@ -123,7 +123,10 @@ export function resolveBrowserAddress(input, pageUrl) {
     if (game.local === true) return { kind: "built-in", title: game.title, address, id: game.id };
     const file = localGameFile(game);
     if (file === localPage) return resolveBrowserAddress(file, pageUrl);
-    return file ? { kind: "local", title: game.title, address, url: new URL(file, pageUrl).href } : null;
+    if (!file) return null;
+    const local = new URL(file, pageUrl);
+    if (game.id === "petverse-online") local.search = assetVersion;
+    return { kind: "local", title: game.title, address, url: local.href };
   }
 
   const local = new URL(localPage, pageUrl);

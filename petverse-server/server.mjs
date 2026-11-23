@@ -5,20 +5,19 @@ import { createServer } from 'node:http';
 import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { WebSocket, WebSocketServer } from 'ws';
-import { applyAction, GATHER_DISTANCE, NODES, SPAWN, VARIANTS, WORLD_LIMIT } from '../assets/petverse/model.js';
+import { applyAction, collectionMetrics, SPAWN, VARIANTS, WORLD_LIMIT } from '../assets/petverse/model.js';
 import { openStore } from './store.mjs';
 import { createTrading } from './trading.mjs';
+import { createInviteLimiter, createRooms } from './rooms.mjs';
 
 const endpoint = '/v1/petverse';
 const loopback = '127.0.0.1';
 const speedLimit = 7.25;
 const moveBurst = 2;
-const gatherRadius = GATHER_DISTANCE + 0.65;
 const requestPattern = /^[A-Za-z0-9_-]{1,64}$/;
 const tokenPattern = /^[A-Za-z0-9_-]{43}$/;
 const idPattern = /^[A-Za-z0-9_-]{1,48}$/;
 const trustedRandom = () => randomBytes(4).readUInt32BE() / 0x1_0000_0000;
-const nodeById = new Map(NODES.map(node => [node.id, node]));
 const variantKeys = VARIANTS.filter(variant => variant.id !== 'normal').map(variant => variant.id);
 const settingKeys = ['stopOnNew', 'stopOnFull', 'autoEquip', 'lockRare', 'multiHatch', 'autoCollect'];
 
@@ -71,6 +70,12 @@ function cleanAction(action) {
     }
     case 'gather':
       return validId(action.nodeId) ? { type, nodeId: action.nodeId, mode: mode === 'auto' ? 'auto' : 'manual' } : null;
+    case 'collect':
+      return validId(action.dropId) ? { type, dropId: action.dropId } : null;
+    case 'claim':
+      return validId(action.achievementId) ? { type, achievementId: action.achievementId } : null;
+    case 'rebirth':
+      return action.confirm === true ? { type, confirm: true } : null;
     case 'equip':
     case 'favorite':
     case 'lock':
@@ -113,13 +118,20 @@ function rejectUpgrade(socket, status) {
   socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
 }
 
-export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPlayers = 16, maxProfiles = 1000 } = {}) {
+export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPlayers = 16, maxProfiles = 1000,
+  roomLifetimeMs = 12 * 60 * 60_000, emptyRoomGraceMs = 5 * 60_000 } = {}) {
   const origins = exactOrigins(clientOrigins);
   if (!Number.isInteger(maxPlayers) || maxPlayers < 2 || maxPlayers > 32 ||
       !Number.isInteger(maxProfiles) || maxProfiles < maxPlayers || maxProfiles > 10_000) throw new Error('Invalid Petverse capacity.');
+  if (!Number.isSafeInteger(roomLifetimeMs) || roomLifetimeMs < 100 ||
+      !Number.isSafeInteger(emptyRoomGraceMs) || emptyRoomGraceMs < 100) throw new Error('Invalid Petverse room lifetime.');
   if (dbPath !== ':memory:') mkdirSync(dirname(dbPath), { recursive: true, mode: 0o700 });
   const store = openStore(dbPath, maxProfiles);
   const players = new Map();
+  const rooms = createRooms({ limit: maxPlayers, lifetimeMs: roomLifetimeMs, emptyMs: emptyRoomGraceMs });
+  const invites = createInviteLimiter();
+  const dirtyRooms = new Set();
+  const dirtyResources = new Set();
   const sockets = new WebSocketServer({ noServer: true, maxPayload: 4096, perMessageDeflate: false });
   const server = createServer({ headersTimeout: 5000, requestTimeout: 5000, maxHeaderSize: 8192 }, (request, response) => {
     const status = request.method === 'GET' && request.url === '/healthz' ? 200 : 404;
@@ -130,7 +142,6 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
   server.keepAliveTimeout = 3000;
 
   let closing;
-  let dirty = false;
   let listening;
   let lastPingAt = Date.now();
   let accountWindowAt = 0;
@@ -156,8 +167,50 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
 
   const trading = createTrading({ players, send, exchange: store.exchange,
     announceProgress: (player, event) => send(player, progressMessage(player, event, { type: 'player-state' })),
-    publicChange: () => { dirty = true; }
+    publicChange: player => dirtyRooms.add(player.room)
   });
+
+  function announceRoom(room) {
+    for (const player of room.members) send(player, { type: 'room', room: rooms.info(room, player.id) });
+  }
+
+  function endRoom(room, message) {
+    rooms.close(room);
+    dirtyRooms.delete(room);
+    dirtyResources.delete(room);
+    for (const player of room.members) {
+      trading.leave(player);
+      send(player, { type: 'room-closed', message });
+      player.socket.close(1000, 'Private meadow closed.');
+    }
+  }
+
+  function manageRoom(player, message) {
+    const { step, requestId } = message;
+    const { room } = player;
+    if (room.hostId !== player.id) return error(player, 'host_only', 'Only the host can manage this meadow.', requestId);
+    if (step === 'regenerate') {
+      rooms.regenerate(room);
+      announceRoom(room);
+      return send(player, { type: 'room-result', requestId });
+    }
+    if (step === 'close') {
+      send(player, { type: 'room-result', requestId });
+      return endRoom(room, 'The host closed this private meadow.');
+    }
+    return error(player, 'invalid_request', 'Choose a supported private meadow action.', requestId);
+  }
+
+  function leaderboard(player, message) {
+    const { metric, requestId } = message;
+    if (typeof metric !== 'string' || !Object.hasOwn(collectionMetrics(player.progress), metric)) {
+      return error(player, 'invalid_metric', 'That collection ranking is unavailable.', requestId);
+    }
+    const entries = Array.from(player.room.members, member => ({ id: member.id, name: member.name,
+      score: collectionMetrics(member.progress)[metric] }))
+      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    return send(player, { type: 'leaderboard-result', requestId, metric, entries });
+  }
 
   function move(player, message, now) {
     const { x, z, heading = player.position.heading } = message;
@@ -176,7 +229,7 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
     }
     player.moveBudget -= distance;
     player.position = { x, z, heading: Math.atan2(Math.sin(heading), Math.cos(heading)) };
-    dirty = true;
+    dirtyRooms.add(player.room);
   }
 
   function act(player, message, now) {
@@ -188,31 +241,50 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
       send(player, progressMessage(player, receipt, { type: 'result', requestId, replayed: true }));
       return;
     }
-    if (command.type === 'gather') {
-      const node = nodeById.get(command.nodeId);
-      if (!node || Math.hypot(node.x - player.position.x, node.z - player.position.z) > gatherRadius) {
-        return error(player, 'too_far', 'Move closer to this resource to gather it.', requestId);
-      }
+    if (command.type === 'gather' && (player.room.nodeReadyAt.get(command.nodeId) || 0) > now) {
+      return send(player, progressMessage(player, { type: 'error', code: 'node-cooldown',
+        message: 'This resource is regrowing.', retryAt: player.room.nodeReadyAt.get(command.nodeId) },
+      { type: 'result', requestId }));
     }
-    const { progress, event } = applyAction(player.progress, command, { now, random: trustedRandom });
+    const { progress, event } = applyAction(player.progress, command, { now, random: trustedRandom, position: player.position });
     if (event.type !== 'error') {
       store.record(player, progress, requestId, event);
-      dirty = true;
+      dirtyRooms.add(player.room);
+      if (event.type === 'gather') {
+        player.room.nodeReadyAt.set(command.nodeId, progress.nodeReadyAt[command.nodeId]);
+        dirtyResources.add(player.room);
+      }
     }
     send(player, progressMessage(player, event, { type: 'result', requestId }));
   }
 
   function join(peer, message, now) {
-    const { token } = message || {};
+    const { token, mode, code, maxPlayers: selectedLimit } = message || {};
+    const reject = (reason, message, status = 1008) => {
+      error(peer, reason, message);
+      peer.socket.close(status);
+    };
     if (message?.type !== 'hello' || (token !== undefined && (typeof token !== 'string' || !tokenPattern.test(token)))) {
-      error(peer, 'invalid_token', 'The player sign-in could not be verified.');
-      peer.socket.close(1008);
-      return;
+      return reject('invalid_token', 'The player sign-in could not be verified.');
+    }
+    if (mode !== 'create' && mode !== 'join') {
+      return reject('private_room_required', 'Create a private meadow or join one with an invite code.');
+    }
+    let room;
+    const roomLimit = selectedLimit ?? Math.min(8, maxPlayers);
+    if (mode === 'create') {
+      if (!Number.isInteger(roomLimit) || roomLimit < 2 || roomLimit > maxPlayers) {
+        return reject('invalid_capacity', `Choose a player limit from 2 to ${maxPlayers}.`);
+      }
+      if (!rooms.hasSpace()) return reject('room_capacity', 'The server has reached its private meadow limit.', 1013);
+    } else {
+      if (!invites.take(peer.address, now)) return reject('invite_cooldown', 'Wait a minute before trying another invite code.', 1013);
+      room = rooms.find(code, now);
+      if (!room) return reject('invalid_code', 'That invite code is invalid or expired. Ask the host for the current code.');
+      if (room.members.size >= room.maxPlayers) return reject('room_full', 'This private meadow is full.', 1013);
     }
     if (players.size >= maxPlayers) {
-      error(peer, 'room_full', 'The meadow is full. Try again when another explorer leaves.');
-      peer.socket.close(1013);
-      return;
+      return reject('server_full', 'The server is full. Try again when another explorer leaves.', 1013);
     }
     if (token === undefined) {
       if (now - accountWindowAt >= 1000) {
@@ -220,28 +292,27 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
         accountWindowAt = now;
       }
       if (++accountsThisWindow > 6) {
-        error(peer, 'account_cooldown', 'Wait a moment before creating an online profile.');
-        peer.socket.close(1013);
-        return;
+        return reject('account_cooldown', 'Wait a moment before creating an online profile.', 1013);
       }
     }
     const profile = token === undefined ? store.create() : store.restore(token);
     if (!profile || players.has(profile.id)) {
-      if (profile) error(peer, 'active_session', 'This explorer is already connected. Close the other session first.');
-      else if (token === undefined) error(peer, 'profile_capacity', 'This server has reached its profile limit.');
-      else error(peer, 'invalid_token', 'The saved online profile could not be found.');
-      peer.socket.close(1008);
-      return;
+      if (profile) return reject('active_session', 'This explorer is already connected. Close the other session first.');
+      if (token === undefined) return reject('profile_capacity', 'This server has reached its profile limit.');
+      return reject('invalid_token', 'The saved online profile could not be found.');
     }
+    if (mode === 'create') room = rooms.create(profile.id, roomLimit, now);
     const { token: resumeToken, ...profileState } = profile;
-    const player = peer.player = { ...profileState, socket: peer.socket, position: { ...SPAWN, heading: 0 },
+    const player = peer.player = { ...profileState, room, socket: peer.socket, position: { ...SPAWN, heading: 0 },
       lastMoveAt: now, lastCorrectionAt: 0, moveBudget: moveBurst };
     clearTimeout(peer.joinTimer);
-    const peers = Array.from(players.values(), playerAppearance);
+    const peers = Array.from(room.members, playerAppearance);
+    rooms.add(room, player);
     players.set(player.id, player);
     send(player, { type: 'welcome', token: resumeToken, self: playerAppearance(player), progress: player.progress,
-      version: player.version, peers });
-    dirty = true;
+      version: player.version, peers, room: rooms.info(room, player.id), nodeReadyAt: Object.fromEntries(room.nodeReadyAt) });
+    announceRoom(room);
+    dirtyRooms.add(room);
   }
 
   function handle(peer, bytes, binary) {
@@ -261,6 +332,8 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
       if (++peer.actions > 8) return error(peer, 'slow_down', 'Take a moment before the next action.', message.requestId);
       if (message.type === 'action') return act(player, message, now);
       if (message.type === 'trade' && validTrade(message)) return trading.handle(player, message, now);
+      if (message.type === 'room') return manageRoom(player, message);
+      if (message.type === 'leaderboard') return leaderboard(player, message);
       return error(peer, 'invalid_request', 'This message was not understood.', message.requestId);
     } catch {
       error(peer, 'save_unavailable', 'Petverse could not save this action. Please try again.', message?.requestId);
@@ -272,12 +345,13 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
     if (request.url !== endpoint) return rejectUpgrade(socket, '404 Not Found');
     if (!origins.has(request.headers.origin)) return rejectUpgrade(socket, '403 Forbidden');
     if (closing || sockets.clients.size >= maxPlayers + 5) return rejectUpgrade(socket, '503 Service Unavailable');
-    sockets.handleUpgrade(request, socket, head, connected => sockets.emit('connection', connected));
+    sockets.handleUpgrade(request, socket, head, connected => sockets.emit('connection', connected, request));
   });
   server.on('clientError', (_error, socket) => rejectUpgrade(socket, '400 Bad Request'));
 
-  sockets.on('connection', socket => {
-    const peer = { socket, windowAt: Date.now(), messages: 0, actions: 0 };
+  sockets.on('connection', (socket, request) => {
+    // The HTTPS edge can apply its own per-client limits. Forwarded addresses are not trusted here.
+    const peer = { socket, address: request.socket.remoteAddress || 'unknown', windowAt: Date.now(), messages: 0, actions: 0 };
     socket.isAlive = true;
     socket.on('pong', () => { socket.isAlive = true; });
     socket.on('error', () => socket.terminate());
@@ -287,9 +361,15 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
     socket.on('close', () => {
       clearTimeout(peer.joinTimer);
       if (peer.player) {
-        players.delete(peer.player.id);
-        trading.leave(peer.player);
-        dirty = true;
+        const player = peer.player;
+        const { room } = player;
+        if (players.get(player.id) === player) players.delete(player.id);
+        trading.leave(player);
+        rooms.remove(room, player, Date.now());
+        if (rooms.contains(room)) {
+          announceRoom(room);
+          dirtyRooms.add(room);
+        }
       }
     });
   });
@@ -297,15 +377,28 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
   const tick = setInterval(() => {
     const now = Date.now();
     trading.expire(now);
-    if (dirty) {
-      dirty = false;
-      const everyone = Array.from(players.values(), playerAppearance);
-      for (const player of players.values()) {
-        send(player, { type: 'peers', peers: everyone.filter(peer => peer.id !== player.id) }, true);
+    for (const room of rooms.expired(now)) endRoom(room, 'This private meadow has expired. Ask the host to create another.');
+    for (const room of rooms.values()) {
+      for (const [nodeId, readyAt] of room.nodeReadyAt) {
+        if (readyAt <= now) {
+          room.nodeReadyAt.delete(nodeId);
+          dirtyResources.add(room);
+        }
       }
     }
+    for (const room of dirtyRooms) {
+      const everyone = Array.from(room.members, playerAppearance);
+      for (const player of room.members) send(player, { type: 'peers', peers: everyone.filter(peer => peer.id !== player.id) }, true);
+    }
+    dirtyRooms.clear();
+    for (const room of dirtyResources) {
+      const nodeReadyAt = Object.fromEntries(room.nodeReadyAt);
+      for (const player of room.members) send(player, { type: 'resources', nodeReadyAt });
+    }
+    dirtyResources.clear();
     if (now - lastPingAt >= 20_000) {
       lastPingAt = now;
+      invites.expire(now);
       for (const socket of sockets.clients) {
         if (!socket.isAlive || socket.readyState === WebSocket.CLOSING) socket.terminate();
         else if (socket.readyState === WebSocket.OPEN) {

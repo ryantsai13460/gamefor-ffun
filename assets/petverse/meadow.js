@@ -1,4 +1,6 @@
 import * as THREE from './vendor/three/three.module.min.js';
+import { createLeaderboardPavilion, createRebirthCave } from './cave.js?v=20261123-2';
+import { REBIRTH_ALTAR } from './model.js?v=20261123-2';
 
 const TAU = Math.PI * 2;
 
@@ -157,7 +159,8 @@ export function createMeadow(scene, kit, nodes, eggs) {
 
   path([[.4, 24], [-1.8, 18], [0, 11], [1.5, 4], [0, -3.9], [1, -11], [-2.6, -18]], 3.3, '#dbcc9d');
   path([[-25, 7], [-16, 4], [-11, 7], [-5, 5], [1.5, 4], [7.2, 8], [13.1, 11.4], [23.7, 9]], 2.8, '#ddcea0', .038);
-  path([[-21, -17], [-13, -13], [-8, -10], [0, -9], [6, -11], [13, -17], [21, -17]], 2.35, '#cdc99a', .04);
+  path([[-22, -13.3], [-19.4, -12.8], [-13, -13], [-8, -10], [0, -9], [6, -11], [13, -17], [21, -17]], 2.35, '#cdc99a', .04);
+  path([[1.0, 11.24], [3.75, 12.3], [6.14, 13.62], [8.8, 14.6]], 1.94, '#e3cca5', .042);
 
   // A shallow blue reed pond and timber bridge split the eastern trail.
   path([[17, -24], [16, -17], [19, -7], [16, 0], [17, 8], [18, 17], [21, 28]], 5.1, '#79aeb0', .050);
@@ -197,7 +200,8 @@ export function createMeadow(scene, kit, nodes, eggs) {
   mesh(roost, 'gem', '#fcdb8e', 0, 4.17, -.86, .16, .16, .08);
   batchPlantedMeshes(roost);
 
-  eggs.forEach((egg, index) => {
+  const embergeode = eggs.find(egg => egg.id === 'embergeode');
+  eggs.filter(egg => egg !== embergeode).forEach((egg, index) => {
     const x = index % 2 === 0 ? -3.08 : 3.08;
     const z = -2.75 - Math.floor(index / 2) * 4.2;
     const plinth = groupAt(x, 0, z);
@@ -235,7 +239,19 @@ export function createMeadow(scene, kit, nodes, eggs) {
   obstacles.push({ x: -12.2, z: -6.0, radius: 2.40 });
   interactables.push({ type: 'upgrade', id: 'upgrades', label: 'Workshop', x: -12.2, z: -3.45, group: workshop });
 
-  const limits = [...nodes, ...interactables, { x: 0, z: 11 }, { x: 7.4, z: 5.5 }];
+  const rebirthCave = createRebirthCave(world, kit, { origin: REBIRTH_ALTAR, egg: embergeode, label, batch: batchPlantedMeshes });
+  interactables.push(...rebirthCave.targets);
+  obstacles.push(...rebirthCave.obstacles);
+  const pavilion = createLeaderboardPavilion(world, kit, { label, batch: batchPlantedMeshes });
+  interactables.push(pavilion.target);
+  obstacles.push(...pavilion.obstacles);
+  const caveTrail = groupAt(-16.25, 0, -12.72);
+  mesh(caveTrail, 'beam', '#726f5c', 0, .67, 0, .115, 1.34, .115);
+  mesh(caveTrail, 'box', '#8b8263', -.08, 1.39, 0, .98, .46, .136);
+  mesh(caveTrail, 'cone', '#c3ba8a', -.68, 1.39, .012, .243, .42, .123, [0, 0, Math.PI / 2]);
+  mesh(caveTrail, 'gem', paint('#87bfb2', .16), -.16, 1.38, .104, .135, .14, .046);
+
+  const limits = [...nodes, ...interactables, rebirthCave.waitingArea, { x: 0, z: 11 }, { x: 7.4, z: 5.5 }];
   for (const node of nodes) {
     const center = groupAt(node.x, 0, node.z);
     const baseColor = { bloom: '#788f5e', stone: '#87948f', crystal: '#9a9c9a' }[node.kind];
@@ -290,7 +306,7 @@ export function createMeadow(scene, kit, nodes, eggs) {
   for (let i = 0; i < 560; i++) {
     const x = (random() - .5) * 74;
     const z = (random() - .5) * 74;
-    if (Math.hypot(x, z) > 37.6 || limits.some(point => Math.hypot(point.x - x, point.z - z) < 2.15)) continue;
+    if (Math.hypot(x, z) > 37.6 || rebirthCave.occupies(x, z) || limits.some(point => Math.hypot(point.x - x, point.z - z) < 2.15)) continue;
     if (Math.abs(x - 1) < 2.45 && z > -10 || Math.abs(z - 6) < 2.35 && Math.abs(x) < 16 || Math.abs(x - 18) < 2.8) continue;
     const tint = ['#78a66b', '#9bc486', '#6fa163', '#b3ca79'][i % 4];
     const scale = .10 + random() * .25;
@@ -302,7 +318,8 @@ export function createMeadow(scene, kit, nodes, eggs) {
     const distance = 10.5 + random() * 28;
     const x = Math.cos(angle) * distance;
     const z = Math.sin(angle) * distance;
-    if (Math.abs(x) < 4.5 || Math.abs(z - 5.5) < 3.8 && Math.abs(x) < 26 || Math.abs(x - 17) < 3 ||
+    if (Math.abs(x) < 4.5 || Math.abs(z - 5.5) < 3.8 && Math.abs(x) < 26 || Math.abs(x - 17) < 3 || rebirthCave.occupies(x, z, .7) ||
+      (x > -23 && x < -13 && Math.abs(z + 12.7) < 1.65) ||
       limits.some(point => Math.hypot(point.x - x, point.z - z) < 3.25)) continue;
     const size = .68 + random() * .86;
     const tint = ['#589479', '#649b70', '#9cae64', '#609a89'][i % 4];
@@ -349,5 +366,5 @@ export function createMeadow(scene, kit, nodes, eggs) {
     batchPlantedMeshes(cloud);
   }
 
-  return { interactables, obstacles, nodeViews };
+  return { interactables, obstacles, nodeViews, rebirthCave };
 }

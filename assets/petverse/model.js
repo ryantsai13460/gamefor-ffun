@@ -3,6 +3,7 @@ export const WORLD_LIMIT = 27;
 export const SPAWN = Object.freeze({ x: 0, z: 11 });
 export const HATCHERY = Object.freeze({ x: 0, z: -4 });
 export const GATHER_DISTANCE = 3;
+export const REBIRTH_ALTAR = Object.freeze({ x: -22, z: -19, radius: 3.2 });
 
 function frozenCatalog(items) {
   return Object.freeze(items.map(Object.freeze));
@@ -28,7 +29,17 @@ export const PETS = frozenCatalog([
   { id: 'rainruby', name: 'Rainruby', rarity: 'rare', power: 22, color: '#2b9385', accent: '#ed7991', shape: 'frog' },
   { id: 'silverbun', name: 'Silverbun', rarity: 'epic', power: 25, color: '#a2adc7', accent: '#f6f2ff', shape: 'hare' },
   { id: 'moonmote', name: 'Moonmote', rarity: 'legendary', power: 31, color: '#5d73c2', accent: '#c3f5ff', shape: 'moth' },
-  { id: 'auroracub', name: 'Auroracub', rarity: 'mythic', power: 42, color: '#3c5d92', accent: '#a4ffd7', shape: 'bear' }
+  { id: 'auroracub', name: 'Auroracub', rarity: 'mythic', power: 42, color: '#3c5d92', accent: '#a4ffd7', shape: 'bear' },
+  { id: 'cinderskip', name: 'Cinderskip', rarity: 'common', power: 24, color: '#955b50', accent: '#fecd8e', shape: 'hare', generation: 2 },
+  { id: 'glowgill', name: 'Glowgill', rarity: 'uncommon', power: 33, color: '#6babb5', accent: '#fff394', shape: 'axolotl', generation: 2 },
+  { id: 'flintowl', name: 'Flintowl', rarity: 'rare', power: 44, color: '#65728e', accent: '#e6d5a4', shape: 'owl', generation: 2 },
+  { id: 'shardstoat', name: 'Shardstoat', rarity: 'epic', power: 54, color: '#b58c9a', accent: '#ffc6a8', shape: 'fox', generation: 2 },
+  { id: 'forgeheart', name: 'Forgeheart', rarity: 'legendary', power: 69, color: '#783d55', accent: '#ffb873', shape: 'bear', generation: 2 }
+].map(pet => ({ generation: 1, ...pet })));
+
+export const GENERATIONS = frozenCatalog([
+  { id: 1, name: 'Meadow', rebirths: 0, description: 'Collect woodland companions from the Sunmeadow and Moonbloom eggs.' },
+  { id: 2, name: 'Emberdeep', rebirths: 1, description: 'Unlock the Ember Geode Egg with your first rebirth at the cavern altar.' }
 ]);
 
 function weightedPool(start, weights) {
@@ -39,8 +50,10 @@ export const EGGS = frozenCatalog([
   { id: 'sunmeadow', name: 'Sunmeadow Egg', description: 'Warm shells from Sunstep Meadow. A gentle start with two elusive finds.', cost: 18, level: 1, color: '#ffcb78',
     pool: weightedPool(0, [2400, 1900, 1700, 1450, 1000, 680, 470, 240, 120, 40]) },
   { id: 'moonbloom', name: 'Moonbloom Egg', description: 'An evening bloom with a stronger collection and the chance to meet Auroracub.', cost: 62, level: 3, color: '#b7a2ff',
-    pool: weightedPool(10, [2150, 1800, 1550, 1350, 1100, 850, 600, 370, 180, 50]) }
-]);
+    pool: weightedPool(10, [2150, 1800, 1550, 1350, 1100, 850, 600, 370, 180, 50]) },
+  { id: 'embergeode', name: 'Ember Geode Egg', description: 'A warm geode from the Rebirth Cave. Its companions have stronger gathering power.', cost: 85, level: 3, color: '#ea8b63', generation: 2,
+    pool: weightedPool(20, [4100, 3000, 1900, 850, 150]) }
+].map(egg => ({ generation: 1, ...egg })));
 
 export const VARIANTS = frozenCatalog([
   { id: 'normal', name: 'Standard', weight: 9180, multiplier: 1, color: '#c5d4cb' },
@@ -67,13 +80,18 @@ export const NODES = frozenCatalog([
 ]);
 
 const upgradeData = [
+  { id: 'magnetRange', name: 'Magnet range', description: 'Adds 1.1 steps of reach for collecting nearby resource drops.', costs: [24, 50, 85, 125, 175], level: 1 },
+  { id: 'magnetSpeed', name: 'Magnet speed', description: 'Shortens pickup time and speeds up flying rewards.', costs: [30, 65, 105], level: 1 },
+  { id: 'magnetEfficiency', name: 'Magnet efficiency', description: 'Raises Sunbeam rewards by 10% per rank together with other permanent bonuses.', costs: [42, 85, 130], level: 2 },
   { id: 'autoHatch', name: 'Auto Hatch', description: 'Unlocks a repeat hatch you start yourself each session.', costs: [36], level: 2 },
   { id: 'hatchSpeed', name: 'Hatch speed', description: 'Shortens the time between hatches.', costs: [42, 98, 180], level: 2 },
   { id: 'multiHatch', name: 'Multi-Hatch', description: 'Unlocks hatching up to three eggs at a time.', costs: [70], level: 3 },
   { id: 'autoCollect', name: 'Auto Collect', description: 'Lets equipped pets gather nearby ready nodes when enabled.', costs: [58], level: 3 },
   { id: 'harvest', name: 'Harvest bonus', description: 'Collects two more sunbeams per node for each rank.', costs: [32, 68, 128], level: 2 },
   { id: 'teamSize', name: 'Team size', description: 'Adds one equipped pet slot per rank.', costs: [52, 135], level: 3 },
-  { id: 'capacity', name: 'Habitat space', description: 'Adds twelve inventory spaces per rank.', costs: [4, 9, 16], currency: 'crystals', level: 2 }
+  { id: 'capacity', name: 'Habitat space', description: 'Adds twelve inventory spaces per rank.', costs: [4, 9, 16], currency: 'crystals', level: 2 },
+  { id: 'ascensionReach', name: 'Ascension reach', description: 'Adds 1.6 permanent steps of magnet reach per rank.', costs: [2, 4, 7], currency: 'ascension', level: 3, rebirths: 1 },
+  { id: 'ascensionYield', name: 'Ascension yield', description: 'Increases Sunbeam rewards by 12% per rank.', costs: [2, 4, 7], currency: 'ascension', level: 3, rebirths: 1 }
 ];
 
 export const UPGRADES = frozenCatalog(upgradeData.map(upgrade => ({
@@ -91,9 +109,28 @@ const scarceRarities = new Set(['rare', 'epic', 'legendary', 'mythic']);
 const hatchIntervals = [1600, 1250, 950, 700];
 const maxNumber = 1_000_000_000;
 const maxPetSerial = 999_999_999_999;
+const maxDrops = 8;
+const dropLifetime = 30_000;
+const maxRebirths = 12;
 const maxHatchHistory = 24;
 const validProgressKey = /^pet-[1-9]\d{0,11}$/;
+const validDropKey = /^drop-[1-9]\d{0,11}$/;
 const statsKeys = ['eggsHatched', 'sunbeamsSpent', 'resourcesCollected', 'shinies', 'rareVariants'];
+const rarityScores = { common: 10, uncommon: 14, rare: 22, epic: 35, legendary: 55, mythic: 85 };
+const variantScores = { shiny: 18, metallic: 30, gold: 48, diamond: 70, obsidian: 100, titanium: 140, mythic: 200 };
+
+export const ACHIEVEMENTS = frozenCatalog([
+  { id: 'first-hatch', name: 'First Hatch', description: 'Hatch an egg in the meadow.', source: 'eggsHatched', target: 1, reward: 1, points: 10 },
+  { id: 'meadow-naturalist', name: 'Meadow Naturalist', description: 'Discover ten different species.', source: 'uniquePets', target: 10, reward: 2, points: 30 },
+  { id: 'first-shiny', name: 'A Little Brighter', description: 'Discover a Shiny companion.', source: 'shiny', target: 1, reward: 2, points: 30 },
+  { id: 'first-titanium', name: 'A Giant Among Pets', description: 'Discover a Titanium companion.', source: 'titanium', target: 1, reward: 5, points: 90 },
+  { id: 'fieldwork', name: 'Fieldwork', description: 'Collect twenty-five resource rewards.', source: 'resourcesCollected', target: 25, reward: 2, points: 30 },
+  { id: 'magnet-makers', name: 'Magnet Maker', description: 'Purchase three Magnet Range ranks.', source: 'magnetRange', target: 3, reward: 2, points: 30 },
+  { id: 'cave-pledge', name: 'Keeper of the Ember', description: 'Complete a rebirth at the cave altar.', source: 'rebirths', target: 1, reward: 3, points: 50 },
+  { id: 'meadow-complete', name: 'Meadow Field Guide', description: 'Discover every Meadow species.', source: 'meadowSpecies', target: 20, reward: 5, points: 70 },
+  { id: 'ember-complete', name: 'Emberdeep Field Guide', description: 'Discover every Emberdeep species.', source: 'emberSpecies', target: 5, reward: 5, points: 70 }
+]);
+const achievementById = byId(ACHIEVEMENTS);
 
 const defaultSettings = Object.freeze({
   stopVariants: Object.freeze(Object.fromEntries(variantIds.map(id => [id, id === 'shiny']))),
@@ -142,8 +179,9 @@ export function createProgress() {
   const starter = { id: 'pet-1', speciesId: 'twigpup', variant: 'normal', favorite: false, locked: false, obtainedAt: 0 };
   return {
     version: SAVE_VERSION,
-    wallet: { sunbeams: 40, crystals: 0 },
+    wallet: { sunbeams: 40, crystals: 0, ascension: 0 },
     xp: 0,
+    rebirths: 0,
     inventory: [starter],
     equipped: [starter.id],
     discovered: [starter.speciesId],
@@ -151,7 +189,10 @@ export function createProgress() {
     upgrades: Object.fromEntries(UPGRADES.map(item => [item.id, 0])),
     settings: updateSettings(defaultSettings),
     stats: Object.fromEntries(statsKeys.map(key => [key, 0])),
+    achievements: [],
     nodeReadyAt: {},
+    drops: [],
+    nextDropId: 1,
     hatchReadyAt: 0,
     hatchHistory: [],
     nextPetId: 2
@@ -175,8 +216,12 @@ export function petPower(pet) {
 export function progression(progress) {
   const { xp, upgrades } = progress;
   const level = Math.floor((1 + Math.sqrt(1 + xp / 3)) / 2);
+  const rebirths = progress.rebirths || 0;
   return {
     level, xp,
+    rebirths,
+    generation: GENERATIONS.findLast(generation => rebirths >= generation.rebirths).id,
+    rewardMultiplier: magnetStats(progress).efficiency,
     levelStartXp: 12 * level * (level - 1),
     nextLevelXp: 12 * level * (level + 1),
     hatchInterval: hatchIntervals[upgrades.hatchSpeed],
@@ -186,11 +231,110 @@ export function progression(progress) {
   };
 }
 
-export function restoreProgress(value) {
+export function magnetStats(progress) {
+  const { upgrades, rebirths = 0 } = progress;
+  const radius = 3.3 + (upgrades.magnetRange || 0) * 1.1 + (upgrades.ascensionReach || 0) * 1.6 + rebirths * .55;
+  const speed = 7.5 + (upgrades.magnetSpeed || 0) * 3;
+  const efficiency = 1 + (upgrades.magnetEfficiency || 0) * .10 + (upgrades.ascensionYield || 0) * .12 + rebirths * .18;
+  return { radius: Math.round(radius * 100) / 100, speed, efficiency: Math.round(efficiency * 100) / 100 };
+}
+
+export function generationStatus(progress) {
+  const unlocked = progression(progress).generation;
+  return GENERATIONS.map(generation => {
+    const species = PETS.filter(pet => pet.generation === generation.id);
+    return { ...generation, unlocked: unlocked >= generation.id, total: species.length,
+      discovered: species.filter(pet => progress.discovered.includes(pet.id)).length };
+  });
+}
+
+export function rebirthPlan(progress) {
+  const count = progress.rebirths || 0;
+  const requirements = { level: 3 + count, sunbeams: 95 + count * 55, crystals: 4 + count * 2 };
+  let reason = null;
+  if (count >= maxRebirths) reason = 'rebirth-maxed';
+  else if (progression(progress).level < requirements.level) reason = 'rebirth-level';
+  else if (progress.wallet.sunbeams < requirements.sunbeams) reason = 'insufficient-sunbeams';
+  else if (progress.wallet.crystals < requirements.crystals) reason = 'insufficient-crystals';
+  const rewards = { ascension: 2 + count,
+    generation: GENERATIONS.findLast(generation => count + 1 >= generation.rebirths).id,
+    resourceBonus: .18, magnetBonus: .55 };
+  return { count, requirements, rewards, available: reason === null, reason };
+}
+
+function trackedMetrics(progress) {
+  const { stats } = progress;
+  const species = new Set(progress.discovered);
+  let collectionScore = 0;
+  let meadowSpecies = 0;
+  let emberSpecies = 0;
+  for (const id of species) {
+    const pet = petById.get(id);
+    if (!pet) continue;
+    collectionScore += rarityScores[pet.rarity];
+    if (pet.generation === 1) meadowSpecies++;
+    if (pet.generation === 2) emberSpecies++;
+  }
+  const variants = Object.fromEntries(variantIds.map(id => [id, 0]));
+  for (const key of new Set(progress.variantDiscoveries)) {
+    const [id, variant, extra] = key.split(':');
+    if (!extra && species.has(id) && Object.hasOwn(variants, variant)) {
+      variants[variant]++;
+      collectionScore += variantScores[variant];
+    }
+  }
+  const { generation, rebirths } = progression(progress);
+  return { collectionScore, uniquePets: meadowSpecies + emberSpecies, ...variants,
+    eggsHatched: stats.eggsHatched, resourcesCollected: stats.resourcesCollected, rebirths, generation,
+    meadowSpecies, emberSpecies, magnetRange: progress.upgrades.magnetRange || 0 };
+}
+
+export function collectionMetrics(progress) {
+  const { meadowSpecies, emberSpecies, magnetRange, ...publicMetrics } = trackedMetrics(progress);
+  const achievementPoints = ACHIEVEMENTS.reduce((sum, achievement) =>
+    sum + ((progress.achievements || []).includes(achievement.id) ? achievement.points : 0), 0);
+  return { ...publicMetrics, achievementPoints };
+}
+
+export function achievementStatus(progress) {
+  const metrics = trackedMetrics(progress);
+  const claimed = new Set(progress.achievements);
+  return ACHIEVEMENTS.map(({ source, ...achievement }) => ({ ...achievement, current: metrics[source],
+    isClaimed: claimed.has(achievement.id), isReady: !claimed.has(achievement.id) && metrics[source] >= achievement.target }));
+}
+
+function dropSerial(id) {
+  return typeof id === 'string' && validDropKey.test(id) ? Number(id.slice(5)) : 0;
+}
+
+function restoreDrops(progress, value, now) {
+  const drops = new Map();
+  const nodes = new Set();
+  if (Array.isArray(value.drops)) {
+    for (const drop of value.drops.slice(0, maxDrops)) {
+      const node = nodeById.get(drop?.nodeId);
+      if (!node || !dropSerial(drop.id) || drops.has(drop.id) || nodes.has(node.id)) continue;
+      const readyAt = timestamp(drop.readyAt);
+      const expiresAt = timestamp(drop.expiresAt);
+      if (expiresAt <= now || expiresAt <= readyAt || expiresAt - readyAt > dropLifetime || expiresAt > now + dropLifetime) continue;
+      const sunbeams = integer(drop.sunbeams, 0, 1000);
+      if (!sunbeams) continue;
+      const crystals = integer(drop.crystals, 0, node.crystals || 0);
+      drops.set(drop.id, { id: drop.id, nodeId: node.id, x: node.x, z: node.z, sunbeams, crystals, readyAt, expiresAt });
+      nodes.add(node.id);
+    }
+  }
+  progress.drops = [...drops.values()];
+  progress.nextDropId = Math.max(integer(value.nextDropId, 1, maxPetSerial + 1), ...progress.drops.map(drop => dropSerial(drop.id) + 1));
+}
+
+export function restoreProgress(value, { now = Date.now() } = {}) {
   if (!value || value.version !== SAVE_VERSION || !Array.isArray(value.inventory)) return createProgress();
   const progress = createProgress();
-  progress.wallet = { sunbeams: integer(value.wallet?.sunbeams), crystals: integer(value.wallet?.crystals) };
+  progress.wallet = { sunbeams: integer(value.wallet?.sunbeams), crystals: integer(value.wallet?.crystals),
+    ascension: integer(value.wallet?.ascension) };
   progress.xp = integer(value.xp);
+  progress.rebirths = integer(value.rebirths, 0, maxRebirths);
   for (const upgrade of UPGRADES) progress.upgrades[upgrade.id] = integer(value.upgrades?.[upgrade.id], 0, upgrade.costs.length);
   const inventory = new Map();
   for (const item of value.inventory.slice(0, storageCapacity(progress.upgrades))) {
@@ -223,11 +367,15 @@ export function restoreProgress(value) {
   progress.variantDiscoveries = [...discoveryKeys];
   progress.settings = updateSettings(defaultSettings, value.settings);
   for (const key of statsKeys) progress.stats[key] = integer(value.stats?.[key]);
+  if (Array.isArray(value.achievements)) {
+    progress.achievements = [...new Set(value.achievements.slice(0, ACHIEVEMENTS.length).filter(id => achievementById.has(id)))];
+  }
   for (const node of NODES) {
     const time = timestamp(value.nodeReadyAt?.[node.id]);
     if (time) progress.nodeReadyAt[node.id] = time;
   }
   progress.hatchReadyAt = timestamp(value.hatchReadyAt);
+  restoreDrops(progress, value, timestamp(now));
   if (Array.isArray(value.hatchHistory)) {
     progress.hatchHistory = value.hatchHistory.slice(0, maxHatchHistory).flatMap(item => {
       if (item?.type !== 'hatch' || !eggById.has(item.eggId) || !Array.isArray(item.pets)) return [];
@@ -256,6 +404,7 @@ function pickWeighted(records, random) {
 const messages = {
   'unknown-egg': 'That egg is unavailable.',
   'egg-locked': 'Level up to unlock this egg.',
+  'generation-locked': 'Rebirth at the cave altar to unlock this generation.',
   'auto-hatch-locked': 'Unlock Auto Hatch in Upgrades first.',
   'auto-collect-locked': 'Unlock Auto Collect and turn it on first.',
   'no-equipped-pets': 'Equip a pet before using Auto Collect.',
@@ -263,17 +412,32 @@ const messages = {
   'inventory-full': 'Your habitat is full.',
   'insufficient-sunbeams': 'Collect more sunbeams first.',
   'insufficient-crystals': 'Collect more crystals first.',
+  'insufficient-ascension': 'Earn more Ascension Crystals first.',
   'unknown-node': 'This resource is unavailable.',
+  'resource-out-of-range': 'Move closer to the resource.',
   'node-cooldown': 'This resource is regrowing.',
+  'magnet-pending': 'Collect the pending resource reward first.',
+  'drop-unavailable': 'This resource reward has expired or was already collected.',
+  'drop-cooldown': 'The reward is moving out of the resource.',
+  'drop-out-of-range': 'Move into magnet range to collect this reward.',
   'unknown-pet': 'That pet is unavailable.',
   'unknown-upgrade': 'That upgrade is unavailable.',
   'upgrade-locked': 'Level up to unlock this upgrade.',
+  'upgrade-rebirth-locked': 'Complete a rebirth to unlock this upgrade.',
   'upgrade-complete': 'This upgrade is already complete.',
   'team-full': 'Your pet team is full.',
   'release-unconfirmed': 'Confirm that you want to release this pet.',
   'pet-protected': 'Unequip and unprotect this pet before releasing it.',
   'last-pet': 'Keep at least one pet in your habitat.',
   'trade-unavailable': 'Both offers must contain available, unequipped, unlocked pets.',
+  'trade-generation-locked': 'Both explorers must unlock the generations of the companions they receive.',
+  'unknown-achievement': 'This achievement is unavailable.',
+  'achievement-incomplete': 'Complete this achievement before claiming its reward.',
+  'achievement-claimed': 'You already collected this achievement reward.',
+  'rebirth-unconfirmed': 'Confirm that you want to spend the altar offering.',
+  'rebirth-out-of-range': 'Approach the Rebirth Cave altar first.',
+  'rebirth-level': 'Reach the next rebirth level requirement first.',
+  'rebirth-maxed': 'You have reached the final altar rank for this region.',
   'unknown-action': 'That action is unavailable.'
 };
 
@@ -291,6 +455,7 @@ export function hatchPlan(progress, eggId, { mode = 'manual', now = Date.now(), 
   const request = count === undefined ? preference : Math.max(1, Math.min(maxBatch, integer(count, 1, 3)));
   let code;
   if (!egg) code = 'unknown-egg';
+  else if (limits.generation < egg.generation) code = 'generation-locked';
   else if (limits.level < egg.level) code = 'egg-locked';
   else if (mode === 'auto' && !progress.upgrades.autoHatch) code = 'auto-hatch-locked';
   else if (capacity < 1) code = 'inventory-full';
@@ -364,37 +529,87 @@ function hatch(progress, action, now, random) {
     stopReason: stopReasons[0] || null, stopReasons } };
 }
 
-function gather(progress, action, now) {
+function withinRange(position, target, distance) {
+  return Number.isFinite(position?.x) && Number.isFinite(position?.z) &&
+    Math.abs(position.x) <= WORLD_LIMIT && Math.abs(position.z) <= WORLD_LIMIT &&
+    Math.hypot(position.x - target.x, position.z - target.z) <= distance;
+}
+
+function gather(progress, action, now, position) {
   const node = nodeById.get(action.nodeId);
   if (!node) return failure(progress, 'unknown-node');
+  if (position !== undefined && !withinRange(position, node, GATHER_DISTANCE + .65)) return failure(progress, 'resource-out-of-range');
   if (action.mode === 'auto') {
     if (!progress.upgrades.autoCollect || !progress.settings.autoCollect) return failure(progress, 'auto-collect-locked');
     if (!progress.equipped.length) return failure(progress, 'no-equipped-pets');
   }
   const retryAt = progress.nodeReadyAt[node.id] || 0;
   if (retryAt > now) return failure(progress, 'node-cooldown', { retryAt });
-  const next = structuredClone(progress);
-  const sunbeams = node.reward + Math.floor(Math.sqrt(progression(progress).power) * 1.45) + next.upgrades.harvest * 2;
+  const pending = (progress.drops || []).filter(drop => drop.expiresAt > now);
+  const serial = progress.nextDropId || 1;
+  if (pending.length >= maxDrops || pending.some(drop => drop.nodeId === node.id) || serial > maxPetSerial) {
+    return failure(progress, 'magnet-pending');
+  }
+  const magnet = magnetStats(progress);
+  const base = node.reward + Math.floor(Math.sqrt(progression(progress).power) * 1.45) + progress.upgrades.harvest * 2;
+  const sunbeams = Math.round(base * magnet.efficiency);
   const crystals = node.crystals || 0;
-  next.wallet.sunbeams = addNumber(next.wallet.sunbeams, sunbeams);
-  next.wallet.crystals = addNumber(next.wallet.crystals, crystals);
-  next.xp = addNumber(next.xp, crystals ? 8 : 6);
-  next.stats.resourcesCollected = addNumber(next.stats.resourcesCollected, 1);
-  next.nodeReadyAt[node.id] = now + node.cooldownMs;
-  return { progress: next, event: { type: 'gather', nodeId: node.id, sunbeams, crystals, readyAt: next.nodeReadyAt[node.id] } };
+  const drop = { id: `drop-${serial}`, nodeId: node.id, x: node.x, z: node.z, sunbeams, crystals,
+    readyAt: now + Math.ceil(3000 / magnet.speed), expiresAt: now + dropLifetime };
+  const readyAt = now + node.cooldownMs;
+  const next = { ...progress, drops: [...pending, drop], nextDropId: serial + 1,
+    nodeReadyAt: { ...progress.nodeReadyAt, [node.id]: readyAt } };
+  return { progress: next, event: { type: 'gather', nodeId: node.id, drop, readyAt } };
+}
+
+function collect(progress, dropId, now, position) {
+  const drop = (progress.drops || []).find(entry => entry.id === dropId);
+  if (!drop || drop.expiresAt <= now) return failure(progress, 'drop-unavailable');
+  if (drop.readyAt > now) return failure(progress, 'drop-cooldown', { retryAt: drop.readyAt });
+  if (!withinRange(position, drop, magnetStats(progress).radius)) return failure(progress, 'drop-out-of-range');
+  const wallet = { ...progress.wallet,
+    sunbeams: addNumber(progress.wallet.sunbeams, drop.sunbeams), crystals: addNumber(progress.wallet.crystals, drop.crystals) };
+  const next = { ...progress, wallet, xp: addNumber(progress.xp, drop.crystals ? 8 : 6),
+    stats: { ...progress.stats, resourcesCollected: addNumber(progress.stats.resourcesCollected, 1) },
+    drops: progress.drops.filter(entry => entry.id !== drop.id && entry.expiresAt > now) };
+  const { id, nodeId, x, z, sunbeams, crystals } = drop;
+  return { progress: next, event: { type: 'collect', dropId: id, nodeId, x, z, sunbeams, crystals } };
+}
+
+function rebirth(progress, action, position) {
+  if (action.confirm !== true) return failure(progress, 'rebirth-unconfirmed');
+  if (!withinRange(position, REBIRTH_ALTAR, REBIRTH_ALTAR.radius)) return failure(progress, 'rebirth-out-of-range');
+  const plan = rebirthPlan(progress);
+  if (!plan.available) return failure(progress, plan.reason);
+  const wallet = { sunbeams: progress.wallet.sunbeams - plan.requirements.sunbeams,
+    crystals: progress.wallet.crystals - plan.requirements.crystals,
+    ascension: addNumber(progress.wallet.ascension || 0, plan.rewards.ascension) };
+  const next = { ...progress, wallet, rebirths: plan.count + 1 };
+  return { progress: next, event: { type: 'rebirth', rebirths: next.rebirths, ...plan.rewards, x: REBIRTH_ALTAR.x, z: REBIRTH_ALTAR.z } };
+}
+
+function claim(progress, id) {
+  if (!achievementById.has(id)) return failure(progress, 'unknown-achievement');
+  const achievement = achievementStatus(progress).find(entry => entry.id === id);
+  if (achievement.isClaimed) return failure(progress, 'achievement-claimed');
+  if (!achievement.isReady) return failure(progress, 'achievement-incomplete');
+  const wallet = { ...progress.wallet, ascension: addNumber(progress.wallet.ascension || 0, achievement.reward) };
+  return { progress: { ...progress, wallet, achievements: [...progress.achievements, id] },
+    event: { type: 'claim', achievementId: id, ascension: achievement.reward, points: achievement.points } };
 }
 
 function buyUpgrade(progress, id) {
   const upgrade = upgradeById.get(id);
   if (!upgrade) return failure(progress, 'unknown-upgrade');
-  const rank = progress.upgrades[id];
+  const rank = progress.upgrades[id] || 0;
   const cost = upgrade.costs[rank];
   if (cost === undefined) return failure(progress, 'upgrade-complete');
+  if (upgrade.rebirths && (progress.rebirths || 0) < upgrade.rebirths) return failure(progress, 'upgrade-rebirth-locked');
   if (progression(progress).level < upgrade.level) return failure(progress, 'upgrade-locked');
-  if (progress.wallet[upgrade.currency] < cost) return failure(progress, `insufficient-${upgrade.currency}`);
+  if ((progress.wallet[upgrade.currency] || 0) < cost) return failure(progress, `insufficient-${upgrade.currency}`);
   const next = structuredClone(progress);
   next.wallet[upgrade.currency] -= cost;
-  next.upgrades[id]++;
+  next.upgrades[id] = rank + 1;
   if (id === 'teamSize' && next.settings.autoEquip) equipBest(next);
   return { progress: next, event: { type: 'upgrade', id, rank: next.upgrades[id], spent: cost, currency: upgrade.currency } };
 }
@@ -431,10 +646,13 @@ function releasePet(progress, action) {
     event: { type: 'release', petId: pet.id } };
 }
 
-export function applyAction(progress, action, { now = Date.now(), random = Math.random } = {}) {
+export function applyAction(progress, action, { now = Date.now(), random = Math.random, position } = {}) {
   switch (action?.type) {
     case 'hatch': return hatch(progress, action, timestamp(now), random);
-    case 'gather': return gather(progress, action, timestamp(now));
+    case 'gather': return gather(progress, action, timestamp(now), position);
+    case 'collect': return collect(progress, action.dropId, timestamp(now), position);
+    case 'rebirth': return rebirth(progress, action, position);
+    case 'claim': return claim(progress, action.achievementId);
     case 'upgrade': return buyUpgrade(progress, action.id);
     case 'release': return releasePet(progress, action);
     case 'equip':
@@ -469,6 +687,10 @@ export function exchangePets(first, second, { firstIds, secondIds } = {}, { now 
   const receives = offeredPets(second, secondIds);
   const fail = code => ({ first, second, event: { type: 'error', code, message: messages[code] } });
   if (first === second || !sends || !receives) return fail('trade-unavailable');
+  const firstGeneration = progression(first).generation;
+  const secondGeneration = progression(second).generation;
+  if (receives.some(pet => petById.get(pet.speciesId).generation > firstGeneration) ||
+      sends.some(pet => petById.get(pet.speciesId).generation > secondGeneration)) return fail('trade-generation-locked');
   if (first.inventory.length - sends.length + receives.length > storageCapacity(first.upgrades) ||
       second.inventory.length - receives.length + sends.length > storageCapacity(second.upgrades) ||
       first.nextPetId + receives.length - 1 > maxPetSerial || second.nextPetId + sends.length - 1 > maxPetSerial) {

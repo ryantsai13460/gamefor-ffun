@@ -1,16 +1,16 @@
-import { audioDefaults } from './sound.js';
+import { audioDefaults } from './sound.js?v=20261123-2';
 
 export const soloKey = 'ffun-petverse-solo-v1';
 export const preferencesKey = 'ffun-petverse-preferences-v1';
 
 export function defaultPreferences() {
   return {
-    reveal: { animations: true, skipCommon: false, results: true },
+    reveal: { animations: true, skipCommon: false, results: true, titaniumAnimation: true },
     notifications: { shiny: true, metallic: true, gold: true, diamond: true, obsidian: true, titanium: true, mythic: true, newPet: true },
     audio: { ...audioDefaults },
     graphics: {
-      quality: 'medium', particles: 'medium', petGlow: true, shinyEffects: true, rareAnimations: true,
-      showPeerPets: true, showPetNames: true, collectionNumbers: true, shake: false,
+      quality: 'medium', particles: 'medium', shadows: true, petGlow: true, shinyEffects: true, rareAnimations: true,
+      showPeerPets: true, showPeerTitanium: true, showPetNames: true, collectionNumbers: true, shake: false, cameraSensitivity: .5,
       reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches
     },
     inventory: { sort: 'power', showDuplicates: true }
