@@ -1,8 +1,12 @@
 import { PETS, EGGS, VARIANTS, UPGRADES, GENERATIONS, REBIRTH_ALTAR, achievementStatus, applyAction,
-  collectionMetrics, createProgress, generationStatus, hatchPlan, magnetStats, petPower, progression, rebirthPlan, restoreProgress } from './model.js?v=20261123-2';
-import { createOnlineClient } from './online.js?v=20261123-2';
-import { defaultPreferences, preferencesKey, readPreferences, readStorage, soloKey, writeStorage } from './preferences.js?v=20261123-2';
-import { createSound } from './sound.js?v=20261123-2';
+  awardCrystalBreak, collectEligibleDrops, collectionMetrics, createProgress, fusionOptions, generationStatus,
+  hatchOdds, hatchPlan, magnetStats, petCombatStats, progression, rebirthPlan, restoreProgress } from './model.js?v=20261123-3';
+import { createOnlineClient } from './online.js?v=20261123-3';
+import { defaultPreferences, preferencesKey, readPreferences, readStorage, soloKey, writeStorage } from './preferences.js?v=20261123-3';
+import { createSound } from './sound.js?v=20261123-3';
+import { FARM_AREAS, FARM_PRIORITIES, canFarmArea, createFarmingWorld, farmSettings, farmingAreaAt } from './farming.js?v=20261123-3';
+import { advanceGenerator, canOperateGenerator, GENERATOR_UPGRADES, generatorEggCost,
+  generatorPlan, markGeneratorStart } from './generator.js?v=20261123-3';
 
 const root = document.getElementById('petverse');
 const scope = new AbortController();
@@ -11,21 +15,23 @@ const sound = createSound();
 const speciesById = new Map(PETS.map(pet => [pet.id, pet]));
 const variantById = new Map(VARIANTS.map(variant => [variant.id, variant]));
 const eggsById = new Map(EGGS.map(egg => [egg.id, egg]));
-const currencyNames = { sunbeams: 'Sunbeams', crystals: 'Crystals', ascension: 'Ascension' };
+const currencyNames = { sunbeams: 'Gold', crystals: 'Crystals', ascension: 'Ascension' };
 const number = new Intl.NumberFormat('en');
 const percent = new Intl.NumberFormat('en', { maximumFractionDigits: 3, style: 'percent' });
-const navNames = ['Hatch', 'Pets', 'Upgrades', 'Journal', 'Settings', 'Online'];
+const navNames = ['Hatch', 'Pets', 'Farming', 'Generator', 'Upgrades', 'Journal', 'Settings', 'Online'];
 const rankingMetrics = {
   collectionScore: 'Collection score', uniquePets: 'Unique species', shiny: 'Shiny discoveries', metallic: 'Metallic discoveries',
   gold: 'Gold discoveries', diamond: 'Diamond discoveries', obsidian: 'Obsidian discoveries', titanium: 'Titanium discoveries',
+  giant: 'Giant discoveries',
   mythic: 'Mythic discoveries', eggsHatched: 'Eggs hatched', resourcesCollected: 'Resources collected', rebirths: 'Rebirths',
-  generation: 'Highest generation', achievementPoints: 'Achievement points'
+  generation: 'Highest generation', achievementPoints: 'Achievement points', goldEarned: 'Gold earned',
+  crystalsDestroyed: 'Crystals destroyed', specialCrystalsDestroyed: 'Special crystals destroyed'
 };
 const rarityOrder = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic', 'celestial'];
-const settingGroups = ['General', 'Generation', 'Stop rules', 'Notifications', 'Audio', 'Graphics', 'Inventory', 'Accessibility'];
+const settingGroups = ['General', 'Generation', 'Stop rules', 'Notifications', 'Audio', 'Graphics', 'Inventory', 'Workshop', 'Accessibility'];
 const stopLabels = {
-  'new-discovery': 'New species discovered', 'inventory-full': 'Inventory full',
-  'insufficient-sunbeams': 'More Sunbeams needed'
+  'new-discovery': 'New species discovered', 'new-variant': 'New variant discovered', 'inventory-full': 'Inventory full',
+  'insufficient-sunbeams': 'More Gold needed'
 };
 
 let solo = restoreProgress(readStorage(soloKey)) || createProgress();
@@ -71,6 +77,19 @@ let rankRevision = 0;
 let rankState;
 let worldReady = false;
 let fullscreenError = '';
+let farming = null;
+let soloFarm;
+let farmingTimer;
+let previousFarmTick;
+let farmChoice = '';
+let crankActive = false;
+let crankPending = false;
+let stopRequested = false;
+let crankSoundAt = 0;
+let generatorControls;
+let farmingControls;
+let income = [];
+let upgradeView = 'All';
 const expanded = new Set();
 
 function el(tag, className, text) {
@@ -136,13 +155,14 @@ const balances = Object.fromEntries(Object.entries(currencyNames).map(([id, name
   return [id, total];
 }));
 const level = el('span', 'pv-level');
-header.append(brand, wallet, level);
+const fullscreen = button('Fullscreen', toggleFullscreen, { className: 'pv-button pv-fullscreen' });
+header.append(brand, wallet, level, fullscreen);
 
 const modes = el('nav', 'pv-play-modes');
 modes.setAttribute('aria-label', 'Play modes');
 const soloChoice = button('Play Solo', () => {
   if (self || connecting) leaveOnline();
-  openScreen('Hatch');
+  closeMenu();
 });
 const createChoice = button('Create Private Server', () => chooseRoom('create'));
 const joinChoice = button('Join With Code', () => chooseRoom('join'));
@@ -153,7 +173,7 @@ const play = el('section', 'pv-play');
 play.setAttribute('aria-label', 'Explore Sunstep Meadow');
 const terrain = el('div', 'pv-world');
 const worldLabel = el('p', 'pv-world-label', 'Sunstep Meadow');
-const worldHelp = el('p', 'pv-world-help', 'WASD or arrows to move. Drag to orbit, wheel to zoom, Space to jump, F to interact.');
+const worldHelp = el('p', 'pv-world-help', 'WASD to move · Drag to orbit · E to crank · F to interact');
 const worldNotice = el('p', 'pv-world-message', 'Loading the 3D meadow…');
 worldNotice.setAttribute('role', 'status');
 const touch = el('div', 'pv-touch');
@@ -185,9 +205,21 @@ for (const [direction, glyph] of Object.entries(controls)) {
 touch.append(button('Jump', () => world?.jump(), { className: 'pv-button pv-jump' }));
 const interact = button('Explore', () => world?.interact(), { className: 'pv-button pv-primary pv-interact', disabled: true });
 const resetCamera = button('Reset camera', () => world?.resetCamera(), { className: 'pv-button pv-reset-camera' });
-terrain.append(worldLabel, worldNotice, touch, interact);
+const farmHud = el('aside', 'pv-farming-hud');
+const farmHudTitle = el('strong');
+const farmHudMetrics = el('small');
+farmHud.append(farmHudTitle, farmHudMetrics);
+const crankHud = el('aside', 'pv-crank-hud');
+const crankTitle = el('strong');
+const crankMeter = el('progress', 'pv-progress');
+crankMeter.setAttribute('aria-label', 'Generation Progress');
+const crankDetails = el('small');
+const stopCranking = button('Stop Cranking', () => void setCranking(false));
+crankHud.append(crankTitle, crankMeter, crankDetails, stopCranking);
+crankHud.hidden = true;
+terrain.append(worldLabel, worldNotice, touch, interact, farmHud, crankHud);
 const fieldBar = el('div', 'pv-field-bar');
-fieldBar.append(worldHelp, resetCamera);
+fieldBar.append(worldHelp, resetCamera, button('Ranks', () => openJournal('Leaderboards'), { label: 'Open Leaderboards' }));
 const toast = el('aside', 'pv-toast');
 toast.hidden = true;
 toast.setAttribute('role', 'status');
@@ -203,11 +235,14 @@ const panel = el('div', 'pv-panel');
 const banner = el('p', 'pv-banner');
 banner.setAttribute('role', 'status');
 banner.hidden = true;
+play.append(banner);
 const autoPanel = el('div', 'pv-auto-panel');
 autoPanel.hidden = true;
-consolePanel.append(nav, banner, autoPanel, panel);
+consolePanel.append(nav, autoPanel, panel);
 layout.append(play, consolePanel);
 root.replaceChildren(header, modes, layout);
+const menuClose = button('Close menu', closeMenu, { className: 'pv-button pv-close-menu' });
+consolePanel.append(menuClose);
 
 function showFeedback(text, options = {}) {
   clearTimeout(feedbackTimer);
@@ -224,6 +259,63 @@ function showFeedback(text, options = {}) {
   }
 }
 
+function currentField() {
+  const position = world?.getPosition();
+  return position && farmingAreaAt(position);
+}
+
+function farmingReadout() {
+  const settings = farmSettings(progress);
+  const area = FARM_AREAS.find(item => item.id === settings.area) || currentField();
+  const owner = self?.id || 'solo';
+  const working = farming?.pets?.filter(pet => pet.ownerId === owner && pet.targetId).length || 0;
+  const windowMs = 20_000;
+  income = income.filter(entry => Date.now() - entry.at <= windowMs);
+  const earned = income.reduce((total, entry) => total + entry.gold, 0);
+  return { area, assigned: Boolean(settings.area), working, goldPerSecond: (earned / (windowMs / 1000)).toFixed(1) };
+}
+
+function updateActivity() {
+  const fields = farmingReadout();
+  const generator = generatorPlan(progress);
+  const fieldName = fields.area?.label || 'No nearby field';
+  farmHudTitle.textContent = fields.assigned ? fieldName + ' · Assigned' : fieldName;
+  const data = [];
+  if (prefs.workshop.showPetActivity) data.push(fields.working + ' active');
+  if (prefs.workshop.showIncome) data.push(fields.goldPerSecond + ' Gold/s');
+  farmHudMetrics.textContent = data.join(' · ');
+  crankHud.hidden = !crankActive;
+  if (nearby?.type === 'generator') setProximity(nearby);
+  crankTitle.textContent = generator.machine;
+  crankMeter.hidden = !prefs.workshop.showProgress;
+  crankMeter.max = generator.capacity;
+  crankMeter.value = generator.energy;
+  crankDetails.textContent = [format(Math.floor(generator.energy / 1000)) + ' / ' + format(generator.capacity / 1000) + ' energy', ...data].join(' · ');
+  stopCranking.disabled = crankPending;
+  if (farmingControls) {
+    const here = currentField();
+    farmingControls.summary.textContent = (fields.assigned ? 'Assigned to ' : 'Following you · ') + fieldName;
+    farmingControls.active.textContent = `${fields.working}/${progress.equipped.length}`;
+    farmingControls.crystals.textContent = format(progress.stats.crystalsDestroyed);
+    farmingControls.income.textContent = fields.goldPerSecond;
+    farmingControls.assign.disabled = !here || !canFarmArea(progress, here.id);
+  }
+  if (generatorControls) {
+    const near = canOperateGenerator(world?.getPosition());
+    generatorControls.meter.max = generator.capacity;
+    generatorControls.meter.value = generator.energy;
+    generatorControls.start.disabled = crankActive || crankPending || !near;
+    generatorControls.status.textContent = crankActive ? 'Cranking' : near ? 'Ready to operate' : 'Approach the crank in the southwest workshop.';
+    generatorControls.energy.textContent = format(Math.floor(generator.energy / 1000)) + ' / ' + format(generator.capacity / 1000);
+    generatorControls.total.textContent = format(Math.floor(generator.produced / 1000));
+    generatorControls.field.textContent = fieldName;
+    generatorControls.active.textContent = String(fields.working);
+    generatorControls.income.textContent = fields.goldPerSecond;
+    const egg = eggsById.get(generator.eggId);
+    generatorControls.claim.disabled = !near || !generator.ready || progress.wallet.sunbeams < generatorEggCost(egg);
+  }
+}
+
 function updateHeader() {
   const stats = progression(progress);
   for (const [id, total] of Object.entries(balances)) total.textContent = format(progress.wallet[id]);
@@ -235,28 +327,44 @@ function updateHeader() {
   soloChoice.setAttribute('aria-pressed', String(!self && !connecting && screen !== 'Online'));
   createChoice.setAttribute('aria-pressed', String(screen === 'Online' && roomMode === 'create'));
   joinChoice.setAttribute('aria-pressed', String(screen === 'Online' && roomMode === 'join'));
+  updateActivity();
 }
 
-function updateWorld() {
+function updateWorld(farmingEvents) {
   root.dataset.reducedMotion = String(prefs.graphics.reducedMotion);
   const visibleProgress = self ? { ...progress, nodeReadyAt: { ...progress.nodeReadyAt, ...roomResources } } : progress;
-  world?.update({ progress: visibleProgress, peers, graphics: prefs.graphics, magnetPreview: screen === 'Upgrades' });
+  const generator = generatorPlan(progress);
+  world?.update({ progress: visibleProgress, peers, graphics: prefs.graphics, magnetPreview: screen === 'Upgrades',
+    farming, farmingEvents, farmOwnerId: self?.id || 'solo', generator: { active: crankActive, ratio: generator.ratio,
+      tier: generator.tier, rate: generator.speed, animate: prefs.workshop.crankAnimations } });
 }
 
 function refreshPanel({ resetScroll = false } = {}) {
   const focus = panel.contains(document.activeElement) ? document.activeElement.dataset.focusKey : null;
   const scroll = panel.scrollTop;
+  root.dataset.menuOpen = String(Boolean(screen));
+  panel.hidden = !screen;
+  menuClose.hidden = !screen;
   for (const [index, node] of navControls.entries()) node.setAttribute('aria-pressed', String(navNames[index] === screen));
   panel.replaceChildren();
+  generatorControls = farmingControls = undefined;
   if (screen === 'Hatch') renderHatch();
   if (screen === 'Pets') renderPets();
+  if (screen === 'Farming') renderFarming();
+  if (screen === 'Generator') renderGenerator();
   if (screen === 'Upgrades') renderUpgrades();
   if (screen === 'Journal') renderJournal();
   if (screen === 'Settings') renderSettings();
   if (screen === 'Online') renderOnline();
   syncAutoPanel();
+  updateActivity();
   panel.scrollTop = resetScroll ? 0 : scroll;
   if (focus) [...panel.querySelectorAll('[data-focus-key]')].find(node => node.dataset.focusKey === focus)?.focus({ preventScroll: true });
+}
+
+function closeMenu() {
+  openScreen(null);
+  terrain.querySelector('canvas')?.focus({ preventScroll: true });
 }
 
 function openScreen(next) {
@@ -267,14 +375,14 @@ function openScreen(next) {
   if (next === 'Journal' && journalView === 'Leaderboards') void updateLeaderboard();
 }
 
-function commit(next) {
+function commit(next, farmingEvents) {
   progress = next;
   if (!self) {
     solo = next;
     storageAvailable = writeStorage(soloKey, solo);
   }
   updateHeader();
-  updateWorld();
+  updateWorld(farmingEvents);
 }
 
 function toggleSetting(data) {
@@ -297,7 +405,7 @@ async function executeAction(action, { quiet = false, automatic = false } = {}) 
   busy = true;
   const epoch = connectionEpoch;
   try {
-    const result = self ? await online.command(action) : applyAction(progress, action, { position: world?.getPosition() });
+    const result = self ? await online.command(action) : applyAction(progress, action, { position: world?.getPosition(), cranking: crankActive });
     if (epoch !== connectionEpoch) return null;
     commit(result.progress);
     if (result.event.type === 'error') {
@@ -306,7 +414,9 @@ async function executeAction(action, { quiet = false, automatic = false } = {}) 
       reportAction(result.event, action, { quiet, automatic });
       if (!storageAvailable && !self) showFeedback('Progress is available for this visit. This browser could not save it.', { error: true });
     }
-    refreshPanel();
+    busy = false;
+    if (action.type === 'collect') refreshRewardsPanel();
+    else refreshPanel();
     return result.event;
   } catch (error) {
     if (!quiet) showFeedback(error.message || 'This action could not be completed.', { error: true });
@@ -339,10 +449,16 @@ function reportAction(event, action, { quiet, automatic }) {
   } else if (event.type === 'gather') {
     world?.showBurst({ kind: 'gather', nodeId: action.nodeId });
   } else if (event.type === 'collect') {
-    world?.showBurst({ kind: 'collect', nodeId: event.nodeId, amount: prefs.graphics.collectionNumbers ? event.sunbeams : undefined });
+    if (event.crystalId || event.areaId || event.remote) income.push({ at: Date.now(), gold: event.sunbeams });
+    const showAmount = prefs.graphics.collectionNumbers && (!event.remote || prefs.workshop.showRemoteRewards);
+    world?.showBurst({ kind: 'collect', nodeId: event.nodeId, amount: showAmount ? event.sunbeams : undefined, currency: 'gold' });
     sound.play('gather');
-    if (!quiet) showFeedback('Collected ' + format(event.sunbeams) + ' Sunbeams' +
-      (event.crystals ? ' and ' + format(event.crystals) + ' Crystals.' : '.'));
+    if (!quiet) showFeedback('Collected ' + format(event.sunbeams) + ' Gold' +
+      (event.crystals ? ' and ' + format(event.crystals) + (event.crystals === 1 ? ' Crystal.' : ' Crystals.') : '.'));
+  } else if (event.type === 'fuse') {
+    if (prefs.reveal.animations && !prefs.graphics.reducedMotion) world?.showBurst({ kind: 'hatch', variant: event.pet.variant });
+    sound.play('rare');
+    showFeedback('Fused ' + describePet(event.pet), { pet: event.pet });
   } else if (event.type === 'upgrade') {
     sound.play('ui');
     showFeedback((UPGRADES.find(upgrade => upgrade.id === action.id)?.name || 'Upgrade') + ' purchased.');
@@ -374,6 +490,7 @@ function changePreference(group, id, value) {
   if (!writeStorage(preferencesKey, prefs)) showFeedback('Settings are active for this visit. This browser could not save them.', { error: true });
   sound.configure(prefs.audio);
   updateWorld();
+  updateActivity();
 }
 
 function checkbox(label, value, change, hint) {
@@ -430,7 +547,7 @@ function oddsList(records, name, odds) {
 
 function renderHatch() {
   const facts = progression(progress);
-  const area = section('Egg nursery', 'Collect Sunbeams in the meadow and hatch companions to grow your team.');
+  const area = section('Egg nursery', 'Send your pets to break crystals, collect the Gold, and hatch stronger companions.');
   const stats = statLine(format(progress.stats.eggsHatched) + ' hatched · ' + progress.discovered.length + '/' + PETS.length + ' discovered · ' + progress.stats.shinies + ' shiny');
   area.append(stats);
   const cards = el('div', 'pv-cards');
@@ -441,7 +558,7 @@ function renderHatch() {
     eggArt.style.setProperty('--pv-egg-color', egg.color);
     eggArt.setAttribute('aria-hidden', 'true');
     const name = el('div');
-    name.append(el('h3', '', egg.name), el('p', 'pv-summary', format(egg.cost) + ' Sunbeams per egg'));
+    name.append(el('h3', '', egg.name), el('p', 'pv-summary', format(egg.cost) + ' Gold per egg'));
     const head = el('div', 'pv-card-head');
     head.append(eggArt, name);
     card.append(head, el('p', 'pv-summary', egg.description));
@@ -462,11 +579,11 @@ function renderHatch() {
       card.append(actions);
     }
     card.append(disclosure('egg-odds-' + egg.id, 'Species odds',
-      oddsList(egg.pool, reward => speciesById.get(reward.speciesId).name)));
+      oddsList(hatchOdds(progress, egg.id).pool, reward => speciesById.get(reward.speciesId).name)));
     cards.append(card);
   }
   area.append(cards, disclosure('variant-odds', 'Variant odds and power',
-    oddsList(VARIANTS, variant => variant.name, variant => ' · ×' + variant.multiplier)));
+    oddsList(hatchOdds(progress, EGGS[0].id).variants, variant => variant.name, variant => ' · ×' + variant.multiplier)));
   panel.append(area);
   if (lastReveal.length && prefs.reveal.results) {
     const reveal = section('Latest hatch');
@@ -537,12 +654,13 @@ function syncAutoPanel() {
   autoView ||= buildAutoPanel();
   const state = auto.state === 'active' ? 'Running' : auto.state === 'paused' ? 'Paused' : 'Stopped';
   autoView.headline.textContent = state + (auto.reason ? ' · ' + auto.reason : ' · ' + eggsById.get(auto.eggId).name);
-  autoView.totals.textContent = auto.count + ' hatched · ' + format(auto.spent) + ' Sunbeams spent · ' + auto.shinies +
+  autoView.totals.textContent = auto.count + ' hatched · ' + format(auto.spent) + ' Gold spent · ' + auto.shinies +
     ' shiny · ' + auto.rare + ' variants · ' + (progression(progress).hatchInterval / 1000) + 's interval';
   const rules = VARIANTS.slice(1).filter(item => progress.settings.stopVariants[item.id]).map(item => item.name);
   if (progress.settings.stopOnNew) rules.push('New discovery');
+  if (progress.settings.stopOnNewVariant) rules.push('New variant');
   if (progress.settings.stopOnFull) rules.push('Inventory full');
-  autoView.ruleText.textContent = [...rules, 'Out of Sunbeams'].join(', ');
+  autoView.ruleText.textContent = [...rules, 'Out of Gold'].join(', ');
   autoView.pause.hidden = auto.state !== 'active';
   autoView.resume.hidden = auto.state !== 'paused';
   autoView.stop.hidden = auto.state === 'stopped';
@@ -601,8 +719,10 @@ function petEntry(pet, manage = false) {
   const head = el('div', 'pv-card-head');
   const copy = el('div');
   const equipped = progress.equipped.includes(pet.id);
+  const stats = petCombatStats(pet, progress);
   copy.append(el('h3', '', describePet(pet)), el('p', 'pv-pet-meta',
-    species.rarity + ' · Gen ' + species.generation + ' · ' + format(petPower(pet)) + ' power' + (equipped ? ' · Equipped' : '')));
+    species.rarity + ' · Gen ' + species.generation + (equipped ? ' · Equipped' : '')),
+  el('p', 'pv-summary', `${stats.damage} damage · ${stats.attackRate} hits/s · ${stats.moveSpeed} m/s`));
   head.append(petPortrait(species, pet.variant), copy);
   card.append(head);
   if (manage) {
@@ -623,11 +743,16 @@ function petEntry(pet, manage = false) {
 function renderPets() {
   const facts = progression(progress);
   const area = section('Pet journal', progress.inventory.length + '/' + facts.capacity + ' pets · ' +
-    progress.equipped.length + '/' + facts.equipSlots + ' equipped · ' + format(facts.power) + ' team power');
-  area.append(row(...['Inventory', 'Collection'].map(view => button(view, () => {
+    progress.equipped.length + '/' + facts.equipSlots + ' equipped · ' + format(facts.teamDamageRate) + ' team damage/s');
+  area.append(row(...['Inventory', 'Collection', 'Fusion'].map(view => button(view, () => {
     petView = view;
     refreshPanel();
   }, { pressed: petView === view }))));
+  if (petView === 'Fusion') {
+    renderFusion(area);
+    panel.append(area);
+    return;
+  }
   const filters = el('div', 'pv-filters');
   const search = el('input');
   search.type = 'search';
@@ -648,14 +773,20 @@ function renderPets() {
   const cards = el('div', 'pv-cards');
   if (petView === 'Inventory') {
     filters.append(select('Sort pets', prefs.inventory.sort,
-      [['power', 'Strength'], ['rarity', 'Rarity'], ['name', 'Name'], ['recent', 'Recently obtained']], value => {
+      [['power', 'Farming strength'], ['rarity', 'Rarity'], ['generation', 'Generation'], ['variant', 'Variant'], ['name', 'Name'], ['recent', 'Recently obtained']], value => {
         changePreference('inventory', 'sort', value);
         refreshCards();
       }));
     area.append(button('Equip best', () => act({ type: 'equip-best' })));
   } else {
     area.append(statLine(progress.discovered.length + ' of ' + PETS.length + ' species discovered · ' +
-      progress.variantDiscoveries.length + ' species and variant combinations recorded'));
+      percent.format(progress.discovered.length / PETS.length)));
+    const totals = el('dl', 'pv-workshop-stats');
+    for (const variant of VARIANTS) {
+      const found = progress.variantDiscoveries.filter(key => key.endsWith(':' + variant.id)).length;
+      metric(totals, variant.name, found + ' / ' + PETS.length);
+    }
+    area.append(disclosure('discovery-totals', 'Variant collection totals', totals));
   }
   area.append(filters, cards);
   panel.append(area);
@@ -669,8 +800,10 @@ function renderPets() {
     cards.replaceChildren();
     if (petView === 'Inventory') {
       const selectors = {
-        power: (a, b) => petPower(b) - petPower(a),
-        rarity: (a, b) => rarityOrder.indexOf(speciesById.get(b.speciesId).rarity) - rarityOrder.indexOf(speciesById.get(a.speciesId).rarity),
+        power: (a, b) => petCombatStats(b, progress).farmingPower - petCombatStats(a, progress).farmingPower,
+        rarity: (a, b) => rarityOrder.indexOf(speciesById.get(b.speciesId).rarity.toLowerCase()) - rarityOrder.indexOf(speciesById.get(a.speciesId).rarity.toLowerCase()),
+        generation: (a, b) => speciesById.get(b.speciesId).generation - speciesById.get(a.speciesId).generation,
+        variant: (a, b) => VARIANTS.indexOf(variantById.get(b.variant)) - VARIANTS.indexOf(variantById.get(a.variant)),
         name: (a, b) => describePet(a).localeCompare(describePet(b)),
         recent: (a, b) => b.obtainedAt - a.obtainedAt
       };
@@ -701,27 +834,135 @@ function renderPets() {
   refreshCards();
 }
 
+function renderFusion(area) {
+  const choices = fusionOptions(progress);
+  area.append(el('p', 'pv-summary', 'Fuse three eligible duplicates. Equipped, locked and favorited companions are protected.'));
+  for (const plan of choices) {
+    const card = el('article', 'pv-card');
+    card.append(el('h3', '', describePet(plan.result)), el('p', 'pv-summary',
+      plan.consumed.map(pet => describePet(pet) + ' #' + pet.id.replace('pet-', '')).join(' · ')),
+    button('Review fusion', () => {
+      const dialog = el('dialog', 'pv-dialog');
+      dialog.append(el('h2', '', 'Fuse into ' + describePet(plan.result) + '?'),
+        el('p', 'pv-summary', 'These companions will be consumed.'),
+        ...plan.consumed.map(pet => el('p', 'pv-summary', describePet(pet) + ' #' + pet.id.replace('pet-', ''))),
+        row(button('Cancel', () => dialog.close()), button('Confirm fusion', () => {
+          dialog.close();
+          void act({ type: 'fuse', petIds: plan.petIds, confirm: true });
+        }, { primary: true })));
+      dialog.addEventListener('close', () => dialog.remove(), { once: true });
+      root.append(dialog);
+      dialog.showModal();
+    }));
+    area.append(card);
+  }
+  if (!choices.length) area.append(statLine('Hatch more duplicates or unequip and unlock pets you want to fuse.'));
+}
+
+function updateFarmSettings(settings) {
+  return act({ type: 'farm-settings', settings });
+}
+
+function renderFarming() {
+  const settings = farmSettings(progress);
+  const area = section('Crystal farming');
+  const summary = el('p', 'pv-summary');
+  const stats = el('dl', 'pv-workshop-stats');
+  const active = metric(stats, 'Active Pets');
+  const crystals = metric(stats, 'Crystals Destroyed');
+  const incomeValue = metric(stats, 'Gold Per Second');
+  const unlocked = FARM_AREAS.filter(item => canFarmArea(progress, item.id));
+  const assign = button('Assign Pets Here', () => void act({ type: 'assign-farm-here' }), { primary: true });
+  farmChoice = unlocked.some(item => item.id === farmChoice) ? farmChoice : settings.area || unlocked[0].id;
+  area.append(summary, stats, row(assign,
+    button('Recall All Pets', () => updateFarmSettings({ area: null, enabled: false })),
+    button('Follow Player', () => updateFarmSettings({ area: null, enabled: true }))),
+  select('Change farming area', farmChoice, unlocked.map(item => [item.id, item.label]), id => { farmChoice = id; }),
+  button('Assign selected area', () => updateFarmSettings({ area: farmChoice, enabled: true })),
+  checkbox('Automatic Crystal Targeting', settings.enabled, enabled => updateFarmSettings({ enabled })),
+  checkbox('Prioritize Special Crystals', settings.preferSpecial, preferSpecial => updateFarmSettings({ preferSpecial })),
+  select('Target priority', settings.policy, FARM_PRIORITIES.map(item => [item.id, item.label]), policy => updateFarmSettings({ policy })));
+  const locked = FARM_AREAS.filter(item => !canFarmArea(progress, item.id));
+  if (locked.length) area.append(...locked.map(field => statLine(field.label + ' unlocks at Level ' + field.level +
+    (field.rebirths ? ' after ' + field.rebirths + ' rebirth' : ''))));
+  area.append(el('p', 'pv-summary', magnetStats(progress).remote ? 'Remote magnet collects drops from your assigned field.' :
+    'Buy Remote Magnet to collect Gold while your team works in a different field.'),
+  button('Magnet upgrades', () => { upgradeView = 'Farming'; openScreen('Upgrades'); }));
+  farmingControls = { summary, active, crystals, income: incomeValue, assign };
+  panel.append(area);
+}
+
+function metric(list, label, value = '') {
+  const item = el('div');
+  const total = el('dd', '', value);
+  item.append(el('dt', '', label), total);
+  list.append(item);
+  return total;
+}
+
+function renderGenerator() {
+  const plan = generatorPlan(progress);
+  const area = section(plan.machine);
+  const status = el('p', 'pv-summary');
+  const meter = el('progress', 'pv-progress');
+  meter.setAttribute('aria-label', 'Stored generator energy');
+  const stats = el('dl', 'pv-workshop-stats');
+  metric(stats, 'Generation', String(progression(progress).generation));
+  metric(stats, 'Generation Speed', plan.speed + ' energy/s');
+  const energy = metric(stats, 'Stored Energy');
+  const total = metric(stats, 'Energy Produced');
+  const field = metric(stats, 'Current Farming Area');
+  const active = metric(stats, 'Active Pets');
+  const income = metric(stats, 'Gold Per Second');
+  metric(stats, 'Generator Upgrade Level', String(plan.upgradeRanks));
+  metric(stats, 'Cost Per Charge', plan.threshold / 1000 + ' energy');
+  const start = button('Start Cranking', () => void setCranking(true), { primary: true });
+  const egg = eggsById.get(plan.eggId);
+  const claim = button('Hatch Charged Egg', () => void act({ type: 'generatorClaim', eggId: plan.eggId }), { primary: true });
+  const unlocked = EGGS.filter(item => item.generation <= progression(progress).generation && item.level <= plan.level);
+  area.append(status, meter, stats, start,
+    select('Generator egg', plan.eggId, unlocked.map(item => [item.id, item.name]), eggId => void act({ type: 'generatorSelect', eggId })),
+    statLine('A full charge hatches one ' + egg.name + ' for ' + generatorEggCost(egg) + ' Gold.'), claim,
+    button('Generator upgrades', () => { upgradeView = 'Generator'; openScreen('Upgrades'); }));
+  if (plan.nextMachine) area.append(statLine(plan.nextMachine.name + ' unlocks at Level ' + plan.nextMachine.level +
+    (plan.nextMachine.rebirths ? ' after rebirth.' : '.')));
+  generatorControls = { meter, start, status, energy, total, field, active, income, claim };
+  panel.append(area);
+}
+
 function renderUpgrades() {
   const facts = progression(progress);
   const area = section('Meadow workshop', 'Spend resources earned in the meadow on persistent upgrades.');
   const stats = magnetStats(progress);
   const precise = value => Number(value.toFixed(2));
-  area.append(statLine('Magnet · ' + precise(stats.radius) + ' m range · ' + precise(stats.speed) + ' attraction speed'));
+  area.append(statLine('Magnet · ' + precise(stats.radius) + ' m range · ' + precise(stats.speed) + ' attraction speed'),
+    row(...['All', 'Farming', 'Generator'].map(view => button(view, () => { upgradeView = view; refreshPanel(); },
+      { label: view + ' upgrades only', pressed: view === upgradeView }))));
   const magnetStatsKeys = { magnetRange: ['radius', ' m pickup range'], magnetSpeed: ['speed', ' attraction speed'], magnetEfficiency: ['efficiency', ' reward multiplier'],
     ascensionReach: ['radius', ' m pickup range'], ascensionYield: ['efficiency', ' reward multiplier'] };
   const cards = el('div', 'pv-cards');
+  const generatorIds = new Set(GENERATOR_UPGRADES.map(upgrade => upgrade.id));
+  const farmingIds = new Set(['petDamage', 'attackRate', 'petSpeed', 'specialCrystalLuck', 'remoteMagnet', 'autoCollect', 'harvest']);
   for (const upgrade of UPGRADES) {
+    if (upgradeView === 'Generator' && !generatorIds.has(upgrade.id)) continue;
+    if (upgradeView === 'Farming' && !farmingIds.has(upgrade.id) && !magnetStatsKeys[upgrade.id] && !upgrade.id.startsWith('magnet')) continue;
     const rank = progress.upgrades[upgrade.id];
     const cost = upgrade.costs[rank];
     const card = el('article', 'pv-card');
-    card.append(el('h3', '', upgrade.name), el('p', 'pv-summary', upgrade.description));
+    card.append(el('h3', '', upgrade.name), el('p', 'pv-summary', upgrade.description),
+      statLine('Rank ' + (rank || 0) + '/' + upgrade.costs.length + (upgrade.currency === 'ascension' ? ' · Ascension' : '')));
     const stat = magnetStatsKeys[upgrade.id];
     if (stat && cost !== undefined) {
       const next = magnetStats({ ...progress, upgrades: { ...progress.upgrades, [upgrade.id]: rank + 1 } });
       card.append(el('p', 'pv-summary', 'Next rank gives ' + precise(next[stat[0]]) + stat[1] + '.'));
     }
+    if (generatorIds.has(upgrade.id) && cost !== undefined) {
+      const next = generatorPlan({ ...progress, upgrades: { ...progress.upgrades, [upgrade.id]: rank + 1 } });
+      card.append(statLine(`Next rank · ${next.speed} energy/s · ${next.capacity / 1000} stored · ${next.threshold / 1000} per charge`));
+    }
     if (cost === undefined) card.append(statLine('Fully upgraded'));
     else if (facts.level < upgrade.level) card.append(statLine('Unlocks at Level ' + upgrade.level));
+    else if (upgrade.rebirths > facts.rebirths) card.append(statLine('Unlocks after rebirth'));
     else {
       card.append(statLine(format(cost) + ' ' + currencyNames[upgrade.currency]));
       card.append(button('Buy upgrade', () => act({ type: 'upgrade', id: upgrade.id }),
@@ -790,7 +1031,7 @@ function renderRebirth() {
   const old = collectionMetrics(progress);
   const stats = el('dl', 'pv-odds-list');
   for (const [label, value] of [
-    ['Previous rebirths', plan.count], ['Required level', requirements.level], ['Sunbeams offered', requirements.sunbeams],
+    ['Previous rebirths', plan.count], ['Required level', requirements.level], ['Gold offered', requirements.sunbeams],
     ['Crystals offered', requirements.crystals], ['Ascension earned', rewards.ascension], ['Generation after rebirth', rewards.generation]
   ]) stats.append(el('dt', '', label), el('dd', '', format(value)));
   area.append(stats, statLine('Permanent bonuses · +' + percent.format(rewards.resourceBonus) + ' gathering yield and +' + rewards.magnetBonus + ' m magnet range'),
@@ -805,7 +1046,7 @@ function renderRebirth() {
 function confirmRebirth(plan) {
   const dialog = el('dialog', 'pv-dialog');
   dialog.append(el('h2', '', 'Offer resources at the altar?'),
-    el('p', 'pv-summary', 'Spend ' + format(plan.requirements.sunbeams) + ' Sunbeams and ' + format(plan.requirements.crystals) +
+    el('p', 'pv-summary', 'Spend ' + format(plan.requirements.sunbeams) + ' Gold and ' + format(plan.requirements.crystals) +
       ' Crystals. You keep your pets, discoveries and upgrades.'),
     row(button('Cancel', () => dialog.close()), button('Confirm rebirth', () => {
       dialog.close();
@@ -833,7 +1074,7 @@ function renderRanks(scores) {
     refreshPanel();
   }), button('Back to meadow', async () => {
     if (document.fullscreenElement === panel) await document.exitFullscreen();
-    openScreen('Hatch');
+    closeMenu();
     terrain.querySelector('canvas')?.focus();
   })));
   if (self) {
@@ -912,9 +1153,9 @@ function renderSettings() {
     for (const variant of VARIANTS.slice(1)) group.append(checkbox('Stop When ' + variant.name, progress.settings.stopVariants[variant.id],
       value => toggleSetting({ stopVariants: { [variant.id]: value } }),
       variant.id === 'shiny' ? 'When off, shiny pets do not stop a hatch session.' : undefined));
-    group.append(gameSetting('Stop When a New Pet Is Discovered', 'stopOnNew'),
+    group.append(gameSetting('Stop When a New Pet Is Discovered', 'stopOnNew'), gameSetting('Stop When a New Variant Is Discovered', 'stopOnNewVariant'),
       gameSetting('Stop When Inventory Is Full', 'stopOnFull', 'When off, a full habitat pauses hatching until you can resume.'),
-      el('p', 'pv-summary', 'Auto-hatch always stops when you run out of Sunbeams.'));
+      el('p', 'pv-summary', 'Auto-hatch always stops when you run out of Gold.'));
   } else if (settingsGroup === 'Notifications') {
     for (const variant of VARIANTS.slice(1)) group.append(choice('notifications', variant.id, variant.name + ' notifications'));
     group.append(choice('notifications', 'newPet', 'New species notifications'),
@@ -942,9 +1183,18 @@ function renderSettings() {
     })) group.append(choice('graphics', id, label));
   } else if (settingsGroup === 'Inventory') {
     group.append(choice('inventory', 'showDuplicates', 'Show duplicates'), select('Sort pets by', prefs.inventory.sort,
-      [['power', 'Strength'], ['rarity', 'Rarity'], ['name', 'Name'], ['recent', 'Recently obtained']],
+      [['power', 'Farming strength'], ['rarity', 'Rarity'], ['generation', 'Generation'], ['variant', 'Variant'], ['name', 'Name'], ['recent', 'Recently obtained']],
       value => changePreference('inventory', 'sort', value)),
     gameSetting('Auto Equip Best', 'autoEquip'), gameSetting('Lock Rare Pets', 'lockRare'));
+  } else if (settingsGroup === 'Workshop') {
+    for (const [id, label, hint] of [
+      ['keepAssigned', 'Keep Pets in Assigned Area', 'Remember the assignment when you return to this save.'],
+      ['recallOnWorldChange', 'Recall Pets When Changing Worlds', 'Release an assignment when entering solo play or a private room.'],
+      ['generatorSounds', 'Generator Sounds'], ['crankAnimations', 'Crank Animations'], ['showProgress', 'Show Generation Progress'],
+      ['showRemoteRewards', 'Show Remote Farming Rewards'], ['showIncome', 'Show Gold Per Second'], ['showPetActivity', 'Show Pet Activity']
+    ]) group.append(choice('workshop', id, label, hint));
+    group.append(checkbox('Automatic Crystal Targeting', farmSettings(progress).enabled, enabled => updateFarmSettings({ enabled })),
+      gameSetting('Auto-Collect Gold Drops', 'autoCollectGold', 'Requires the Auto Collect upgrade.'));
   } else if (settingsGroup === 'General') {
     group.append(button(document.fullscreenElement ? 'Exit fullscreen' : 'Fullscreen game', toggleFullscreen),
       el('p', 'pv-summary', 'Your solo save lives in this browser. Connected players save their separate guest profile on the server.'));
@@ -998,8 +1248,13 @@ async function toggleFullscreen() {
   } catch {
     fullscreenError = 'Fullscreen is unavailable in this browser.';
   }
+  fullscreen.textContent = document.fullscreenElement === root ? 'Exit fullscreen' : 'Fullscreen';
   refreshPanel();
 }
+
+document.addEventListener('fullscreenchange', () => {
+  fullscreen.textContent = document.fullscreenElement === root ? 'Exit fullscreen' : 'Fullscreen';
+}, { signal });
 
 function chooseRoom(mode) {
   if (!self && !connecting) {
@@ -1183,6 +1438,101 @@ async function tradeAction(step, fields) {
   catch (error) { showFeedback(error.message || 'The trade could not be completed.', { error: true }); }
 }
 
+async function setCranking(active) {
+  if (crankPending) {
+    if (!active) stopRequested = true;
+    return;
+  }
+  if (active === crankActive || connecting) return;
+  if (active && (!worldReady || !canOperateGenerator(world?.getPosition()) || document.hidden)) {
+    showFeedback('Approach the crank in the southwest workshop.', { error: true });
+    return;
+  }
+  const epoch = connectionEpoch;
+  crankPending = true;
+  updateActivity();
+  try {
+    if (self) {
+      const result = await online.command({ type: active ? 'generatorStart' : 'generatorStop' });
+      if (epoch !== connectionEpoch) return;
+      if (result.event.type === 'error') {
+        showFeedback(result.event.message, { error: true });
+        return;
+      }
+      crankActive = active;
+      commit(result.progress);
+    } else {
+      crankActive = active;
+      previousFarmTick = Date.now();
+      if (active) commit(markGeneratorStart(progress));
+    }
+    if (crankActive) {
+      crankSoundAt = 0;
+      closeMenu();
+    }
+  } catch (error) {
+    if (epoch === connectionEpoch) showFeedback(error.message || 'The generator did not respond.', { error: true });
+  } finally {
+    if (epoch === connectionEpoch) {
+      crankPending = false;
+      updateActivity();
+      updateWorld();
+      const shouldStop = stopRequested || document.hidden || !canOperateGenerator(world?.getPosition());
+      stopRequested = false;
+      if (active && crankActive && shouldStop) void setCranking(false);
+    }
+  }
+}
+
+function showFarmingEvents(events = []) {
+  const found = events.find(event => event.type === 'respawn' && event.specialTier &&
+    (event.areaId === farmSettings(progress).area || event.areaId === currentField()?.id));
+  if (found) {
+    toast.replaceChildren(el('strong', '', 'A special crystal appeared in your field.'));
+    toast.hidden = false;
+    clearTimeout(feedbackTimer);
+    feedbackTimer = setTimeout(() => { toast.hidden = true; }, 3500);
+  }
+}
+
+function tickFarming() {
+  const now = Date.now();
+  const elapsed = now - (previousFarmTick || now);
+  previousFarmTick = now;
+  if (!worldReady || document.hidden || connecting) return;
+  if (crankActive && prefs.workshop.generatorSounds && now >= crankSoundAt) {
+    sound.play('crank');
+    crankSoundAt = now + 760;
+  }
+  if (self) return;
+  if (crankActive && !canOperateGenerator(world.getPosition())) void setCranking(false);
+  const position = world.getPosition();
+  let next = crankActive ? advanceGenerator(progress, elapsed) : progress;
+  const events = soloFarm.advance([{ id: 'solo', position, progress: next }], now, (_, reward) => {
+    const awarded = awardCrystalBreak(next, reward, { now });
+    if (awarded.event.type === 'error') return false;
+    next = awarded.progress;
+    return true;
+  });
+  const rewards = collectEligibleDrops(next, { now, position, cranking: crankActive });
+  next = rewards.progress;
+  for (const event of rewards.events) reportAction(event, {}, { quiet: true });
+  farming = soloFarm.snapshot();
+  if (next !== progress) {
+    commit(next, events);
+    if (rewards.events.length) refreshRewardsPanel();
+  }
+  else {
+    updateActivity();
+    updateWorld(events);
+  }
+  showFarmingEvents(events);
+}
+
+function refreshRewardsPanel() {
+  if (screen === 'Hatch' || screen === 'Upgrades') refreshPanel();
+}
+
 const online = createOnlineClient({
   onPeers(next) {
     const oldMembers = peers.map(peer => peer.id).join(',');
@@ -1201,6 +1551,14 @@ const online = createOnlineClient({
     roomResources = nodeReadyAt;
     updateWorld();
   },
+  onFarm(next, generator) {
+    if (!self || !next) return;
+    farming = next;
+    if (!crankPending) crankActive = generator?.active === true;
+    updateActivity();
+    updateWorld(next.events);
+    showFarmingEvents(next.events);
+  },
   onRoomClosed({ message }) {
     clearOnline();
     invitation = '';
@@ -1208,11 +1566,13 @@ const online = createOnlineClient({
     openScreen('Online');
   },
   onProgress(next, event) {
-    if (self && event?.type === 'trade') {
-      commit(next);
+    if (!self) return;
+    if (event.type === 'collect') reportAction(event, {}, { quiet: true });
+    commit(next);
+    if (event.type === 'trade') {
       showFeedback('Trade complete. Your new pets are in the journal.');
       refreshPanel();
-    }
+    } else if (event.type === 'collect') refreshRewardsPanel();
   },
   onTrade(next) {
     trade = next;
@@ -1234,6 +1594,7 @@ const online = createOnlineClient({
 async function joinOnline(newGuest = false) {
   if (connecting || busy) return;
   stopAuto('Connecting to another save');
+  void setCranking(false);
   connecting = true;
   connectionError = '';
   canStartGuest = false;
@@ -1247,8 +1608,11 @@ async function joinOnline(newGuest = false) {
     peers = joined.peers;
     room = joined.room;
     roomResources = joined.nodeReadyAt;
+    farming = joined.farm;
+    crankActive = joined.generator?.active === true;
     world?.setPosition(joined.self);
     progress = joined.progress;
+    income = [];
     lastReveal = [];
     auto = undefined;
     showFeedback('');
@@ -1265,9 +1629,13 @@ async function joinOnline(newGuest = false) {
       refreshPanel();
     }
   }
+  if (self && (!prefs.workshop.keepAssigned || prefs.workshop.recallOnWorldChange)) {
+    await updateFarmSettings({ area: null });
+  }
 }
 
 function clearOnline() {
+  const wasOnline = Boolean(self);
   connectionEpoch++;
   connecting = false;
   stopAuto('Session ended');
@@ -1279,6 +1647,11 @@ function clearOnline() {
   peers = [];
   room = null;
   roomResources = {};
+  farming = null;
+  income = [];
+  crankActive = false;
+  crankPending = false;
+  stopRequested = false;
   rankState = undefined;
   rankRevision++;
   trade = undefined;
@@ -1286,6 +1659,9 @@ function clearOnline() {
   auto = undefined;
   lastReveal = [];
   progress = solo;
+  if (wasOnline && (!prefs.workshop.keepAssigned || prefs.workshop.recallOnWorldChange) && farmSettings(solo).area) {
+    commit(applyAction(solo, { type: 'farm-settings', settings: { area: null } }).progress);
+  }
   updateHeader();
   updateWorld();
 }
@@ -1300,7 +1676,8 @@ function leaveOnline() {
 
 function setProximity(target) {
   nearby = target;
-  interact.textContent = target?.type === 'gather' ? 'Gather ' + target.label : target?.label || 'Explore';
+  interact.textContent = target?.type === 'gather' ? 'Gather ' + target.label : target?.type === 'generator' ?
+    (crankActive ? 'Press E to Stop Generator' : 'Press E to Operate Generator') : target?.label || 'Explore';
   interact.disabled = !target;
 }
 
@@ -1308,7 +1685,7 @@ let altarNearby = false;
 
 async function startWorld() {
   try {
-    const { mountWorld } = await import('./world.js?v=20261123-2');
+    const { mountWorld } = await import('./world.js?v=20261123-3');
     if (signal.aborted) return;
     world = mountWorld(terrain, {
       onGather: nodeId => void act({ type: 'gather', nodeId }),
@@ -1318,7 +1695,9 @@ async function startWorld() {
         return event?.type === 'collect';
       },
       onInteract(id) {
-        if (id === 'upgrades') openScreen('Upgrades');
+        if (id === 'generator') void setCranking(!crankActive);
+        else if (id === 'stop-generator') void setCranking(false);
+        else if (id === 'upgrades') { upgradeView = 'All'; openScreen('Upgrades'); }
         else if (id === 'rebirth') openJournal('Rebirth Cave');
         else if (id === 'leaderboard') openJournal('Leaderboards');
         else {
@@ -1328,6 +1707,8 @@ async function startWorld() {
       },
       onMove(position) {
         if (self) online.move(position);
+        if (crankActive && !canOperateGenerator(position)) void setCranking(false);
+        if (farmingControls || generatorControls) updateActivity();
         const canReach = isAtAltar(position);
         if (canReach !== altarNearby) {
           altarNearby = canReach;
@@ -1341,6 +1722,8 @@ async function startWorld() {
         worldNotice.textContent = available ? '' : '3D graphics are unavailable on this device.';
       }
     });
+    soloFarm = createFarmingWorld({ stats: petCombatStats });
+    if (!self) farming = soloFarm.snapshot();
     if (self) world.setPosition(self);
     updateWorld();
   } catch {
@@ -1361,6 +1744,12 @@ collectTimer = setInterval(() => {
       Math.max(progress.nodeReadyAt[nearby.id] || 0, roomResources[nearby.id] || 0) > Date.now()) return;
   void act({ type: 'gather', nodeId: nearby.id, mode: 'auto' }, { quiet: true });
 }, 550);
+farmingTimer = setInterval(tickFarming, 200);
+
+document.addEventListener('visibilitychange', () => {
+  previousFarmTick = Date.now();
+  if (document.hidden) void setCranking(false);
+}, { signal });
 
 window.addEventListener('pagehide', event => {
   stopAuto('Game closed');
@@ -1368,6 +1757,7 @@ window.addEventListener('pagehide', event => {
   clearOnline();
   if (event.persisted) { refreshPanel(); return; }
   clearInterval(collectTimer);
+  clearInterval(farmingTimer);
   clearTimeout(feedbackTimer);
   scope.abort();
   online.destroy();
@@ -1375,6 +1765,9 @@ window.addEventListener('pagehide', event => {
   sound.destroy();
 }, { signal });
 
+if (!prefs.workshop.keepAssigned && farmSettings(solo).area) {
+  commit(applyAction(solo, { type: 'farm-settings', settings: { area: null } }).progress);
+}
 updateHeader();
 refreshPanel();
 void startWorld();

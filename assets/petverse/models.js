@@ -2,10 +2,10 @@ import * as THREE from './vendor/three/three.module.min.js';
 
 const mutationColors = {
   shiny: '#ffe79a', metallic: '#a0aecd', gold: '#ffb741', diamond: '#8feef8',
-  obsidian: '#655081', titanium: '#d3e0ff', mythic: '#f5a9ed'
+  obsidian: '#655081', titanium: '#d3e0ff', mythic: '#f5a9ed', giant: '#ffc77f'
 };
 
-const mutationScales = { metallic: 1.13, gold: 1.29, diamond: 1.50, obsidian: 1.80, titanium: 3, mythic: 1.65 };
+const mutationScales = { metallic: 1.13, gold: 1.29, diamond: 1.50, obsidian: 1.80, titanium: 3, mythic: 1.65, giant: 3.8 };
 export function petScale(variant) { return mutationScales[variant] || 1; }
 
 // A small procedural sky supplies soft reflection bands without a remote texture or a second camera.
@@ -92,11 +92,12 @@ export function createTraveler(kit, remote = false) {
   mesh(traveler, 'box', '#eda951', 0, .73, .26, .31, .09, .08);
   mesh(traveler, 'round', '#e5ae67', 0, 1.05, -.29, .29, .37, .18);
   mesh(traveler, 'box', '#f2ce85', 0, 1.19, -.42, .36, .13, .12);
-  for (const side of [-1, 1]) {
+  traveler.userData.arms = [-1, 1].map(side => {
     mesh(traveler, 'round', '#342d42', side * .14, 1.73, .391, .034, .052, .026);
-    mesh(traveler, 'round', coat, side * .45, 1.02, .05, .13, .31, .135, [0, 0, side * .19]);
-    mesh(traveler, 'round', '#f6ba74', side * .51, .77, .055, .105, .11, .105);
-  }
+    const sleeve = mesh(traveler, 'round', coat, side * .45, 1.02, .05, .13, .31, .135, [0, 0, side * .19]);
+    const hand = mesh(traveler, 'round', '#f6ba74', side * .51, .77, .055, .105, .11, .105);
+    return { side, sleeve, hand };
+  });
   traveler.userData.legs = [-1, 1].map(side => {
     const leg = new THREE.Group();
     leg.position.set(side * .2, .61, 0);
@@ -233,6 +234,15 @@ export function createPet(spec, variant, kit) {
         body('facet', shellPlate, side * .48, .77, -.20, .20, .27, .39, [.18, side * .24, side * .1]);
         body('box', paint(glow, .42), side * .63, .77, -.19, .027, .033, .26, [0, side * .15, 0]);
         body('gem', paint(glow, .34), side * .55, .99, -.18, .035, .055, .038);
+      }
+    } else if (variant === 'giant') {
+      const trim = paint('#d98d58', .09, .37);
+      const crystal = paint('#ffe1a5', .24, .18);
+      body('facet', trim, 0, 1.21, -.48, .46, .22, .38, [.13, .28, 0]);
+      body('gem', crystal, 0, 1.42, -.41, .13, .36, .13, [-.14, .27, 0]);
+      for (const side of [-1, 1]) {
+        body('facet', trim, side * .50, .75, -.11, .21, .29, .30, [0, 0, side * .24]);
+        body('gem', crystal, side * .59, 1.03, -.18, .073, .25, .072, [-.15, 0, -side * .34]);
       }
     } else for (const side of [-1, 1]) body('gem', paint(glow, .35), side * .76, 1.12, -.2, .09, .15, .09);
   }

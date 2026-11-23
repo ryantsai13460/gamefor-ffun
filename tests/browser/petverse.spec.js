@@ -15,6 +15,12 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('Petverse launches through the arcade, moves in 3D, gathers, hatches and restores the pet journal', async ({ page }) => {
+  const save = createProgress();
+  save.farming.enabled = false;
+  await page.addInitScript(seed => {
+    const key = 'ffun-petverse-solo-v1';
+    if (location.pathname.endsWith('/petverse/index.html') && !localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(seed));
+  }, save);
   await page.goto(gameRoute);
   const frame = gameFrame(page);
   await expect(frame.getByRole('heading', { name: 'Petverse Online' })).toBeVisible();
@@ -32,7 +38,7 @@ test('Petverse launches through the arcade, moves in 3D, gathers, hatches and re
     await page.keyboard.up('KeyA');
   }
   await interact.click();
-  await expect(frame.locator('.pv-banner')).toHaveText(/Collected \d+ Sunbeams/);
+  await expect(frame.locator('.pv-banner')).toHaveText(/Collected \d+ Gold/);
   const earned = frame.locator('[data-currency="sunbeams"] strong');
   const beforeHatch = Number(await earned.textContent());
   expect(beforeHatch).toBeGreaterThan(40);
@@ -59,6 +65,7 @@ test('Stop When Shiny is independent of notification preferences and auto-hatch 
   const save = createProgress();
   save.xp = 74;
   save.wallet.sunbeams = 156;
+  save.farming.enabled = false;
   await page.addInitScript(seed => {
     if (!location.pathname.endsWith('/petverse/index.html')) return;
     Math.random = () => .94;

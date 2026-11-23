@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 import { WebSocket } from 'ws';
+import { FARM_AREAS } from '../assets/petverse/farming.js';
+import { GENERATOR_SITE } from '../assets/petverse/generator.js';
 import { REBIRTH_ALTAR, SPAWN, rebirthPlan } from '../assets/petverse/model.js';
 import { createPetverseServer } from './server.mjs';
 import { createInviteLimiter } from './rooms.mjs';
@@ -15,6 +17,15 @@ const clientOrigin = 'http://127.0.0.1:4188';
 const endpoint = origin => origin.replace('http:', 'ws:') + '/v1/petverse';
 const type = expected => message => message.type === expected;
 const tagged = (expected, id) => message => message.type === expected && message.requestId === id;
+
+async function walk(client, from, to) {
+  const steps = Math.ceil(Math.hypot(to.x - from.x, to.z - from.z) / 1.35);
+  for (let step = 1; step <= steps; step++) {
+    client.send({ type: 'move', x: from.x + (to.x - from.x) * step / steps,
+      z: from.z + (to.z - from.z) * step / steps });
+    await delay(210);
+  }
+}
 
 async function connect(origin, options = {}) {
   const socket = new WebSocket(endpoint(origin), { origin: clientOrigin, handshakeTimeout: 3000 });
@@ -28,11 +39,11 @@ async function connect(origin, options = {}) {
   });
   await once(socket, 'open');
   const send = message => socket.send(JSON.stringify(message));
-  const receive = predicate => new Promise((resolve, reject) => {
+  const receive = (predicate, timeout = 4000) => new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       listeners.delete(check);
-      reject(new Error(`Expected a server message. Buffered types: ${inbox.map(message => message.type).join(', ')}`));
-    }, 4000);
+      reject(new Error(`Expected a server message. Buffered types: ${[...new Set(inbox.map(message => message.type))].join(', ')}`));
+    }, timeout);
     function check() {
       const index = inbox.findIndex(predicate);
       if (index < 0) return;
@@ -78,6 +89,9 @@ async function joinPair(origin) {
   const other = await second.receive(type('welcome'));
   return { first, second, me, other };
 }
+
+const farmEvent = predicate => message => message.type === 'farm' && message.farm.events.some(predicate);
+const stateEvent = name => message => message.type === 'player-state' && message.event.type === name;
 
 test('requires an approved origin and refuses unknown resume tokens', async context => {
   assert.throws(() => createPetverseServer({ clientOrigins: 'https://example.com/with-path' }), /origins/);
@@ -215,6 +229,134 @@ test('synchronizes two real peers and validates movement, proximity, and server-
   await second.receive(message => message.type === 'peers' && message.peers.length === 0);
 });
 
+test('broadcasts the same crystal hits, break and respawn to two room members', async context => {
+  const server = createPetverseServer({ clientOrigins: [clientOrigin] });
+  context.after(() => server.close());
+  const origin = await server.listen();
+  const { first, second, me, other } = await joinPair(origin);
+  assert.ok(me.farm.crystals.length > 0);
+  assert.equal(me.generator.active, false);
+  const activeParty = await first.receive(message => message.type === 'farm' &&
+    message.farm.pets.some(pet => pet.ownerId === me.self.id && pet.targetId) &&
+    message.farm.pets.some(pet => pet.ownerId === other.self.id && pet.targetId));
+  const twoTargets = activeParty.farm.pets.map(pet => pet.targetId);
+  assert.equal(new Set(twoTargets).size, 2, 'starter pets should spread across the near Sunglass sites');
+  await second.action('stop-farming', { type: 'farm-settings', settings: { enabled: false } });
+
+  const hit = await first.receive(farmEvent(event => event.type === 'damage' && event.ownerId === me.self.id), 6000);
+  const firstHit = hit.farm.events.find(event => event.type === 'damage' && event.ownerId === me.self.id);
+  const mirrored = await second.receive(farmEvent(event => event.id === firstHit.id));
+  assert.deepEqual(mirrored.farm, hit.farm);
+  const injured = hit.farm.crystals.find(crystal => crystal.id === firstHit.crystalId);
+  assert.ok(injured.health < injured.maxHealth && injured.health > 0);
+
+  const spoiled = await second.action('forged-crystal', { type: 'crystal-break', crystalId: injured.id, gold: 1000 }, 'error');
+  assert.equal(spoiled.code, 'invalid_action');
+  const firstBreak = await first.receive(stateEvent('crystal-break'), 9000);
+  const { drop } = firstBreak.event;
+  const broken = await second.receive(farmEvent(event => event.type === 'break' && event.crystalId === drop.crystalId));
+  assert.equal(broken.farm.crystals.find(site => site.id === drop.crystalId).health, 0);
+  assert.ok(broken.farm.crystals.find(site => site.id === drop.crystalId).readyAt > Date.now());
+  assert.equal(firstBreak.progress.wallet.sunbeams, me.progress.wallet.sunbeams, 'a break should mint a drop before it pays Gold');
+  assert.equal((await second.action('peer-drop', { type: 'collect', dropId: drop.id })).event.code, 'drop-unavailable');
+  await delay(Math.max(0, drop.readyAt - Date.now()) + 40);
+  const collected = await first.action('mined-gold', { type: 'collect', dropId: drop.id });
+  assert.equal(collected.event.type, 'collect');
+  assert.equal(collected.progress.wallet.sunbeams, me.progress.wallet.sunbeams + drop.sunbeams);
+  assert.equal((await first.action('same-claimed-gold', { type: 'collect', dropId: drop.id })).event.code, 'drop-unavailable');
+  const replay = await first.action('mined-gold', { type: 'collect', dropId: drop.id });
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.progress.wallet.sunbeams, collected.progress.wallet.sunbeams);
+
+  const otherRoom = await connect(origin);
+  await otherRoom.receive(type('welcome'));
+  const isolated = await otherRoom.receive(type('farm'));
+  assert.ok(isolated.farm.pets.every(pet => pet.ownerId !== me.self.id && pet.ownerId !== other.self.id));
+  const regenerated = await second.receive(farmEvent(event => event.type === 'respawn' && event.crystalId === drop.crystalId), 9000);
+  const newCrystal = regenerated.farm.crystals.find(site => site.id === drop.crystalId);
+  assert.ok(newCrystal.health > 0);
+  assert.equal(newCrystal.readyAt, 0);
+});
+
+test('assigned pets keep earning remote Gold while the server advances a verified crank and save', async context => {
+  const directory = await mkdtemp(join(tmpdir(), 'petverse-workshop-'));
+  const dbPath = join(directory, 'petverse.sqlite');
+  const seed = openStore(dbPath, 10);
+  const profile = seed.create();
+  const ready = { ...profile.progress, xp: 48, wallet: { ...profile.progress.wallet, sunbeams: 130 } };
+  seed.record(profile, ready, 'seed-earned-workshop', { type: 'test-fixture' });
+  seed.close();
+
+  const server = createPetverseServer({ clientOrigins: [clientOrigin], dbPath });
+  context.after(async () => { await server.close(); await rm(directory, { recursive: true, force: true }); });
+  const origin = await server.listen();
+  const host = await connect(origin, { token: profile.token });
+  const entered = await host.receive(type('welcome'));
+  const observer = await connect(origin, { mode: 'join', code: entered.room.code });
+  await observer.receive(type('welcome'));
+  await observer.action('watch-no-pet', { type: 'farm-settings', settings: { enabled: false } });
+
+  const locked = await host.action('locked-field', { type: 'farm-settings', settings: { area: 'ember-verge' } });
+  assert.equal(locked.event.type, 'error');
+  const tooFar = await host.action('fake-workshop-position', { type: 'generatorStart', position: GENERATOR_SITE });
+  assert.equal(tooFar.event.code, 'generator-out-of-range');
+  const unearned = await host.action('fake-generator-charge', { type: 'generatorClaim', eggId: 'sunmeadow', energy: 100000 });
+  assert.equal(unearned.event.type, 'error');
+  const bought = await host.action('eligible-remote-magnet', { type: 'upgrade', id: 'remoteMagnet' });
+  assert.equal(bought.event.type, 'upgrade');
+  const field = FARM_AREAS[0];
+  const assigned = await host.action('assign-at-sunstep', { type: 'assign-farm-here' });
+  assert.equal(assigned.progress.farming.area, field.id);
+  await walk(host, SPAWN, GENERATOR_SITE);
+
+  const started = await host.action('operate-real-crank', { type: 'generatorStart' });
+  assert.equal(started.event.type, 'generator-start');
+  assert.equal(started.progress.generator.operations, 1);
+  const work = await host.receive(message => message.type === 'farm' && message.generator.active &&
+    message.farm.pets.some(pet => pet.ownerId === entered.self.id && pet.targetId?.startsWith(`${field.id}-`)));
+  assert.ok(work.farm.pets.some(pet => Math.hypot(pet.x - GENERATOR_SITE.x, pet.z - GENERATOR_SITE.z) > 7));
+  const charge = await host.receive(stateEvent('generator-progress'));
+  assert.ok(charge.progress.generator.energy > started.progress.generator.energy);
+  const remote = await host.receive(message => stateEvent('collect')(message) && message.version > started.version &&
+    message.event.remote && message.progress.stats.crankGold > 0, 12_000);
+  assert.ok(remote.progress.wallet.sunbeams > started.progress.wallet.sunbeams);
+  assert.equal(remote.event.areaId, field.id);
+  const sameBreak = await observer.receive(farmEvent(event => event.type === 'break' && event.ownerId === entered.self.id &&
+    event.areaId === field.id), 6000);
+  assert.ok(sameBreak.farm.crystals.some(site => site.areaId === field.id && site.health === 0));
+  assert.equal((await host.action('already-gathered-remotely', { type: 'collect', dropId: remote.event.dropId })).event.code, 'drop-unavailable');
+
+  const paused = await host.action('stop-the-crank', { type: 'generatorStop' });
+  assert.equal(paused.event.type, 'generator-stop');
+  await delay(650);
+  const pausedEnergy = await host.action('check-paused-energy', { type: 'generatorSelect', eggId: 'sunmeadow' });
+  assert.equal(pausedEnergy.progress.generator.energy, paused.progress.generator.energy);
+  const restarted = await host.action('restart-at-crank', { type: 'generatorStart' });
+  assert.equal(restarted.progress.generator.operations, 2);
+
+  await host.close();
+  await server.close();
+  const restoredServer = createPetverseServer({ clientOrigins: [clientOrigin], dbPath });
+  try {
+    const returning = await connect(await restoredServer.listen(), { token: profile.token });
+    const saved = await returning.receive(type('welcome'));
+    assert.equal(saved.self.id, entered.self.id);
+    assert.equal(saved.progress.farming.area, field.id);
+    assert.equal(saved.progress.upgrades.remoteMagnet, 1);
+    assert.ok(saved.progress.generator.energy >= charge.progress.generator.energy);
+    assert.equal(saved.progress.generator.operations, 2);
+    assert.ok(saved.progress.stats.crankGold >= remote.progress.stats.crankGold);
+    const stopped = await returning.receive(type('farm'));
+    assert.equal(stopped.generator.active, false);
+    const replay = await returning.action('restart-at-crank', { type: 'generatorStart' });
+    assert.equal(replay.replayed, true);
+    assert.equal((await returning.receive(type('farm'))).generator.active, false);
+    await returning.close();
+  } finally {
+    await restoredServer.close();
+  }
+});
+
 test('restores inventory, preferences and action receipts after a SQLite restart', async context => {
   const directory = await mkdtemp(join(tmpdir(), 'petverse-online-'));
   const dbPath = join(directory, 'petverse.sqlite');
@@ -276,12 +418,7 @@ test('validates earned achievements and rebirth against the player position and 
     const spoofed = await player.action('remote-altar', { type: 'rebirth', confirm: true, position: { ...REBIRTH_ALTAR } });
     assert.equal(spoofed.event.code, 'rebirth-out-of-range');
     assert.equal(spoofed.progress.rebirths, 0);
-    const steps = Math.ceil(Math.hypot(REBIRTH_ALTAR.x - SPAWN.x, REBIRTH_ALTAR.z - SPAWN.z) / 1.4);
-    for (let step = 1; step <= steps; step++) {
-      player.send({ type: 'move', x: SPAWN.x + (REBIRTH_ALTAR.x - SPAWN.x) * step / steps,
-        z: SPAWN.z + (REBIRTH_ALTAR.z - SPAWN.z) * step / steps });
-      await delay(215);
-    }
+    await walk(player, SPAWN, REBIRTH_ALTAR);
     const plan = rebirthPlan(claimed.progress);
     assert.equal(plan.available, true);
     const reborn = await player.action('altar-offering', { type: 'rebirth', confirm: true });
@@ -373,4 +510,20 @@ test('rolls back both writes when either side of a trade has stale progress', co
   assert.deepEqual(store.restore(second.token).progress, newSecond);
   assert.equal(store.restore(first.token).version, 0);
   assert.equal(store.restore(second.token).version, 1);
+});
+
+test('keeps command receipts across passive progress checkpoints', context => {
+  const store = openStore(':memory:', 10);
+  context.after(() => store.close());
+  const player = store.create();
+  const receipt = { type: 'generator-start' };
+  store.record(player, player.progress, 'start-once', receipt);
+  for (let index = 0; index < 160; index++) {
+    const next = { ...player.progress, xp: index };
+    store.checkpoint(player, next);
+  }
+  store.record(player, player.progress, 'after-checkpoints', { type: 'settings' });
+  assert.deepEqual(store.receipt(player, 'start-once'), receipt);
+  assert.equal(store.restore(player.token).version, 162);
+  assert.equal(store.restore(player.token).progress.xp, 159);
 });

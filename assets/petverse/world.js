@@ -1,7 +1,10 @@
 import * as THREE from './vendor/three/three.module.min.js';
-import { EGGS, GATHER_DISTANCE, magnetStats, NODES, PETS, REBIRTH_ALTAR, SPAWN, VARIANTS, WORLD_LIMIT } from './model.js?v=20261123-2';
-import { createMeadow } from './meadow.js?v=20261123-2';
-import { createModelKit, createPet, createTraveler, petScale } from './models.js?v=20261123-2';
+import { EGGS, GATHER_DISTANCE, magnetStats, NODES, PETS, REBIRTH_ALTAR, SPAWN, VARIANTS, WORLD_LIMIT } from './model.js?v=20261123-3';
+import { createMeadow } from './meadow.js?v=20261123-3';
+import { createModelKit, createPet, createTraveler, petScale } from './models.js?v=20261123-3';
+import { createMineView } from './mine-art.js?v=20261123-3';
+import { createGeneratorWorkshop } from './generator-art.js?v=20261123-3';
+import { canFarmArea } from './farming.js?v=20261123-3';
 
 const petById = new Map(PETS.map(spec => [spec.id, spec]));
 const variantById = new Map(VARIANTS.map(variant => [variant.id, variant]));
@@ -21,6 +24,7 @@ const qualityScale = { low: .7, medium: 1, high: 1.6 };
 const particleCount = { off: 0, low: 9, medium: 21, high: 36 };
 const clamp = (number, min, max) => Math.max(min, Math.min(max, number));
 const angleDelta = (next, current) => Math.atan2(Math.sin(next - current), Math.cos(next - current));
+const oversized = variant => variant === 'titanium' || variant === 'giant';
 
 function nameTag(host, text) {
   const label = document.createElement('span');
@@ -87,6 +91,10 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
 
   const kit = createModelKit();
   const meadow = createMeadow(scene, kit, NODES, EGGS);
+  const workshop = createGeneratorWorkshop(scene, kit);
+  meadow.interactables.push(workshop.target);
+  meadow.obstacles.push(...workshop.obstacles);
+  const mine = createMineView(scene, kit, host, { groundHeight, projectLabel: rootPoint });
   const traveler = createTraveler(kit);
   traveler.position.set(SPAWN.x, 0, SPAWN.z);
   scene.add(traveler);
@@ -94,6 +102,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
   const footprint = kit.mesh(scene, 'disc', shadowMaterial, SPAWN.x, .09, SPAWN.z, .58, 1, .39);
   const party = new Map();
   const otherPlayers = new Map();
+  const farmParty = new Map();
   const rewards = new Map();
   const rewardCoins = kit.paint('#eec568', .16, .3);
   const rewardCrystals = kit.paint('#a5e5df', .22, .2);
@@ -122,11 +131,14 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
   let graphics = { ...displayOptions };
   const view = { ...cameraStart };
   let progress;
-  let magnet = { radius: 3.3, speed: 7.5 };
+  let magnet = { radius: 3.3, speed: 7.5, maxSimultaneous: 2 };
   let magnetPreview = false;
   let peerRecords = [];
+  let farmOwnerId = 'solo';
+  let generator = { active: false, ratio: 0, tier: 1 };
+  let stopGeneratorAt = 0;
   let previousDropList;
-  let collecting = false;
+  const collecting = new Set();
   let harvestTask;
   let activeTarget;
   let heading = 0;
@@ -186,18 +198,27 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
   }
 
   function jump() {
+    if (generator.active) { requestGeneratorStop(); return; }
     if (airHeight <= .015 && verticalSpeed === 0) verticalSpeed = 7;
+  }
+
+  function requestGeneratorStop() {
+    const now = performance.now();
+    if (now < stopGeneratorAt) return;
+    stopGeneratorAt = now + 420;
+    onInteract?.('stop-generator');
   }
 
   function canInteract(target) {
     const distance = Math.hypot(traveler.position.x - target.x, traveler.position.z - target.z);
-    if (target.type !== 'gather') return distance <= (target.type === 'rebirth' ? REBIRTH_ALTAR.radius : 3.1);
+    if (target.type !== 'gather') return distance <= (target.radius ?? (target.type === 'rebirth' ? REBIRTH_ALTAR.radius : 3.1));
     return distance <= GATHER_DISTANCE && (progress?.nodeReadyAt?.[target.id] || 0) <= Date.now();
   }
 
   function interact(target = activeTarget) {
     if (!target || !canInteract(target)) return false;
     if (target.type === 'gather') onGather?.(target.id);
+    else if (target.type === 'generator' && generator.active) requestGeneratorStop();
     else onInteract?.(target.id);
     return true;
   }
@@ -217,6 +238,10 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     if (keys.has(event.code)) {
       event.preventDefault();
       held.set(event.code, keys.get(event.code));
+    } else if (event.code === 'KeyE') {
+      if (!canInteract(workshop.target)) return;
+      event.preventDefault();
+      if (!event.repeat) interact(workshop.target);
     } else if (event.code === 'Space' || event.code === 'KeyF' || event.code === 'Enter') {
       event.preventDefault();
       if (!event.repeat) {
@@ -294,7 +319,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     scene.add(group);
     const scale = petScale(variant);
     const shadow = kit.mesh(scene, 'disc', shadowMaterial, position.x, .09, position.z, .55 * scale, 1, .43 * scale);
-    const label = nameTag(host, variant === 'titanium' ? `Titanium ${spec.name}` : spec.name);
+    const label = nameTag(host, oversized(variant) ? `${variantById.get(variant)?.name || 'Giant'} ${spec.name}` : spec.name);
     label.dataset.petVariant = variant || 'normal';
     return { group, shadow, label, variant, scale, speciesId, target: new THREE.Vector3() };
   }
@@ -352,7 +377,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
       if (Number.isFinite(peer.heading)) entry.direction = peer.heading;
       const spec = peer.pet?.speciesId;
       const variant = peer.pet?.variant;
-      const visible = graphics.showPeerPets && (variant !== 'titanium' || graphics.showPeerTitanium);
+      const visible = graphics.showPeerPets && !mine.poses.get(peer.id)?.size && (variant !== 'titanium' || graphics.showPeerTitanium);
       if (entry.companion && (!visible || entry.companion.speciesId !== spec || entry.companion.variant !== variant)) {
         releaseCharacter(entry.companion);
         entry.companion = undefined;
@@ -365,12 +390,43 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     }
   }
 
-  function update({ progress: nextProgress, peers, graphics: nextGraphics, magnetPreview: preview } = {}) {
+  function syncFarmParty() {
+    const visible = new Map();
+    if (graphics.showPeerPets) for (const [ownerId, pets] of mine.poses) {
+      if (ownerId === farmOwnerId) continue;
+      for (const pose of pets.values()) {
+        if (pose.variant !== 'titanium' || graphics.showPeerTitanium) visible.set(`${ownerId}:${pose.id}`, pose);
+      }
+    }
+    for (const [key, entry] of farmParty) {
+      const pose = visible.get(key);
+      if (pose?.speciesId === entry.speciesId && pose.variant === entry.variant) continue;
+      releaseCharacter(entry);
+      farmParty.delete(key);
+    }
+    for (const [key, pose] of visible) {
+      let entry = farmParty.get(key);
+      if (!entry) {
+        entry = companion(pose.speciesId, pose.variant, new THREE.Vector3(pose.x, 0, pose.z));
+        if (!entry) continue;
+        entry.group.rotation.y = pose.heading || 0;
+        farmParty.set(key, entry);
+      }
+      entry.pose = pose;
+    }
+  }
+
+  function update({ progress: nextProgress, peers, graphics: nextGraphics, magnetPreview: preview,
+    farming, farmingEvents, farmOwnerId: owner, generator: nextGenerator } = {}) {
     if (nextProgress) {
       progress = nextProgress;
       syncParty();
       magnet = magnetStats(progress);
       if (progress.drops !== previousDropList) syncRewards(progress.drops);
+      for (const [id, field] of meadow.fieldViews) {
+        field.open.visible = canFarmArea(progress, id);
+        if (field.locked) field.locked.visible = !field.open.visible;
+      }
     }
     if (nextGraphics) {
       const oldQuality = graphics.quality;
@@ -380,8 +436,24 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
       if (graphics.quality !== oldQuality) resize();
     }
     if (typeof preview === 'boolean') magnetPreview = preview;
+    if (nextGenerator) {
+      generator = nextGenerator;
+      if (!generator.active) stopGeneratorAt = 0;
+      canvas.dataset.charging = String(Boolean(generator.active));
+    }
+    if (typeof owner === 'string') farmOwnerId = owner;
+    if (farming !== undefined) mine.sync(farming, farmOwnerId);
+    if (farming !== undefined || nextGraphics) syncFarmParty();
     if (Array.isArray(peers)) peerRecords = peers;
-    if (Array.isArray(peers) || nextGraphics) syncPeers(peerRecords);
+    if (Array.isArray(peers) || nextGraphics || farming !== undefined) syncPeers(peerRecords);
+    if (Array.isArray(farmingEvents)) {
+      const now = performance.now();
+      mine.emit(farmingEvents, graphics, farmOwnerId, traveler.position);
+      for (const event of farmingEvents) if (event.type === 'damage') {
+        const entry = event.ownerId === farmOwnerId ? party.get(event.petId) : farmParty.get(`${event.ownerId}:${event.petId}`);
+        if (entry) entry.strikeTime = now;
+      }
+    }
   }
 
   function rootPoint(target, label, height, visible = true) {
@@ -411,10 +483,14 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
       const group = new THREE.Group();
       const floor = groundHeight(drop.x, drop.z);
       group.position.set(drop.x, floor + .68, drop.z);
-      const token = drop.crystals
+      const coin = drop.kind === 'crystal-gold' || !drop.crystals;
+      const token = !coin
         ? kit.mesh(group, 'gem', rewardCrystals, 0, 0, 0, .28, .48, .28)
         : kit.mesh(group, 'beam', rewardCoins, 0, 0, 0, .32, .105, .32, [Math.PI / 2, 0, 0]);
-      if (!drop.crystals) kit.mesh(group, 'ring', rewardCoins, 0, 0, .06, .214, .214, .214);
+      if (coin) {
+        kit.mesh(group, 'ring', rewardCoins, 0, 0, .06, .214, .214, .214);
+        kit.mesh(group, 'gem', kit.paint('#fff2ba', .13, .28), 0, 0, .067, .089, .158, .026);
+      }
       const wisps = [-1, 1].map(side => kit.mesh(group, 'round', rewardTrail, side * .27, 0, -.28, .075, .075, .075));
       scene.add(group);
       rewards.set(id, { drop, group, floor, token, wisps, retryAt: 0, phase: rewards.size * 1.75 });
@@ -428,6 +504,10 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
       rangeRing.scale.set(magnet.radius, 1, magnet.radius);
     }
     const now = Date.now();
+    const attracting = [...rewards.values()].filter(({ drop }) => drop.expiresAt > now &&
+      Math.hypot(drop.x - traveler.position.x, drop.z - traveler.position.z) <= magnet.radius &&
+      (drop.kind === 'crystal-gold' || !drop.readyAt || drop.readyAt <= now));
+    const localDrops = new Set(attracting.slice(0, magnet.maxSimultaneous || 1).map(({ drop }) => drop.id));
     for (const [id, reward] of rewards) {
       const { drop, group, floor, token, wisps, phase } = reward;
       if (drop.expiresAt <= now) {
@@ -435,8 +515,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
         rewards.delete(id);
         continue;
       }
-      const inRange = Math.hypot(drop.x - traveler.position.x, drop.z - traveler.position.z) <= magnet.radius;
-      const moving = inRange && (!drop.readyAt || drop.readyAt <= now);
+      const moving = localDrops.has(id);
       const x = (moving ? traveler.position.x : drop.x) - group.position.x;
       const z = (moving ? traveler.position.z : drop.z) - group.position.z;
       const distance = Math.hypot(x, z);
@@ -449,16 +528,17 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
       group.rotation.y = moving ? Math.atan2(x, z) : phase + (graphics.reducedMotion ? 0 : time * 2.1);
       token.rotation.z = moving && !graphics.reducedMotion ? -time * 5 : 0;
       for (const wisp of wisps) wisp.visible = moving && !graphics.reducedMotion && graphics.particles !== 'off';
-      if (!onCollect || !moving || (distance > .42 && !graphics.reducedMotion) || collecting || reward.retryAt > now) continue;
-      collecting = true;
+      if (!onCollect || !moving || drop.readyAt > now || (distance > .42 && !graphics.reducedMotion) ||
+          collecting.has(id) || reward.retryAt > now) continue;
+      collecting.add(id);
       reward.retryAt = now + 320;
       Promise.resolve().then(() => onCollect(id)).then(accepted => {
         if (accepted === true) group.visible = false;
-      }).catch(() => {}).finally(() => { collecting = false; });
+      }).catch(() => {}).finally(() => { collecting.delete(id); });
     }
   }
 
-  function showBurst({ kind, nodeId, variant = 'normal', amount } = {}) {
+  function showBurst({ kind, nodeId, variant = 'normal', amount, currency } = {}) {
     const node = NODES.find(item => item.id === nodeId);
     const lead = kind === 'gather' && node
       ? [...party].find(([, companion]) => companion.variant === 'titanium') || party.entries().next().value
@@ -478,7 +558,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     if (['hatch', 'titanium'].includes(kind) && graphics.shake && !graphics.reducedMotion) shakeEnds = performance.now() + 230;
     if (['collect', 'gather'].includes(kind) && Number.isFinite(amount) && graphics.collectionNumbers) {
       effect?.label.remove();
-      effect = { label: nameTag(host, `+${amount} Sunbeams`), x: source.x, z: source.z, elapsed: 0 };
+      effect = { label: nameTag(host, `+${amount} ${currency === 'gold' ? 'Gold' : 'Sunbeams'}`), x: source.x, z: source.z, elapsed: 0 };
     }
   }
 
@@ -490,7 +570,8 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     if (Math.hypot((x / 4.35), ((z + 5.3) / 3.13)) < 1) return .23;
     const bridgeX = (x - 16.8) * .984 - (z - 10.5) * .179;
     const bridgeZ = (x - 16.8) * .179 + (z - 10.5) * .984;
-    return Math.abs(bridgeX) < 3.43 && Math.abs(bridgeZ) < 1.49 ? .26 + .13 * Math.cos(bridgeX / 2.1) : 0;
+    if (Math.abs(bridgeX) < 3.43 && Math.abs(bridgeZ) < 1.49) return .26 + .13 * Math.cos(bridgeX / 2.1);
+    return workshop.floorHeight(x, z);
   }
 
   function updateTraveler(dt, time) {
@@ -503,12 +584,30 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     if (desired.size === 0 && velocity.lengthSq() < .003) velocity.set(0, 0, 0);
     const previousX = traveler.position.x;
     const previousZ = traveler.position.z;
-    const steps = Math.ceil(dt / .035);
-    for (let step = 0; step < steps; step++) {
-      const nextX = clamp(traveler.position.x + velocity.x * dt / steps, -WORLD_LIMIT, WORLD_LIMIT);
-      const nextZ = clamp(traveler.position.z + velocity.z * dt / steps, -WORLD_LIMIT, WORLD_LIMIT);
-      if (walkable(nextX, traveler.position.z)) traveler.position.x = nextX;
-      if (walkable(traveler.position.x, nextZ)) traveler.position.z = nextZ;
+    if (generator.active) {
+      if (desired.size) requestGeneratorStop();
+      velocity.set(0, 0, 0);
+      verticalSpeed = 0;
+      airHeight = 0;
+      const { target } = workshop;
+      const span = 1 - Math.exp(-dt * 7.1);
+      if (Math.hypot(target.x - traveler.position.x, target.z - traveler.position.z) <= .025) {
+        traveler.position.x = target.x;
+        traveler.position.z = target.z;
+      } else {
+        traveler.position.x = THREE.MathUtils.lerp(traveler.position.x, target.x, span);
+        traveler.position.z = THREE.MathUtils.lerp(traveler.position.z, target.z, span);
+      }
+      const turn = angleDelta(target.heading, heading);
+      heading += Math.abs(turn) <= .015 ? turn : turn * span;
+    } else {
+      const steps = Math.ceil(dt / .035);
+      for (let step = 0; step < steps; step++) {
+        const nextX = clamp(traveler.position.x + velocity.x * dt / steps, -WORLD_LIMIT, WORLD_LIMIT);
+        const nextZ = clamp(traveler.position.z + velocity.z * dt / steps, -WORLD_LIMIT, WORLD_LIMIT);
+        if (walkable(nextX, traveler.position.z)) traveler.position.x = nextX;
+        if (walkable(traveler.position.x, nextZ)) traveler.position.z = nextZ;
+      }
     }
     airHeight = Math.max(0, airHeight + verticalSpeed * dt);
     verticalSpeed = airHeight > 0 ? verticalSpeed - 21 * dt : 0;
@@ -519,7 +618,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     if (velocity.lengthSq() > .1) heading += angleDelta(Math.atan2(velocity.x, velocity.z), heading) * (1 - Math.exp(-dt * 14));
     traveler.rotation.y = heading;
     const moving = traveler.position.x !== previousX || traveler.position.z !== previousZ;
-    const stride = moving && !graphics.reducedMotion ? Math.sin(time * 11) * .57 : 0;
+    const stride = moving && !graphics.reducedMotion && !generator.active ? Math.sin(time * 11) * .57 : 0;
     traveler.userData.legs.forEach((leg, index) => { leg.rotation.x = index === 0 ? stride : -stride; });
     if (moving && performance.now() - notifyAt >= 90) {
       notifyAt = performance.now();
@@ -544,7 +643,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     if (fallback) entry.target.set(fallback.x, 0, fallback.z);
   }
 
-  function titaniumCrossesCamera(group, scale) {
+  function petCrossesCamera(group, scale) {
     const x = traveler.position.x;
     const y = traveler.position.y + 1.25;
     const z = traveler.position.z;
@@ -562,18 +661,19 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
   }
 
   function placeCompanion(entry, leader, facing, index, giantIndex, dt, time, snap = false, task, occupied) {
-    const titan = entry.variant === 'titanium';
-    const slot = titan ? giantIndex : index;
+    const huge = oversized(entry.variant);
+    const slot = huge ? giantIndex : index;
     const row = Math.floor(slot / 2);
     const pair = slot % 2 ? -1 : 1;
-    const tight = titan && meadow.rebirthCave?.contains(leader);
-    const waiting = tight && meadow.rebirthCave.waitingArea;
-    const side = pair * (titan ? (waiting ? 2.06 : 4.65) + row * .62 : 1.25 * entry.scale + row * .66);
-    const distance = titan ? (waiting ? 1.44 : 3.25) + row * 3.35 : 1.68 * entry.scale + row * 1.35;
+    const tighterSpace = huge && meadow.rebirthCave?.contains(leader);
+    const waiting = tighterSpace && meadow.rebirthCave.waitingArea;
+    const sizeOffset = Math.max(0, entry.scale - 3);
+    const side = pair * (huge ? (waiting ? 2.06 : 4.65) + sizeOffset + row * .62 : 1.25 * entry.scale + row * .66);
+    const distance = huge ? (waiting ? 1.44 : 3.25) + sizeOffset + row * 3.35 : 1.68 * entry.scale + row * 1.35;
     const anchor = task || waiting || leader;
-    const targetSide = task ? pair * (titan ? 1.8 : .65) : side;
-    const targetDistance = task ? (titan ? 1.3 : .55) : distance;
-    findPetSlot(entry, anchor, waiting && !task ? 0 : titan ? view.yaw : facing, targetSide, targetDistance, occupied);
+    const targetSide = task ? pair * (huge ? 1.8 + sizeOffset : .65) : side;
+    const targetDistance = task ? (huge ? 1.3 + sizeOffset : .55) : distance;
+    findPetSlot(entry, anchor, waiting && !task ? 0 : huge ? view.yaw : facing, targetSide, targetDistance, occupied);
     animatePet(entry, leader, facing, dt, time, snap || entry.entering, Boolean(task));
     entry.entering = false;
   }
@@ -583,51 +683,66 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     let giant = 0;
     const occupied = [];
     for (const [id, entry] of party) {
+      const pose = mine.poses.get(farmOwnerId)?.get(id);
+      if (pose) {
+        placeMiningCompanion(entry, pose, dt, time);
+        continue;
+      }
       const task = harvestTask?.id === id && harvestTask.ends > now ? harvestTask.node : undefined;
       placeCompanion(entry, traveler.position, heading, regular, giant, dt, time, snap, task, occupied);
       occupied.push(entry);
-      if (entry.variant === 'titanium') giant++;
+      if (oversized(entry.variant)) giant++;
       else regular++;
     }
   }
 
-  function animatePet(entry, leader, heading, dt, time, snap, working) {
+  function placeMiningCompanion(entry, pose, dt, time) {
+    entry.target.set(pose.x, 0, pose.z);
+    animatePet(entry, traveler.position, pose.heading || 0, dt, time, false, pose.state === 'attack', pose);
+    entry.entering = false;
+  }
+
+  function animatePet(entry, leader, heading, dt, time, snap, working, pose) {
     const { group, label, variant, shadow } = entry;
-    const titan = variant === 'titanium';
+    const huge = oversized(variant);
     const dx = entry.target.x - group.position.x;
     const dz = entry.target.z - group.position.z;
     const distance = Math.hypot(dx, dz);
-    const response = working ? 5.1 : titan && distance < 7 ? 2.9 : 4.4;
-    const step = snap ? 1 : Math.min(1 - Math.exp(-dt * response), (titan ? 10 : 12) * dt / Math.max(.01, distance));
+    const response = pose ? 9.5 : working ? 5.1 : huge && distance < 7 ? 2.9 : 4.4;
+    const step = snap ? 1 : Math.min(1 - Math.exp(-dt * response), (huge ? 10 : 12) * dt / Math.max(.01, distance));
     const atX = group.position.x + dx * step;
     const atZ = group.position.z + dz * step;
     const margin = entry.scale * .30;
-    if (snap || walkable(atX, group.position.z, margin)) group.position.x = atX;
-    if (snap || walkable(group.position.x, atZ, margin)) group.position.z = atZ;
+    if (snap || pose || walkable(atX, group.position.z, margin)) group.position.x = atX;
+    if (snap || pose || walkable(group.position.x, atZ, margin)) group.position.z = atZ;
     const gapX = group.position.x - leader.x;
     const gapZ = group.position.z - leader.z;
     const gap = Math.hypot(gapX, gapZ);
     const clearance = .61 + .61 * entry.scale;
-    if (!snap && gap > .01 && gap < clearance) {
+    if (!snap && !pose && gap > .01 && gap < clearance) {
       const span = Math.min(clearance - gap, dt * 5) / gap;
       const x = clamp(group.position.x + gapX * span, -WORLD_LIMIT, WORLD_LIMIT);
       const z = clamp(group.position.z + gapZ * span, -WORLD_LIMIT, WORLD_LIMIT);
       if (walkable(x, z, margin)) group.position.set(x, group.position.y, z);
     }
     const animating = !graphics.reducedMotion && (variant === 'normal' || graphics.rareAnimations);
-    const cadence = distance > .5 ? (titan ? 4.15 : 7.3) : (titan ? 1.55 : 2.6);
+    const cadence = distance > .5 ? (huge ? 4.15 : 7.3) : (huge ? 1.55 : 2.6);
     const stride = animating ? Math.sin(time * cadence + entry.target.x * .31) : 0;
-    const hop = Math.abs(stride) * (titan ? .095 : .19);
+    const hop = Math.abs(stride) * (huge ? .095 : .19);
     const floor = groundHeight(group.position.x, group.position.z);
-    group.position.y = hop + floor;
-    group.rotation.z = titan ? stride * .023 : 0;
+    const sinceStrike = time - (entry.strikeTime ?? -1000) / 1000;
+    const strike = pose && animating && sinceStrike >= 0 && sinceStrike < .31
+      ? Math.sin(Math.PI * sinceStrike / .31) : 0;
+    group.position.y = hop + floor + strike * (huge ? .11 : .27);
+    group.rotation.x = strike * (huge ? .12 : .24);
+    group.rotation.z = huge ? stride * .023 : 0;
     shadow.position.set(group.position.x, .09 + floor, group.position.z);
-    group.visible = !titan || !titaniumCrossesCamera(group, entry.scale);
+    group.visible = (!pose || gap < 50) && (!huge || !petCrossesCamera(group, entry.scale));
     shadow.visible = group.visible && !renderer.shadowMap.enabled;
     if (snap) group.rotation.y = heading;
     else {
-      const facing = distance > .35 ? Math.atan2(dx, dz) : heading;
-      group.rotation.y += angleDelta(facing, group.rotation.y) * (1 - Math.exp(-dt * (titan ? 3 : 6.5)));
+      const facing = !working && distance > .35 ? Math.atan2(dx, dz) : heading;
+      group.rotation.y += angleDelta(facing, group.rotation.y) * (1 - Math.exp(-dt * (huge ? 3 : 6.5)));
     }
     if (group.userData.aura) {
       group.userData.aura.visible = graphics.petGlow && (variant !== 'shiny' || graphics.shinyEffects);
@@ -640,7 +755,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
   function draw(now) {
     if (destroyed) return;
     frame = requestAnimationFrame(draw);
-    const active = held.size || touch.size || pointer || airHeight > 0 || particles.length || rewards.size || velocity.lengthSq() > .02;
+    const active = held.size || touch.size || pointer || airHeight > 0 || particles.length || rewards.size || mine.active || generator.active || velocity.lengthSq() > .02;
     const minimumInterval = graphics.quality === 'low' ? (active ? 30 : 50) : (active ? 0 : 28);
     if (prior && now - prior < minimumInterval) return;
     const dt = prior ? clamp((now - prior) / 1000, 0, .14) : .016;
@@ -648,6 +763,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     if (document.hidden || viewportWidth <= 1 || viewportHeight <= 1) return;
     const time = now / 1000;
     updateTraveler(dt, time);
+    workshop.update(dt, { ...generator, reducedMotion: graphics.reducedMotion }, traveler);
     meadow.rebirthCave?.update(traveler.position, { reducedMotion: graphics.reducedMotion });
     animateRewards(dt, time);
 
@@ -685,7 +801,9 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     camera.lookAt(cameraFocus);
     camera.updateMatrixWorld();
 
+    mine.animate(dt, time, traveler.position, graphics);
     placeParty(dt, time, now);
+    for (const entry of farmParty.values()) placeMiningCompanion(entry, entry.pose, dt, time);
     for (const entry of otherPlayers.values()) {
       const walking = entry.group.position.distanceToSquared(entry.target) > .009;
       entry.group.position.lerp(entry.target, 1 - Math.exp(-dt * 12));
@@ -738,9 +856,10 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     lifetime.abort();
     observer.disconnect();
     cancelAnimationFrame(frame);
-    for (const entry of [...party.values(), ...otherPlayers.values()]) entry.label?.remove();
+    for (const entry of [...party.values(), ...otherPlayers.values(), ...farmParty.values()]) entry.label?.remove();
     effect?.label.remove();
     for (const entry of otherPlayers.values()) entry.companion?.label.remove();
+    mine.destroy();
     disposeScene(scene, kit);
     rewardTrail.dispose();
     renderer.dispose();
