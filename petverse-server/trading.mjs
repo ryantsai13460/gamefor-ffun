@@ -55,7 +55,9 @@ export function createTrading({ players, send, exchange, announceProgress, publi
       const reject = (code, message) => refuse(player, code, message, requestId);
       if (step === 'invite') {
         const other = players.get(command.peerId);
-        if (!other || other === player) return reject('player_unavailable', 'Choose another explorer in the meadow.');
+        if (!other || other === player || other.room !== player.room) {
+          return reject('player_unavailable', 'Choose another explorer in your private meadow.');
+        }
         if (byPlayer.has(player.id) || byPlayer.has(other.id)) return reject('trade_busy', 'An explorer is already trading.');
         if (now < (player.nextTradeAt || 0)) return reject('trade_cooldown', 'Wait a moment before sending another invite.');
         const trade = {
@@ -122,7 +124,7 @@ export function createTrading({ players, send, exchange, announceProgress, publi
       }
       announceProgress(trade.first, event);
       announceProgress(trade.second, event);
-      publicChange();
+      publicChange(trade.first);
       close(trade, 'Trade complete.');
       return acknowledge(player, requestId);
     },

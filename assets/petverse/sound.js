@@ -11,6 +11,7 @@ export const audioDefaults = Object.freeze({
   enableEffects: true,
   enableHatch: true,
   enableRare: true,
+  enableTitanium: true,
   enableUI: true,
   muteBackground: true
 });
@@ -40,7 +41,8 @@ const cueNotes = {
   ui: { channel: "ui", gap: .05, notes: [74], length: .10, gain: .12 },
   gather: { channel: "effects", gap: .065, notes: [69, 74], length: .21, gain: .135 },
   hatch: { channel: "hatch", gap: .095, notes: [62, 69, 74, 78], length: .38, gain: .14 },
-  rare: { channel: "rare", gap: .085, notes: [66, 73, 78, 81, 86], length: .49, gain: .16 }
+  rare: { channel: "rare", gap: .085, notes: [66, 73, 78, 81, 86], length: .49, gain: .16 },
+  titanium: { channel: "rare", gap: .10, notes: [43, 55, 62, 74, 79], length: .76, gain: .16 }
 };
 
 const midiFrequency = pitch => 440 * 2 ** ((pitch - 69) / 12);
@@ -229,7 +231,7 @@ export function createSound() {
 
   function play(cue) {
     const effect = Object.hasOwn(cueNotes, cue) && cueNotes[cue];
-    if (!effect || disposed || context?.state !== "running" || mutedInBackground() ||
+    if (!effect || (cue === "titanium" && !settings.enableTitanium) || disposed || context?.state !== "running" || mutedInBackground() ||
         settings.master === 0 || !channelEnabled(effect.channel)) return;
     const now = context.currentTime;
     if (now - (lastCue.get(cue) ?? -10) < .10) return;
@@ -237,7 +239,7 @@ export function createSound() {
     effect.notes.forEach((pitch, index) => {
       const time = now + .008 + index * effect.gap;
       tone(buses[effect.channel], pitch, time, effect.length, effect.gain);
-      if (cue === "rare") tone(buses.rare, pitch + 12, time, .24, .028);
+      if (cue === "rare" || cue === "titanium") tone(buses.rare, pitch + 12, time, .24, .028);
     });
   }
 
