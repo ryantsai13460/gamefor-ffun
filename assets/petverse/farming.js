@@ -1,9 +1,12 @@
+import { EXPEDITION_BIOMES, EXPEDITION_LAND, isExpeditionLand, WORLD_EXTENT } from './biomes.js?v=20261123-4';
+
 const field = (id, label, x, z, radius, level, rebirths) => Object.freeze({ id, label, x, z, radius, level, rebirths });
 
 export const FARM_AREAS = Object.freeze([
   field('sunstep', 'Sunstep Field', 0, 16, 9, 1, 0),
   field('fernwild', 'Fernwild Grove', 17, -8, 8, 2, 0),
-  field('ember-verge', 'Ember Verge', -2, -20, 8, 3, 1)
+  field('ember-verge', 'Ember Verge', -2, -20, 8, 3, 1),
+  ...EXPEDITION_BIOMES
 ]);
 
 const priority = (id, label) => Object.freeze({ id, label });
@@ -24,7 +27,11 @@ export const CRYSTAL_FAMILIES = Object.freeze([
   family('moss-opal', 'Moss Opal', '#62b685', '#ccffd0', 26, 17, 2, 6_800, .83, 2),
   family('honey-spire', 'Honeyspire', '#c98852', '#ffd17d', 43, 27, 2, 8_000, .99, 3),
   family('ember-crown', 'Ember Crown', '#b4666b', '#ffbb86', 70, 41, 3, 9_600, 1.12, 3),
-  family('star-quartz', 'Star Quartz', '#9774bd', '#e7ceff', 112, 65, 4, 11_200, 1.24, 4)
+  family('star-quartz', 'Star Quartz', '#9774bd', '#e7ceff', 112, 65, 4, 11_200, 1.24, 4),
+  family('tide-glass', 'Tideglass', '#147f8a', '#a9f2e3', 57, 43, 3, 8_800, .96, 3),
+  family('pearl-stone', 'Pearlstone', '#a774aa', '#fff0c8', 104, 79, 5, 10_400, 1.15, 4),
+  family('rime-heart', 'Rime Heart', '#437cb3', '#c5f5ff', 155, 110, 6, 11_800, 1.17, 4),
+  family('cinder-geode', 'Cinder Geode', '#73375b', '#ffae5b', 236, 174, 8, 13_200, 1.29, 5)
 ]);
 
 const sitesByArea = {
@@ -42,6 +49,21 @@ const sitesByArea = {
     [-6.3, -19, 'ember-crown'], [0, -22.7, 'ember-crown'], [3.2, -20.7, 'honey-spire'],
     [-5.1, -24.9, 'star-quartz'], [.4, -16.5, 'honey-spire'], [-3, -15.5, 'honey-spire'],
     [3.6, -24, 'star-quartz']
+  ],
+  glasswater: [
+    [39, 8.6, 'tide-glass'], [44.3, 14.9, 'pearl-stone'], [47, 8.6, 'tide-glass'],
+    [40, 15.1, 'tide-glass'], [47.3, 15.6, 'pearl-stone'], [36.8, 13.8, 'tide-glass'],
+    [49.1, 11.9, 'pearl-stone']
+  ],
+  frostpine: [
+    [.2, -38.2, 'rime-heart'], [5.8, -38.6, 'star-quartz'], [0, -44.6, 'rime-heart'],
+    [5.9, -46.7, 'rime-heart'], [-3.4, -42, 'star-quartz'], [-.8, -48, 'rime-heart'],
+    [7.4, -48.4, 'rime-heart']
+  ],
+  cinderbloom: [
+    [-38.7, 2.2, 'cinder-geode'], [-44.7, 8.1, 'cinder-geode'], [-47.8, 2.2, 'ember-crown'],
+    [-41.5, 10.2, 'cinder-geode'], [-48, 9.2, 'cinder-geode'], [-36.8, 8.5, 'ember-crown'],
+    [-50.6, 4.9, 'cinder-geode']
   ]
 };
 
@@ -64,21 +86,29 @@ const CAVE_OBSTACLES = [
 export const FARM_OBSTACLES = Object.freeze([
   [-12.2, -6, 2.4], [-3.08, -2.75, .82], [3.08, -2.75, .82],
   [7.06, 13.51, .34], [10.41, 12.52, .34], [8.8, 12.99, .63],
+  [51.2, 5.2, .82], [51.2, 9.6, .82], [3.2, -52, 1.75], [-49, -3.1, 2.15],
+  ...EXPEDITION_BIOMES.flatMap(area => {
+    const { entry, egg } = area;
+    const angle = Math.atan2(area.z - entry.z, area.x - entry.x);
+    return [[egg.x, egg.z, .8], ...[-1, 1].map(side =>
+      [entry.x - Math.sin(angle) * side * 2.1, entry.z + Math.cos(angle) * side * 2.1, .52])];
+  }),
   ...WORKSHOP_OBSTACLES, ...CAVE_OBSTACLES
 ].map(([x, z, radius]) => Object.freeze({ x, z, radius })));
 
-const WORLD_SPAN = 27;
+const WORLD_SPAN = WORLD_EXTENT;
 const FOLLOW_RADIUS = 6.7;
 const MAX_TICK_SECONDS = .25;
 const GRID_SIDE = 2 * WORLD_SPAN + 1;
 const GRID_SIZE = GRID_SIDE ** 2;
-const GRID_NEIGHBORS = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [-1, -1], [1, -1]];
+// Grid offsets carry the reverse link index so a cached edge can serve both directions.
+const GRID_NEIGHBORS = [[1, 0, 2], [0, 1, 3], [-1, 0, 0], [0, -1, 1], [1, 1, 6], [-1, 1, 7], [-1, -1, 4], [1, -1, 5]];
 const ROUTES_PER_TICK = 4;
 const ROUTE_CACHE_SIZE = 96;
 const ANGLE_STEP = Math.PI / 6;
 const defaultStats = () => ({ damage: 4, attackRate: 1, moveSpeed: 4 });
 const gap = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
-const bounded = ({ x, z }) => Math.abs(x) <= WORLD_SPAN && Math.abs(z) <= WORLD_SPAN;
+const bounded = ({ x, z }) => isExpeditionLand(x, z);
 const rounded = value => Math.round(value * 100) / 100;
 
 export function crystalAtId(id) {
@@ -111,6 +141,32 @@ function gridPoint(index) {
   return { x: index % GRID_SIDE - WORLD_SPAN, z: Math.floor(index / GRID_SIDE) - WORLD_SPAN };
 }
 
+function segmentOnLand(from, to, dx, dz, lengthSquared) {
+  const intervals = [];
+  for (const land of EXPEDITION_LAND) {
+    const x = from.x - land.x;
+    const z = from.z - land.z;
+    const radiusSquared = land.radius ** 2;
+    if (x ** 2 + z ** 2 <= radiusSquared && (to.x - land.x) ** 2 + (to.z - land.z) ** 2 <= radiusSquared) return true;
+    if (!lengthSquared) continue;
+    const center = -(x * dx + z * dz) / lengthSquared;
+    const distanceSquared = (x + dx * center) ** 2 + (z + dz * center) ** 2;
+    if (distanceSquared > radiusSquared) continue;
+    const reach = Math.sqrt((radiusSquared - distanceSquared) / lengthSquared);
+    if (center + reach >= 0 && center - reach <= 1) intervals.push([center - reach, center + reach]);
+  }
+
+  // Each interval is a section of the route inside one land circle. Gaps are water.
+  intervals.sort(([left], [right]) => left - right);
+  let covered = 0;
+  for (const [start, end] of intervals) {
+    if (start > covered + 1e-8) return false;
+    covered = Math.max(covered, end);
+    if (covered >= 1 - 1e-8) return true;
+  }
+  return false;
+}
+
 function navigator(obstacles) {
   const grids = new Map();
 
@@ -119,6 +175,7 @@ function navigator(obstacles) {
     const dx = to.x - from.x;
     const dz = to.z - from.z;
     const lengthSquared = dx * dx + dz * dz;
+    if (!segmentOnLand(from, to, dx, dz, lengthSquared)) return false;
     return obstacles.every(block => {
       const bx = block.x - from.x;
       const bz = block.z - from.z;
@@ -133,7 +190,8 @@ function navigator(obstacles) {
       const open = new Uint8Array(GRID_SIZE);
       for (let index = 0; index < GRID_SIZE; index++) {
         const point = gridPoint(index);
-        open[index] = Number(segmentOpen(point, point, margin));
+        open[index] = Number(bounded(point) && obstacles.every(block =>
+          (block.x - point.x) ** 2 + (block.z - point.z) ** 2 >= (block.radius + margin) ** 2));
       }
       grids.set(margin, { open, links: new Int16Array(GRID_SIZE).fill(-1), paths: new Map() });
     }
@@ -169,9 +227,12 @@ function navigator(obstacles) {
     const point = gridPoint(index);
     let links = 0;
     for (let bit = 0; bit < GRID_NEIGHBORS.length; bit++) {
-      const [dx, dz] = GRID_NEIGHBORS[bit];
+      const [dx, dz, opposite] = GRID_NEIGHBORS[bit];
       const next = { x: point.x + dx, z: point.z + dz };
-      if (bounded(next) && grid.open[index + dx + dz * GRID_SIDE] && segmentOpen(point, next, margin)) links |= 1 << bit;
+      const destination = index + dx + dz * GRID_SIDE;
+      if (Math.max(Math.abs(next.x), Math.abs(next.z)) > WORLD_SPAN || !grid.open[destination]) continue;
+      const reverse = grid.links[destination];
+      if (reverse >= 0 ? reverse & (1 << opposite) : segmentOpen(point, next, margin)) links |= 1 << bit;
     }
     return grid.links[index] = links;
   }

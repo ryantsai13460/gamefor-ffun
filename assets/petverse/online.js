@@ -1,3 +1,5 @@
+import { WORLD_EXTENT } from "./biomes.js?v=20261123-4";
+
 const sessionPath = "/v1/petverse";
 const tokenKey = "gamefor-ffun-petverse-accounts-v1";
 const tokenPattern = /^[A-Za-z0-9_-]{43}$/;
@@ -11,7 +13,7 @@ const tradeStates = new Set(["invited", "open", "closed"]);
 const roomSteps = new Set(["regenerate", "close"]);
 const roomCodePattern = /^PET-[0-9A-F]{10}$/;
 const metricPattern = /^[a-z][a-zA-Z0-9-]{0,47}$/;
-const positionActions = new Set(["gather", "collect", "rebirth", "assign-farm-here", "generatorStart", "generatorClaim"]);
+const positionActions = new Set(["gather", "collect", "hatch", "rebirth", "assign-farm-here", "generatorStart", "generatorClaim"]);
 const worldIdentifier = /^[A-Za-z0-9_-]{1,64}$/;
 const farmEventTypes = new Set(["damage", "break", "respawn"]);
 const farmPetStates = new Set(["travel", "attack", "wait"]);
@@ -79,7 +81,7 @@ function isProgress(value) {
 }
 
 function readPosition(value) {
-  if (!value || !Number.isFinite(value.x) || !Number.isFinite(value.z)) return null;
+  if (!farmPosition(value)) return null;
   return { x: value.x, z: value.z, heading: Number.isFinite(value.heading) ? value.heading : 0 };
 }
 
@@ -146,7 +148,7 @@ function farmId(value) {
 }
 
 function farmPosition(value) {
-  return Number.isFinite(value?.x) && Number.isFinite(value.z) && Math.abs(value.x) <= 64 && Math.abs(value.z) <= 64;
+  return Number.isFinite(value?.x) && Number.isFinite(value.z) && Math.abs(value.x) <= WORLD_EXTENT && Math.abs(value.z) <= WORLD_EXTENT;
 }
 
 function farmPoints(value) {
@@ -252,7 +254,11 @@ export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, o
     if (active !== session || !session.connected || session.pending || !session.queue.length) return;
     const request = session.queue.shift();
     session.pending = request;
-    if (session.nextMove && positionActions.has(request.message.action?.type)) {
+    if (request.message.action?.type === "expedition-travel") {
+      clearTimeout(session.moveTimer);
+      session.moveTimer = undefined;
+      session.nextMove = undefined;
+    } else if (session.nextMove && positionActions.has(request.message.action?.type)) {
       clearTimeout(session.moveTimer);
       flushMove(session);
     }
@@ -349,7 +355,17 @@ export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, o
     }
 
     let result;
-    if (message.type === "result") result = { progress: message.progress, event: message.event };
+    if (message.type === "result") {
+      const event = message.event;
+      if (event.type === "expedition-travel") {
+        const position = readPosition(event.position);
+        if (!position || request.message.action?.type !== event.type || request.message.action.areaId !== event.areaId) {
+          request.reject(clientError("The expedition destination could not be read.", "protocol_error"));
+          return protocolError(session);
+        }
+        result = { progress: message.progress, event: { type: event.type, areaId: event.areaId, position } };
+      } else result = { progress: message.progress, event };
+    }
     if (message.type === "leaderboard-result") {
       result = readLeaderboard(message, request.message.metric);
       if (!result) {
@@ -456,7 +472,7 @@ export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, o
 
   function move(value) {
     const session = active;
-    if (!session?.connected) return;
+    if (!session?.connected || session.pending?.message.action?.type === "expedition-travel") return;
     const position = readPosition(value);
     if (!position) return;
     session.nextMove = position;

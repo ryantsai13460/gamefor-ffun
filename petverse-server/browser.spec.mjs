@@ -2,8 +2,10 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import { EXPEDITION_BIOMES } from '../assets/petverse/biomes.js';
 import { preferencesKey } from '../assets/petverse/preferences.js';
 import { createPetverseServer } from './server.mjs';
+import { openStore } from './store.mjs';
 
 const route = '/#play/petverse-online?start=1';
 const gameFrame = page => page.frameLocator('iframe[title="Petverse Online"]');
@@ -175,5 +177,56 @@ test('two real players share a farming field, trade, and restore a saved guest a
     await expect(first.locator('.pv-pet-card')).toHaveCount(2);
   } finally {
     await Promise.all(sessions.map(session => session.close()));
+  }
+});
+
+test('two room clients see an authorized coastal expedition and a locked guest route', async ({ browser }) => {
+  const coast = EXPEDITION_BIOMES.find(biome => biome.id === 'glasswater');
+  const store = openStore(join(folder, 'profiles.sqlite'), 1000);
+  let token;
+  try {
+    const profile = store.create();
+    token = profile.token;
+    store.record(profile, { ...profile.progress, xp: 12 * coast.level * (coast.level - 1) },
+      'coast-expedition-fixture', { type: 'test-fixture' });
+  } finally {
+    store.close();
+  }
+  const contexts = await Promise.all([0, 1].map(() => browser.newContext({ baseURL, viewport: { width: 840, height: 710 } })));
+  try {
+    const [hostPage, guestPage] = await Promise.all(contexts.map(context => context.newPage()));
+    const hostMessage = watchServer(hostPage);
+    const guestMessage = watchServer(guestPage);
+    await Promise.all([hostPage, guestPage].map((page, index) => page.addInitScript(({ prefsKey, token, endpoint }) => {
+      if (!location.pathname.endsWith('/petverse/index.html')) return;
+      localStorage.setItem(prefsKey, JSON.stringify({ graphics: { quality: 'low', particles: 'off', reducedMotion: true } }));
+      if (token) localStorage.setItem('gamefor-ffun-petverse-accounts-v1', JSON.stringify([[endpoint, token]]));
+    }, { prefsKey: preferencesKey, token: index === 0 ? token : undefined, endpoint })));
+    await Promise.all([hostPage, guestPage].map(page => page.route('https://**/*', request => request.abort())));
+    await Promise.all([hostPage, guestPage].map(page => page.goto(route)));
+    const [host, guest] = [hostPage, guestPage].map(gameFrame);
+    const code = await createRoom(host);
+    await openPrivateMenu(guest, 'join');
+    await enterCode(guest, code);
+    await expect(connection(guest)).toHaveAttribute('data-state', 'online', { timeout: 15_000 });
+    const hostId = hostMessage('welcome').self.id;
+    const explore = player => activate(control(player.locator('.pv-nav'), 'Explore'));
+    await Promise.all([host, guest].map(explore));
+    await expect(control(guest, 'Travel to ' + coast.label)).toBeDisabled();
+    await expect(control(host, 'Travel to Frostpine Reach')).toBeDisabled();
+    await activate(control(host, 'Travel to ' + coast.label));
+    await expect(host.locator('.pv-world-label')).toHaveText(coast.label);
+    await expect.poll(() => hostMessage('result:expedition-travel')?.event.position).toEqual(coast.arrival);
+    await expect.poll(() => guestMessage('peers')?.peers.find(peer => peer.id === hostId)?.x).toBe(coast.arrival.x);
+    await expect.poll(() => host.locator('[data-crystal-id^="glasswater-"] meter').evaluateAll(meters =>
+      meters.some(meter => !meter.parentElement.hidden && meter.offsetWidth > 0 && meter.value > 0 && meter.value < meter.max)),
+    { timeout: 20_000 }).toBe(true);
+    await activate(control(host, 'Play Solo'));
+    await expect(connection(host)).toHaveAttribute('data-state', 'solo');
+    await expect(host.locator('.pv-world-label')).toHaveText('Sunstep Meadow');
+    await expect.poll(() => guestMessage('peers')?.peers.some(peer => peer.id === hostId)).toBe(false);
+    await expect(guest.locator('.pv-world-label')).toHaveText('Sunstep Meadow');
+  } finally {
+    await Promise.all(contexts.map(context => context.close()));
   }
 });

@@ -6,7 +6,8 @@ import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { WebSocket, WebSocketServer } from 'ws';
 import { applyAction, awardCrystalBreak, collectEligibleDrops, collectionMetrics, petCombatStats,
-  SPAWN, VARIANTS, WORLD_LIMIT } from '../assets/petverse/model.js';
+  SPAWN, VARIANTS } from '../assets/petverse/model.js';
+import { expeditionDestination, EXPEDITION_BIOMES, mayEnterExpeditionBiome } from '../assets/petverse/biomes.js';
 import { createFarmingWorld } from '../assets/petverse/farming.js';
 import { advanceGenerator, canOperateGenerator, GENERATOR_UPGRADES, markGeneratorStart } from '../assets/petverse/generator.js';
 import { openStore } from './store.mjs';
@@ -17,9 +18,11 @@ const endpoint = '/v1/petverse';
 const loopback = '127.0.0.1';
 const speedLimit = 7.25;
 const moveBurst = 2;
+const travelCooldownMs = 1100;
 const farmInterval = 100;
 const generatorInterval = 500;
 const generatorUpgradeIds = new Set(GENERATOR_UPGRADES.map(upgrade => upgrade.id));
+const expeditionAreas = new Set(['meadow', ...EXPEDITION_BIOMES.map(biome => biome.id)]);
 const requestPattern = /^[A-Za-z0-9_-]{1,64}$/;
 const tokenPattern = /^[A-Za-z0-9_-]{43}$/;
 const idPattern = /^[A-Za-z0-9_-]{1,48}$/;
@@ -78,6 +81,8 @@ function cleanAction(action) {
       return validId(action.nodeId) ? { type, nodeId: action.nodeId, mode: mode === 'auto' ? 'auto' : 'manual' } : null;
     case 'assign-farm-here':
       return { type };
+    case 'expedition-travel':
+      return validId(action.areaId) ? { type, areaId: action.areaId } : null;
     case 'farm-settings': {
       const { settings } = action;
       if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
@@ -241,9 +246,40 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
         checkpointCrank(player, now, true);
         player.generatorActive = false;
       }
-      player.runtimeReceipts.set(requestId, event);
-      if (player.runtimeReceipts.size > 32) player.runtimeReceipts.delete(player.runtimeReceipts.keys().next().value);
+      rememberSessionAction(player, requestId, event);
     }
+    return reply(event);
+  }
+
+  function rememberSessionAction(player, requestId, event) {
+    player.runtimeReceipts.set(requestId, event);
+    if (player.runtimeReceipts.size > 32) player.runtimeReceipts.delete(player.runtimeReceipts.keys().next().value);
+  }
+
+  function travel(player, requestId, areaId, now) {
+    const reply = event => send(player, progressMessage(player, event, { type: 'result', requestId }));
+    if (!expeditionAreas.has(areaId)) {
+      return reply({ type: 'error', code: 'expedition-unknown', message: 'Choose a marked expedition destination.' });
+    }
+    const position = expeditionDestination(player.progress, areaId);
+    if (!position) {
+      return reply({ type: 'error', code: 'expedition-locked', message: 'Meet the expedition requirements before traveling here.' });
+    }
+    const retryAt = (player.lastTravelAt ?? 0) + travelCooldownMs;
+    if (now < retryAt) {
+      return reply({ type: 'error', code: 'expedition-cooldown', message: 'Wait a moment before traveling again.', retryAt });
+    }
+    checkpointCrank(player, now, true);
+    if (player.socket.readyState !== WebSocket.OPEN) return;
+    player.generatorActive = false;
+    player.position = position;
+    player.lastMoveAt = now;
+    player.moveBudget = moveBurst;
+    player.lastTravelAt = now;
+    dirtyRooms.add(player.room);
+    const event = { type: 'expedition-travel', areaId, position };
+    rememberSessionAction(player, requestId, event);
+    send(player, { type: 'position', ...position });
     return reply(event);
   }
 
@@ -301,8 +337,8 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
     const elapsed = (now - player.lastMoveAt) / 1000;
     player.lastMoveAt = now;
     player.moveBudget = Math.min(moveBurst, player.moveBudget + Math.max(0, elapsed) * speedLimit);
-    if (distance > player.moveBudget || Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT ||
-        !Number.isFinite(heading) || Math.abs(heading) > 32) {
+    if (distance > player.moveBudget || !Number.isFinite(heading) || Math.abs(heading) > 32 ||
+        !mayEnterExpeditionBiome(player.progress, x, z, player.position)) {
       if (now - player.lastCorrectionAt >= 400) {
         player.lastCorrectionAt = now;
         send(player, { type: 'position', ...player.position });
@@ -321,9 +357,11 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
     if (!command) return error(player, 'invalid_action', 'Choose a supported Petverse action.', requestId);
     const receipt = player.runtimeReceipts.get(requestId) ?? store.receipt(player, requestId);
     if (receipt) {
-      send(player, progressMessage(player, receipt, { type: 'result', requestId, replayed: true }));
+      const event = receipt.type === 'expedition-travel' ? { ...receipt, position: player.position } : receipt;
+      send(player, progressMessage(player, event, { type: 'result', requestId, replayed: true }));
       return;
     }
+    if (command.type === 'expedition-travel') return travel(player, requestId, command.areaId, now);
     if (command.type === 'generatorStart' || command.type === 'generatorStop') {
       return crankAction(player, requestId, command.type, now);
     }

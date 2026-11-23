@@ -15,6 +15,8 @@ Open Petverse in two independent browser profiles. In the first, choose **Create
 
 To try the workshop, earn and purchase the **Remote magnet**, then assign your team to an unlocked field using **Farming**. Walk to the flywheel workshop and press **E** at its crank. Your pets continue attacking in their field while the crank builds energy. The Remote magnet collects their eligible Gold while you are away. Match the frontend and server versions for the shared fields and workshop.
 
+With matching Biome Expedition builds, a private room shares one map and each explorer earns their own access. Open **Explore** to travel once you meet a biome's level and rebirth requirements. The server checks the gates, assigns the landing spot, and validates proximity before a regional egg station hatches a pet. Travel positions last for the current session. Reconnecting starts you at Sunstep Meadow with your saved progress.
+
 Keep the browser profiles separate during the test. An online explorer can occupy one session at a time. The database stores a hash of the browser's resume token. Retain the browser profile and database to recover the save. A server restart closes the rooms and keeps saved guests. Create a new room and share its new code after a restart.
 
 ## Host an approved pilot
@@ -32,4 +34,4 @@ npm --prefix petverse-server ci
 npm --prefix petverse-server test
 ```
 
-The tests open real loopback connections, follow a shared crystal from damage through respawn, exercise protected Gold collection while cranking, verify invite limits and trade consent, and restart SQLite. From the arcade repository root, run `npx playwright test --config petverse-server/playwright.config.mjs` for the two-browser integration test after installing both packages and Playwright Chromium.
+The tests open real loopback connections, follow a shared crystal from damage through respawn, exercise protected Gold collection while cranking, verify expedition travel, invite limits, and trade consent, and restart SQLite. From the arcade repository root, run `npx playwright test --config petverse-server/playwright.config.mjs` for the two-browser integration checks after installing both packages and Playwright Chromium.

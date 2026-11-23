@@ -6,9 +6,10 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 import { WebSocket } from 'ws';
+import { biomeAt, expeditionDestination, EXPEDITION_BIOMES, mayEnterExpeditionBiome } from '../assets/petverse/biomes.js';
 import { FARM_AREAS } from '../assets/petverse/farming.js';
 import { GENERATOR_SITE } from '../assets/petverse/generator.js';
-import { REBIRTH_ALTAR, SPAWN, rebirthPlan } from '../assets/petverse/model.js';
+import { EGGS, REBIRTH_ALTAR, SPAWN, rebirthPlan } from '../assets/petverse/model.js';
 import { createPetverseServer } from './server.mjs';
 import { createInviteLimiter } from './rooms.mjs';
 import { openStore } from './store.mjs';
@@ -227,6 +228,84 @@ test('synchronizes two real peers and validates movement, proximity, and server-
   assert.equal(hatch.progress.inventory.length, 2);
   await first.close();
   await second.receive(message => message.type === 'peers' && message.peers.length === 0);
+});
+
+test('validates expedition travel, locked terrain, and room synchronization', async context => {
+  const directory = await mkdtemp(join(tmpdir(), 'petverse-expedition-'));
+  const dbPath = join(directory, 'petverse.sqlite');
+  const seed = openStore(dbPath, 10);
+  const profile = seed.create();
+  const biome = EXPEDITION_BIOMES.find(area => area.id === 'glasswater');
+  const egg = EGGS.find(item => item.id === biome.eggId);
+  const unlocked = { ...profile.progress, xp: 12 * biome.level * (biome.level - 1),
+    wallet: { ...profile.progress.wallet, sunbeams: 500 } };
+  seed.record(profile, unlocked, 'earned-expedition-fixture', { type: 'test-fixture' });
+  seed.close();
+
+  const server = createPetverseServer({ clientOrigins: [clientOrigin], dbPath });
+  context.after(async () => { await server.close(); await rm(directory, { recursive: true, force: true }); });
+  const origin = await server.listen();
+  const host = await connect(origin, { token: profile.token });
+  const entered = await host.receive(type('welcome'));
+  const observer = await connect(origin, { mode: 'join', code: entered.room.code });
+  const fresh = await observer.receive(type('welcome'));
+  const observePosition = (client, id, { x, z }) => client.receive(message =>
+    message.type === 'peers' && message.peers.some(peer => peer.id === id && peer.x === x && peer.z === z));
+  const travel = (client, requestId, areaId) => client.action(requestId, { type: 'expedition-travel', areaId });
+
+  assert.equal((await travel(observer, 'locked-coast', biome.id)).event.code, 'expedition-locked');
+  assert.equal((await travel(host, 'unknown-destination', 'ocean')).event.code, 'expedition-unknown');
+  assert.equal((await travel(host, 'locked-summit', 'frostpine')).event.code, 'expedition-locked');
+  const offsiteEgg = await host.action('distant-coast-egg', { type: 'hatch', eggId: egg.id, mode: 'manual', position: biome.egg });
+  assert.equal(offsiteEgg.event.code, 'egg-out-of-range');
+  assert.equal((await host.action('assign-before-travel', { type: 'assign-farm-here' })).progress.farming.area, 'sunstep');
+
+  const approach = biome.entry;
+  await Promise.all([walk(host, SPAWN, GENERATOR_SITE), walk(observer, SPAWN, approach)]);
+  const pastGate = { x: approach.x + 1, z: approach.z };
+  assert.equal(biomeAt(approach), null);
+  assert.equal(biomeAt(pastGate)?.id, biome.id);
+  assert.equal(mayEnterExpeditionBiome(fresh.progress, pastGate.x, pastGate.z, approach), false);
+  assert.equal(mayEnterExpeditionBiome(fresh.progress, pastGate.x, pastGate.z, biome.arrival), true);
+  assert.equal(mayEnterExpeditionBiome(fresh.progress, biome.arrival.x, biome.arrival.z, pastGate), false);
+  observer.send({ type: 'move', ...pastGate, heading: 0 });
+  const corrected = await observer.receive(type('position'));
+  assert.equal(corrected.x, approach.x);
+  assert.equal(corrected.z, approach.z);
+  const backingAway = { x: approach.x - 0.7, z: approach.z };
+  observer.send({ type: 'move', ...backingAway, heading: 0 });
+  await observePosition(host, fresh.self.id, backingAway);
+
+  const crank = await host.action('charge-before-travel', { type: 'generatorStart' });
+  assert.equal(crank.event.type, 'generator-start');
+  await host.receive(message => message.type === 'farm' && message.generator.active);
+  const arrived = await host.action('travel-coast', { type: 'expedition-travel', areaId: biome.id, x: 999, z: 999 });
+  const destination = expeditionDestination(unlocked, biome.id);
+  assert.deepEqual(arrived.event, { type: 'expedition-travel', areaId: biome.id, position: destination });
+  assert.equal(arrived.progress.farming.area, 'sunstep');
+  assert.deepEqual(await host.receive(type('position')), { type: 'position', ...destination });
+  await observePosition(observer, entered.self.id, destination);
+  assert.ok(entered.farm.crystals.some(crystal => crystal.areaId === biome.id && crystal.x > 27));
+  const immediateReturn = await travel(host, 'travel-cooldown', 'meadow');
+  assert.equal(immediateReturn.event.code, 'expedition-cooldown');
+
+  const coastStep = { x: destination.x, z: destination.z + 0.45 };
+  host.send({ type: 'move', ...coastStep, heading: 0.2 });
+  await observePosition(observer, entered.self.id, coastStep);
+  await walk(host, coastStep, biome.egg);
+  const hatched = await host.action('station-coast-egg', { type: 'hatch', eggId: egg.id, mode: 'manual' });
+  assert.equal(hatched.event.type, 'hatch');
+  assert.equal(hatched.event.spent, egg.cost);
+  assert.ok(egg.pool.some(item => item.speciesId === hatched.event.pets[0].speciesId));
+  await delay(Math.max(0, immediateReturn.event.retryAt - Date.now()) + 25);
+  const storedCharge = await host.action('saved-coast-charge', { type: 'generatorSelect', eggId: 'sunmeadow' });
+  assert.equal(storedCharge.progress.generator.energy, arrived.progress.generator.energy);
+  const returned = await travel(host, 'return-to-meadow', 'meadow');
+  assert.deepEqual(returned.event.position, expeditionDestination(unlocked, 'meadow'));
+  await observePosition(observer, entered.self.id, returned.event.position);
+  const replayed = await travel(host, 'travel-coast', biome.id);
+  assert.equal(replayed.replayed, true);
+  assert.deepEqual(replayed.event.position, returned.event.position);
 });
 
 test('broadcasts the same crystal hits, break and respawn to two room members', async context => {

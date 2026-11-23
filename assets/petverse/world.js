@@ -1,10 +1,12 @@
 import * as THREE from './vendor/three/three.module.min.js';
-import { EGGS, GATHER_DISTANCE, magnetStats, NODES, PETS, REBIRTH_ALTAR, SPAWN, VARIANTS, WORLD_LIMIT } from './model.js?v=20261123-3';
-import { createMeadow } from './meadow.js?v=20261123-3';
-import { createModelKit, createPet, createTraveler, petScale } from './models.js?v=20261123-3';
-import { createMineView } from './mine-art.js?v=20261123-3';
-import { createGeneratorWorkshop } from './generator-art.js?v=20261123-3';
-import { canFarmArea } from './farming.js?v=20261123-3';
+import { biomeAt, canEnterBiome, mayEnterExpeditionBiome } from './biomes.js?v=20261123-4';
+import { BIOME_LIGHT } from './expedition-art.js?v=20261123-4';
+import { EGGS, GATHER_DISTANCE, magnetStats, NODES, PETS, REBIRTH_ALTAR, SPAWN, VARIANTS, WORLD_LIMIT } from './model.js?v=20261123-4';
+import { createMeadow } from './meadow.js?v=20261123-4';
+import { createModelKit, createPet, createTraveler, petScale } from './models.js?v=20261123-4';
+import { createMineView } from './mine-art.js?v=20261123-4';
+import { createGeneratorWorkshop } from './generator-art.js?v=20261123-4';
+import { canFarmArea } from './farming.js?v=20261123-4';
 
 const petById = new Map(PETS.map(spec => [spec.id, spec]));
 const variantById = new Map(VARIANTS.map(variant => [variant.id, variant]));
@@ -25,6 +27,7 @@ const particleCount = { off: 0, low: 9, medium: 21, high: 36 };
 const clamp = (number, min, max) => Math.max(min, Math.min(max, number));
 const angleDelta = (next, current) => Math.atan2(Math.sin(next - current), Math.cos(next - current));
 const oversized = variant => variant === 'titanium' || variant === 'giant';
+const meadowLight = { sky: '#78adcf', horizon: '#dceecb', fog: '#c4dfc4', ambient: '#fff2cb', sunlight: '#ffedb9' };
 
 function nameTag(host, text) {
   const label = document.createElement('span');
@@ -56,7 +59,7 @@ function disposeScene(scene, kit) {
 }
 
 /** Mount a real WebGL game scene and return controls for the host interface. */
-export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onReady, onProximity } = {}) {
+export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onReady, onProximity, onBiome } = {}) {
   const lifetime = new AbortController();
   const { signal } = lifetime;
   const canvas = document.createElement('canvas');
@@ -64,8 +67,8 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
   canvas.tabIndex = 0;
   canvas.setAttribute('aria-label', 'Petverse 3D Meadow');
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog('#c4dfc4', 34, 96);
-  const camera = new THREE.PerspectiveCamera(47, 1, .10, 160);
+  scene.fog = new THREE.Fog(meadowLight.fog, 37, 123);
+  const camera = new THREE.PerspectiveCamera(47, 1, .10, 195);
   let renderer;
   try {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'low-power' });
@@ -79,15 +82,15 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
   renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.setClearColor('#bdded2');
-  const skylight = new THREE.HemisphereLight('#fff2cb', '#80a89d', 2.5);
-  const sun = new THREE.DirectionalLight('#ffedb9', 2.15);
+  const skylight = new THREE.HemisphereLight(meadowLight.ambient, '#80a89d', 2.5);
+  const sun = new THREE.DirectionalLight(meadowLight.sunlight, 2.15);
   sun.position.set(-18, 33, 13);
   sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024);
   Object.assign(sun.shadow.camera, { left: -25, right: 25, near: .5, far: 82, top: 25, bottom: -25 });
   sun.shadow.bias = -.0002;
   sun.shadow.normalBias = .025;
-  scene.add(skylight, sun);
+  scene.add(skylight, sun, sun.target);
 
   const kit = createModelKit();
   const meadow = createMeadow(scene, kit, NODES, EGGS);
@@ -127,6 +130,8 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
   sparkles.frustumCulled = false;
   sparkles.visible = false;
   scene.add(sparkles);
+  const atmosphere = Object.fromEntries(Object.entries(meadowLight).map(([key, color]) => [key, new THREE.Color(color)]));
+  let activeBiome;
 
   let graphics = { ...displayOptions };
   const view = { ...cameraStart };
@@ -177,7 +182,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     return { x: traveler.position.x, z: traveler.position.z, heading };
   }
 
-  function setPosition(position) {
+  function setPosition(position, { reorient = false } = {}) {
     if (!Number.isFinite(position?.x) || !Number.isFinite(position?.z)) return;
     const movedFar = Math.hypot(position.x - traveler.position.x, position.z - traveler.position.z) > 3;
     traveler.position.set(clamp(position.x, -WORLD_LIMIT, WORLD_LIMIT), 0, clamp(position.z, -WORLD_LIMIT, WORLD_LIMIT));
@@ -185,6 +190,11 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     velocity.set(0, 0, 0);
     verticalSpeed = 0;
     airHeight = 0;
+    if (reorient) {
+      Object.assign(view, cameraStart);
+      if (biomeAt(position) && Number.isFinite(position.heading)) view.yaw = angleDelta(position.heading - Math.PI, 0);
+      clearInput();
+    }
     if (movedFar) {
       cameraInitialized = false;
       placeParty(0, 0, 0, true);
@@ -211,6 +221,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
 
   function canInteract(target) {
     const distance = Math.hypot(traveler.position.x - target.x, traveler.position.z - target.z);
+    if (target.areaId && !canEnterBiome(progress, target.areaId)) return false;
     if (target.type !== 'gather') return distance <= (target.radius ?? (target.type === 'rebirth' ? REBIRTH_ALTAR.radius : 3.1));
     return distance <= GATHER_DISTANCE && (progress?.nodeReadyAt?.[target.id] || 0) <= Date.now();
   }
@@ -225,6 +236,8 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
 
   function resetCamera() {
     Object.assign(view, cameraStart);
+    const biome = biomeAt(traveler.position);
+    if (biome) view.yaw = angleDelta(biome.arrival.heading - Math.PI, 0);
     cameraInitialized = false;
   }
 
@@ -426,6 +439,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
       for (const [id, field] of meadow.fieldViews) {
         field.open.visible = canFarmArea(progress, id);
         if (field.locked) field.locked.visible = !field.open.visible;
+        if (field.barrier) field.barrier.visible = !field.open.visible;
       }
     }
     if (nextGraphics) {
@@ -563,7 +577,39 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
   }
 
   function walkable(x, z, radius = .25) {
+    if (!mayEnterExpeditionBiome(progress, x, z, traveler.position)) return false;
     return !meadow.obstacles.some(block => Math.hypot(block.x - x, block.z - z) < block.radius + radius);
+  }
+
+  function updateAtmosphere(dt) {
+    const biome = biomeAt(traveler.position);
+    if (biome !== activeBiome) {
+      const previousGate = meadow.fieldViews.get(activeBiome?.id)?.gate;
+      if (previousGate) previousGate.visible = true;
+      activeBiome = biome;
+      const light = BIOME_LIGHT[biome?.id] || meadowLight;
+      for (const key of Object.keys(atmosphere)) atmosphere[key].set(light[key]);
+      const midX = biome?.x || 0;
+      const midZ = biome?.z || 0;
+      sun.position.set(midX - 18, 33, midZ + 13);
+      sun.target.position.set(midX, 0, midZ);
+      onBiome?.(biome);
+    }
+    const mix = graphics.reducedMotion ? 1 : 1 - Math.exp(-dt * 3.2);
+    meadow.sky.zenith.value.lerp(atmosphere.sky, mix);
+    meadow.sky.horizon.value.lerp(atmosphere.horizon, mix);
+    scene.fog.color.lerp(atmosphere.fog, mix);
+    skylight.color.lerp(atmosphere.ambient, mix);
+    sun.color.lerp(atmosphere.sunlight, mix);
+    const gate = meadow.fieldViews.get(biome?.id)?.gate;
+    if (gate) {
+      const rayX = camera.position.x - traveler.position.x;
+      const rayZ = camera.position.z - traveler.position.z;
+      const gateX = gate.position.x - traveler.position.x;
+      const gateZ = gate.position.z - traveler.position.z;
+      const along = (gateX * rayX + gateZ * rayZ) / (rayX ** 2 + rayZ ** 2);
+      gate.visible = !(along > 0 && along < 1 && Math.hypot(gateX - along * rayX, gateZ - along * rayZ) < 2.7);
+    }
   }
 
   function groundHeight(x, z) {
@@ -728,7 +774,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     const animating = !graphics.reducedMotion && (variant === 'normal' || graphics.rareAnimations);
     const cadence = distance > .5 ? (huge ? 4.15 : 7.3) : (huge ? 1.55 : 2.6);
     const stride = animating ? Math.sin(time * cadence + entry.target.x * .31) : 0;
-    const hop = Math.abs(stride) * (huge ? .095 : .19);
+    const hop = Math.abs(stride) * (huge ? .095 : .19) * (group.userData.strideScale ?? 1);
     const floor = groundHeight(group.position.x, group.position.z);
     const sinceStrike = time - (entry.strikeTime ?? -1000) / 1000;
     const strike = pose && animating && sinceStrike >= 0 && sinceStrike < .31
@@ -749,6 +795,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
       if (animating && group.userData.aura.visible) group.userData.aura.rotation.z = time * .74;
     }
     group.userData.wings?.forEach((wing, index) => { wing.rotation.z = animating ? Math.sin(time * 7.2) * .24 * (index ? 1 : -1) : 0; });
+    if (group.userData.tail) group.userData.tail.rotation.y = animating ? Math.sin(time * cadence) * .22 : 0;
     rootPoint(group.position, label, 2.04 * entry.scale, graphics.showPetNames && group.visible);
   }
 
@@ -842,6 +889,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
       }
     }
 
+    updateAtmosphere(dt);
     renderer.render(scene, camera);
     if (!ready) {
       ready = true;

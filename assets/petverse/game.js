@@ -1,12 +1,13 @@
 import { PETS, EGGS, VARIANTS, UPGRADES, GENERATIONS, REBIRTH_ALTAR, achievementStatus, applyAction,
-  awardCrystalBreak, collectEligibleDrops, collectionMetrics, createProgress, fusionOptions, generationStatus,
-  hatchOdds, hatchPlan, magnetStats, petCombatStats, progression, rebirthPlan, restoreProgress } from './model.js?v=20261123-3';
-import { createOnlineClient } from './online.js?v=20261123-3';
-import { defaultPreferences, preferencesKey, readPreferences, readStorage, soloKey, writeStorage } from './preferences.js?v=20261123-3';
-import { createSound } from './sound.js?v=20261123-3';
-import { FARM_AREAS, FARM_PRIORITIES, canFarmArea, createFarmingWorld, farmSettings, farmingAreaAt } from './farming.js?v=20261123-3';
+  awardCrystalBreak, collectEligibleDrops, collectionMetrics, createProgress, expeditionCollections, fusionOptions, generationStatus,
+  hatchOdds, hatchPlan, magnetStats, petCombatStats, progression, rebirthPlan, restoreProgress } from './model.js?v=20261123-4';
+import { createOnlineClient } from './online.js?v=20261123-4';
+import { defaultPreferences, preferencesKey, readPreferences, readStorage, soloKey, writeStorage } from './preferences.js?v=20261123-4';
+import { createSound } from './sound.js?v=20261123-4';
+import { FARM_AREAS, FARM_PRIORITIES, canFarmArea, createFarmingWorld, farmSettings, farmingAreaAt } from './farming.js?v=20261123-4';
 import { advanceGenerator, canOperateGenerator, GENERATOR_UPGRADES, generatorEggCost,
-  generatorPlan, markGeneratorStart } from './generator.js?v=20261123-3';
+  generatorPlan, markGeneratorStart } from './generator.js?v=20261123-4';
+import { biomeAt, canEnterBiome, expeditionDestination, expeditionEggAt, EXPEDITION_BIOMES, MEADOW_ARRIVAL } from './biomes.js?v=20261123-4';
 
 const root = document.getElementById('petverse');
 const scope = new AbortController();
@@ -15,23 +16,25 @@ const sound = createSound();
 const speciesById = new Map(PETS.map(pet => [pet.id, pet]));
 const variantById = new Map(VARIANTS.map(variant => [variant.id, variant]));
 const eggsById = new Map(EGGS.map(egg => [egg.id, egg]));
+const biomesById = new Map(EXPEDITION_BIOMES.map(biome => [biome.id, biome]));
 const currencyNames = { sunbeams: 'Gold', crystals: 'Crystals', ascension: 'Ascension' };
 const number = new Intl.NumberFormat('en');
 const percent = new Intl.NumberFormat('en', { maximumFractionDigits: 3, style: 'percent' });
-const navNames = ['Hatch', 'Pets', 'Farming', 'Generator', 'Upgrades', 'Journal', 'Settings', 'Online'];
+const navNames = ['Explore', 'Hatch', 'Pets', 'Farming', 'Generator', 'Upgrades', 'Journal', 'Settings', 'Online'];
 const rankingMetrics = {
   collectionScore: 'Collection score', uniquePets: 'Unique species', shiny: 'Shiny discoveries', metallic: 'Metallic discoveries',
   gold: 'Gold discoveries', diamond: 'Diamond discoveries', obsidian: 'Obsidian discoveries', titanium: 'Titanium discoveries',
   giant: 'Giant discoveries',
   mythic: 'Mythic discoveries', eggsHatched: 'Eggs hatched', resourcesCollected: 'Resources collected', rebirths: 'Rebirths',
   generation: 'Highest generation', achievementPoints: 'Achievement points', goldEarned: 'Gold earned',
-  crystalsDestroyed: 'Crystals destroyed', specialCrystalsDestroyed: 'Special crystals destroyed'
+  crystalsDestroyed: 'Crystals destroyed', specialCrystalsDestroyed: 'Special crystals destroyed',
+  biomesCompleted: 'Biome collections completed', expeditionBonus: 'Expedition bonus'
 };
 const rarityOrder = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic', 'celestial'];
 const settingGroups = ['General', 'Generation', 'Stop rules', 'Notifications', 'Audio', 'Graphics', 'Inventory', 'Workshop', 'Accessibility'];
 const stopLabels = {
   'new-discovery': 'New species discovered', 'new-variant': 'New variant discovered', 'inventory-full': 'Inventory full',
-  'insufficient-sunbeams': 'More Gold needed'
+  'insufficient-sunbeams': 'More Gold needed', 'egg-out-of-range': 'Return to the regional egg station'
 };
 
 let solo = restoreProgress(readStorage(soloKey)) || createProgress();
@@ -43,9 +46,11 @@ let petView = 'Inventory';
 let query = '';
 let filterVariant = '';
 let filterGeneration = '';
+let filterBiome = '';
 let peers = [];
 let self = null;
 let room = null;
+let soloReturnPosition;
 let roomResources = {};
 let roomMode = 'create';
 let invitation = '';
@@ -90,6 +95,9 @@ let generatorControls;
 let farmingControls;
 let income = [];
 let upgradeView = 'All';
+let visibleBiome;
+let hatchStationInRange;
+let expeditionAccess;
 const expanded = new Set();
 
 function el(tag, className, text) {
@@ -203,7 +211,7 @@ for (const [direction, glyph] of Object.entries(controls)) {
   touch.append(control);
 }
 touch.append(button('Jump', () => world?.jump(), { className: 'pv-button pv-jump' }));
-const interact = button('Explore', () => world?.interact(), { className: 'pv-button pv-primary pv-interact', disabled: true });
+const interact = button('Interact', () => world?.interact(), { className: 'pv-button pv-primary pv-interact', disabled: true });
 const resetCamera = button('Reset camera', () => world?.resetCamera(), { className: 'pv-button pv-reset-camera' });
 const farmHud = el('aside', 'pv-farming-hud');
 const farmHudTitle = el('strong');
@@ -348,6 +356,7 @@ function refreshPanel({ resetScroll = false } = {}) {
   for (const [index, node] of navControls.entries()) node.setAttribute('aria-pressed', String(navNames[index] === screen));
   panel.replaceChildren();
   generatorControls = farmingControls = undefined;
+  if (screen === 'Explore') renderExpedition();
   if (screen === 'Hatch') renderHatch();
   if (screen === 'Pets') renderPets();
   if (screen === 'Farming') renderFarming();
@@ -459,6 +468,8 @@ function reportAction(event, action, { quiet, automatic }) {
     if (prefs.reveal.animations && !prefs.graphics.reducedMotion) world?.showBurst({ kind: 'hatch', variant: event.pet.variant });
     sound.play('rare');
     showFeedback('Fused ' + describePet(event.pet), { pet: event.pet });
+  } else if (event.type === 'expedition-travel') {
+    arriveAtExpedition(event.areaId, event.position);
   } else if (event.type === 'upgrade') {
     sound.play('ui');
     showFeedback((UPGRADES.find(upgrade => upgrade.id === action.id)?.name || 'Upgrade') + ' purchased.');
@@ -545,13 +556,99 @@ function oddsList(records, name, odds) {
   return list;
 }
 
+function unlockRequirement(biome) {
+  return 'Level ' + biome.level + (biome.rebirths ? ' · ' + biome.rebirths + (biome.rebirths === 1 ? ' rebirth' : ' rebirths') : '');
+}
+
+function expeditionAccessKey() {
+  return [worldReady, ...EXPEDITION_BIOMES.map(biome => canEnterBiome(progress, biome.id))].join('/');
+}
+
+function renderExpedition() {
+  expeditionAccess = expeditionAccessKey();
+  const location = biomeAt(world?.getPosition());
+  const area = section('Biome expeditions', 'Travel to an unlocked field to mine new crystals and find its egg station.');
+  const current = el('div', 'pv-expedition-location');
+  current.append(el('span', '', 'Current location'), el('strong', '', location?.label || 'Sunstep Meadow'));
+  if (location) current.append(button('Return to Sunstep Meadow', () => void travelTo('meadow'), { disabled: !worldReady }));
+  area.append(current);
+  const sets = new Map(expeditionCollections(progress).map(collection => [collection.id, collection]));
+  for (const biome of EXPEDITION_BIOMES) {
+    const open = canEnterBiome(progress, biome.id);
+    const egg = eggsById.get(biome.eggId);
+    const card = el('article', 'pv-card pv-expedition-card');
+    card.dataset.theme = biome.theme;
+    const status = el('span', 'pv-expedition-status', location?.id === biome.id ? 'You are here' : open ? 'Open' : unlockRequirement(biome));
+    const heading = el('div', 'pv-expedition-heading');
+    heading.append(el('h3', '', biome.label), status);
+    card.append(heading, el('p', 'pv-summary', biome.description),
+      statLine(egg.name + ' · ' + format(egg.cost) + ' Gold · ' + sets.get(biome.id).discovered + ' / ' + sets.get(biome.id).total + ' species'),
+      button('Travel to ' + biome.label, () => void travelTo(biome.id), { primary: open, disabled: !worldReady || !open || location?.id === biome.id }));
+    area.append(card);
+  }
+  panel.append(area, expeditionScoreSection());
+}
+
+function expeditionScoreSection(showSets = false) {
+  const scores = collectionMetrics(progress);
+  const area = section('Expedition collection');
+  const totals = el('dl', 'pv-workshop-stats');
+  metric(totals, 'Collection score', format(scores.collectionScore));
+  metric(totals, 'Discovery points', format(scores.discoveryPoints));
+  metric(totals, 'Expedition bonus', '+' + format(scores.expeditionBonus));
+  metric(totals, 'Completed biome sets', scores.biomesCompleted + ' / ' + EXPEDITION_BIOMES.length);
+  area.append(totals);
+  if (showSets) {
+    const list = el('div', 'pv-cards');
+    for (const collection of expeditionCollections(progress)) {
+      const card = el('article', 'pv-card');
+      const meter = el('progress', 'pv-progress');
+      meter.value = collection.discovered;
+      meter.max = collection.total;
+      meter.setAttribute('aria-label', collection.label + ' pet collection');
+      card.append(el('h3', '', collection.label), meter, statLine(collection.discovered + ' / ' + collection.total + ' species'),
+        el('p', 'pv-summary', format(collection.points) + ' discovery points · ' + format(collection.bonus) + ' / ' +
+          format(collection.possibleBonus) + ' set bonus'));
+      list.append(card);
+    }
+    area.append(list, el('p', 'pv-summary', 'Each biome awards bonus points at three species and again when you complete its collection.'));
+  }
+  return area;
+}
+
+function arriveAtExpedition(areaId, position) {
+  const label = biomesById.get(areaId)?.label || 'Sunstep Meadow';
+  crankActive = false;
+  stopAuto('Traveled to ' + label);
+  world?.setPosition(position, { reorient: true });
+  updateLocation(biomeAt(position));
+  closeMenu();
+  showFeedback('Arrived at ' + label + '.');
+}
+
+async function travelTo(areaId) {
+  if (!worldReady || busy || connecting || crankPending) return;
+  const destination = expeditionDestination(progress, areaId);
+  if (!destination) {
+    showFeedback('Meet the biome requirements to travel there.', { error: true });
+    return;
+  }
+  if (self) await act({ type: 'expedition-travel', areaId });
+  else {
+    if (crankActive) await setCranking(false);
+    arriveAtExpedition(areaId, destination);
+  }
+}
+
 function renderHatch() {
   const facts = progression(progress);
   const area = section('Egg nursery', 'Send your pets to break crystals, collect the Gold, and hatch stronger companions.');
   const stats = statLine(format(progress.stats.eggsHatched) + ' hatched · ' + progress.discovered.length + '/' + PETS.length + ' discovered · ' + progress.stats.shinies + ' shiny');
   area.append(stats);
   const cards = el('div', 'pv-cards');
-  for (const egg of EGGS) {
+  const selected = eggsById.get(activeEgg);
+  const orderedEggs = selected?.biomeId ? [selected, ...EGGS.filter(egg => egg !== selected)] : EGGS;
+  for (const egg of orderedEggs) {
     const card = el('article', 'pv-card pv-egg-card');
     card.dataset.current = String(egg.id === activeEgg);
     const eggArt = el('span', 'pv-egg-art');
@@ -562,10 +659,18 @@ function renderHatch() {
     const head = el('div', 'pv-card-head');
     head.append(eggArt, name);
     card.append(head, el('p', 'pv-summary', egg.description));
-    if (facts.generation < egg.generation) {
+    const biome = biomesById.get(egg.biomeId);
+    if (biome && !canEnterBiome(progress, biome.id)) {
+      card.append(statLine(biome.label + ' · ' + unlockRequirement(biome)));
+    } else if (facts.generation < egg.generation) {
       card.append(statLine('Unlocks in Generation ' + egg.generation));
     } else if (facts.level < egg.level) {
       card.append(statLine('Unlocks at Level ' + egg.level));
+    } else if (biome && !expeditionEggAt(world?.getPosition(), biome.id)) {
+      card.append(statLine('Hatch at the egg station in ' + biome.label + '.'));
+      if (biomeAt(world?.getPosition())?.id !== biome.id) {
+        card.append(button('Travel to ' + biome.label, () => void travelTo(biome.id), { disabled: !worldReady }));
+      }
     } else {
       const hatch = button('Hatch egg', () => {
         activeEgg = egg.id;
@@ -769,6 +874,9 @@ function renderPets() {
   }), select('Generation', filterGeneration, [['', 'All generations'], ...GENERATIONS.map(item => [String(item.id), item.name])], value => {
     filterGeneration = value;
     refreshCards();
+  }), select('Biome', filterBiome, [['', 'All biomes'], ['meadow', 'Sunstep and Emberdeep'], ...EXPEDITION_BIOMES.map(item => [item.id, item.label])], value => {
+    filterBiome = value;
+    refreshCards();
   }));
   const cards = el('div', 'pv-cards');
   if (petView === 'Inventory') {
@@ -787,12 +895,14 @@ function renderPets() {
       metric(totals, variant.name, found + ' / ' + PETS.length);
     }
     area.append(disclosure('discovery-totals', 'Variant collection totals', totals));
+    area.append(expeditionScoreSection(true));
   }
   area.append(filters, cards);
   panel.append(area);
 
   function matches(species) {
     return (!filterGeneration || String(species.generation) === filterGeneration) &&
+      (!filterBiome || (species.biomeId || 'meadow') === filterBiome) &&
       (species.name + ' ' + species.rarity).toLowerCase().includes(query.trim().toLowerCase());
   }
 
@@ -1530,7 +1640,7 @@ function tickFarming() {
 }
 
 function refreshRewardsPanel() {
-  if (screen === 'Hatch' || screen === 'Upgrades') refreshPanel();
+  if (screen === 'Hatch' || screen === 'Upgrades' || (screen === 'Explore' && expeditionAccess !== expeditionAccessKey())) refreshPanel();
 }
 
 const online = createOnlineClient({
@@ -1593,6 +1703,7 @@ const online = createOnlineClient({
 
 async function joinOnline(newGuest = false) {
   if (connecting || busy) return;
+  const previousPosition = world?.getPosition();
   stopAuto('Connecting to another save');
   void setCranking(false);
   connecting = true;
@@ -1604,6 +1715,7 @@ async function joinOnline(newGuest = false) {
   try {
     const joined = await online.connect(endpoint, { newGuest, mode: roomMode, code: invitation, maxPlayers: Number(roomSize) });
     if (revision !== connectionEpoch) return;
+    soloReturnPosition = previousPosition;
     self = joined.self;
     peers = joined.peers;
     room = joined.room;
@@ -1659,6 +1771,12 @@ function clearOnline() {
   auto = undefined;
   lastReveal = [];
   progress = solo;
+  if (wasOnline) {
+    const position = soloReturnPosition || MEADOW_ARRIVAL;
+    world?.setPosition(position, { reorient: true });
+    updateLocation(biomeAt(position));
+    soloReturnPosition = undefined;
+  }
   if (wasOnline && (!prefs.workshop.keepAssigned || prefs.workshop.recallOnWorldChange) && farmSettings(solo).area) {
     commit(applyAction(solo, { type: 'farm-settings', settings: { area: null } }).progress);
   }
@@ -1677,15 +1795,23 @@ function leaveOnline() {
 function setProximity(target) {
   nearby = target;
   interact.textContent = target?.type === 'gather' ? 'Gather ' + target.label : target?.type === 'generator' ?
-    (crankActive ? 'Press E to Stop Generator' : 'Press E to Operate Generator') : target?.label || 'Explore';
+    (crankActive ? 'Press E to Stop Generator' : 'Press E to Operate Generator') : target?.label || 'Interact';
   interact.disabled = !target;
+}
+
+function updateLocation(biome) {
+  if (visibleBiome === biome?.id) return;
+  visibleBiome = biome?.id;
+  worldLabel.textContent = biome?.label || 'Sunstep Meadow';
+  play.setAttribute('aria-label', 'Explore ' + worldLabel.textContent);
+  if (screen === 'Explore') refreshPanel();
 }
 
 let altarNearby = false;
 
 async function startWorld() {
   try {
-    const { mountWorld } = await import('./world.js?v=20261123-3');
+    const { mountWorld } = await import('./world.js?v=20261123-4');
     if (signal.aborted) return;
     world = mountWorld(terrain, {
       onGather: nodeId => void act({ type: 'gather', nodeId }),
@@ -1709,17 +1835,27 @@ async function startWorld() {
         if (self) online.move(position);
         if (crankActive && !canOperateGenerator(position)) void setCranking(false);
         if (farmingControls || generatorControls) updateActivity();
+        const station = EXPEDITION_BIOMES.find(item => expeditionEggAt(position, item.id));
+        if (station?.id !== hatchStationInRange) {
+          hatchStationInRange = station?.id;
+          const automaticBiome = eggsById.get(auto?.eggId)?.biomeId;
+          if (automaticBiome && automaticBiome !== station?.id) stopAuto(stopLabels['egg-out-of-range']);
+          if (screen === 'Hatch') refreshPanel();
+          else syncAutoPanel();
+        }
         const canReach = isAtAltar(position);
         if (canReach !== altarNearby) {
           altarNearby = canReach;
           if (screen === 'Journal' && journalView === 'Rebirth Cave') refreshPanel();
         }
       },
+      onBiome: updateLocation,
       onProximity: setProximity,
       onReady({ available }) {
         worldReady = available;
         worldNotice.hidden = available;
         worldNotice.textContent = available ? '' : '3D graphics are unavailable on this device.';
+        if (screen === 'Explore') refreshPanel();
       }
     });
     soloFarm = createFarmingWorld({ stats: petCombatStats });

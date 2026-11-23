@@ -1,8 +1,10 @@
 import * as THREE from './vendor/three/three.module.min.js';
-import { createLeaderboardPavilion, createRebirthCave } from './cave.js?v=20261123-3';
-import { CRYSTAL_SITES, FARM_AREAS } from './farming.js?v=20261123-3';
-import { GENERATOR_SITE } from './generator.js?v=20261123-3';
-import { REBIRTH_ALTAR } from './model.js?v=20261123-3';
+import { createLeaderboardPavilion, createRebirthCave } from './cave.js?v=20261123-4';
+import { EXPEDITION_BIOMES } from './biomes.js?v=20261123-4';
+import { createExpeditionTerrain } from './expedition-art.js?v=20261123-4';
+import { CRYSTAL_SITES, FARM_AREAS } from './farming.js?v=20261123-4';
+import { GENERATOR_SITE } from './generator.js?v=20261123-4';
+import { REBIRTH_ALTAR } from './model.js?v=20261123-4';
 
 const TAU = Math.PI * 2;
 
@@ -14,7 +16,7 @@ function seededRandom(seed) {
 }
 
 export function skyBackdrop(scene) {
-  const geometry = new THREE.SphereGeometry(110, 18, 12);
+  const geometry = new THREE.SphereGeometry(160, 20, 12);
   const material = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
@@ -40,13 +42,14 @@ export function skyBackdrop(scene) {
   sky.renderOrder = -20;
   sky.frustumCulled = false;
   scene.add(sky);
+  return material.uniforms;
 }
 
 export function createMeadow(scene, kit, nodes, eggs) {
   const { mesh, paint, geometries } = kit;
   const world = new THREE.Group();
   scene.add(world);
-  skyBackdrop(scene);
+  const sky = skyBackdrop(scene);
   const random = seededRandom(438217);
   const interactables = [];
   const obstacles = [];
@@ -178,6 +181,7 @@ export function createMeadow(scene, kit, nodes, eggs) {
   ];
   FARM_AREAS.forEach((area, index) => {
     const marker = fieldSigns[index];
+    if (!marker) return;
     const sign = groupAt(marker.x, 0, marker.z);
     for (const side of [-1, 1]) {
       mesh(sign, 'beam', '#87958a', side * .55, .09, 0, .23, .18, .23);
@@ -199,6 +203,8 @@ export function createMeadow(scene, kit, nodes, eggs) {
     fieldViews.set(area.id, { open, locked });
     if (locked) open.visible = false;
   });
+  const expedition = createExpeditionTerrain(kit, { groupAt, ground, label, path, batch: batchPlantedMeshes, sites: CRYSTAL_SITES, eggs });
+  for (const [id, view] of expedition.fieldViews) fieldViews.set(id, view);
 
   // A shallow blue reed pond and timber bridge split the eastern trail.
   path([[17, -24], [16, -17], [19, -7], [16, 0], [17, 8], [18, 17], [21, 28]], 5.1, '#79aeb0', .050);
@@ -239,7 +245,8 @@ export function createMeadow(scene, kit, nodes, eggs) {
   batchPlantedMeshes(roost);
 
   const embergeode = eggs.find(egg => egg.id === 'embergeode');
-  eggs.filter(egg => egg !== embergeode).forEach((egg, index) => {
+  const expeditionEggs = new Set(EXPEDITION_BIOMES.map(biome => biome.eggId));
+  eggs.filter(egg => egg !== embergeode && !expeditionEggs.has(egg.id)).forEach((egg, index) => {
     const x = index % 2 === 0 ? -3.08 : 3.08;
     const z = -2.75 - Math.floor(index / 2) * 4.2;
     const plinth = groupAt(x, 0, z);
@@ -289,8 +296,13 @@ export function createMeadow(scene, kit, nodes, eggs) {
   mesh(caveTrail, 'cone', '#c3ba8a', -.68, 1.39, .012, .243, .42, .123, [0, 0, Math.PI / 2]);
   mesh(caveTrail, 'gem', paint('#87bfb2', .16), -.16, 1.38, .104, .135, .14, .046);
 
-  const limits = [...nodes, ...interactables, ...CRYSTAL_SITES, ...fieldSigns, rebirthCave.waitingArea, { x: 0, z: 11 }, { x: 7.4, z: 5.5 }];
+  const originalSites = CRYSTAL_SITES.filter(site => !expedition.fieldViews.has(site.areaId));
+  const limits = [...nodes, ...interactables, ...originalSites, ...fieldSigns, rebirthCave.waitingArea, { x: 0, z: 11 }, { x: 7.4, z: 5.5 }];
+  interactables.push(...expedition.interactables);
+  obstacles.push(...expedition.obstacles);
   const nearGenerator = (x, z) => Math.hypot(x - GENERATOR_SITE.x - .78, z - GENERATOR_SITE.z + 2.15) <= 4.7;
+  const nearExpedition = (x, z) => EXPEDITION_BIOMES.some(biome =>
+    Math.hypot(x - biome.x, z - biome.z) <= 14.5 || Math.hypot(x - biome.entry.x, z - biome.entry.z) <= 4.8);
   for (const node of nodes) {
     const center = groupAt(node.x, 0, node.z);
     const baseColor = { bloom: '#788f5e', stone: '#87948f', crystal: '#9a9c9a' }[node.kind];
@@ -345,11 +357,14 @@ export function createMeadow(scene, kit, nodes, eggs) {
   for (let i = 0; i < 560; i++) {
     const x = (random() - .5) * 74;
     const z = (random() - .5) * 74;
-    if (Math.hypot(x, z) > 37.6 || nearGenerator(x, z) || rebirthCave.occupies(x, z) || limits.some(point => Math.hypot(point.x - x, point.z - z) < 2.15)) continue;
+    if (Math.hypot(x, z) > 37.6 || nearGenerator(x, z) || rebirthCave.occupies(x, z) ||
+        limits.some(point => Math.hypot(point.x - x, point.z - z) < 2.15)) continue;
     if (Math.abs(x - 1) < 2.45 && z > -10 || Math.abs(z - 6) < 2.35 && Math.abs(x) < 16 || Math.abs(x - 18) < 2.8) continue;
     const tint = ['#78a66b', '#9bc486', '#6fa163', '#b3ca79'][i % 4];
     const scale = .10 + random() * .25;
-    decoration('cone', tint, x, .28 + scale * .12, z, .14 + scale, .48 + scale, .17 + scale, random() * TAU);
+    const yaw = random() * TAU;
+    if (nearExpedition(x, z)) continue;
+    decoration('cone', tint, x, .28 + scale * .12, z, .14 + scale, .48 + scale, .17 + scale, yaw);
     if (i % 7 === 0) decoration('round', ['#edd3a3', '#f1ab96', '#bacdd1'][i % 3], x, .48, z, .155, .09, .155);
   }
   for (let i = 0; i < 58; i++) {
@@ -357,10 +372,12 @@ export function createMeadow(scene, kit, nodes, eggs) {
     const distance = 10.5 + random() * 28;
     const x = Math.cos(angle) * distance;
     const z = Math.sin(angle) * distance;
-    if (Math.abs(x) < 4.5 || Math.abs(z - 5.5) < 3.8 && Math.abs(x) < 26 || Math.abs(x - 17) < 3 || nearGenerator(x, z) || rebirthCave.occupies(x, z, .7) ||
+    if (Math.abs(x) < 4.5 || Math.abs(z - 5.5) < 3.8 && Math.abs(x) < 26 || Math.abs(x - 17) < 3 ||
+      nearGenerator(x, z) || rebirthCave.occupies(x, z, .7) ||
       (x > -23 && x < -13 && Math.abs(z + 12.7) < 1.65) ||
       limits.some(point => Math.hypot(point.x - x, point.z - z) < 3.25)) continue;
     const size = .68 + random() * .86;
+    if (nearExpedition(x, z)) continue;
     const tint = ['#589479', '#649b70', '#9cae64', '#609a89'][i % 4];
     decoration('disc', '#77a173', x + size * .32, .020, z - size * .15, size * 1.75, 1, size * 1.31, angle);
     decoration('beam', '#867c65', x, size * 1.05, z, .22 * size, 2.1 * size, .23 * size, angle);
@@ -405,5 +422,5 @@ export function createMeadow(scene, kit, nodes, eggs) {
     batchPlantedMeshes(cloud);
   }
 
-  return { interactables, obstacles, nodeViews, rebirthCave, fieldViews };
+  return { interactables, obstacles, nodeViews, rebirthCave, fieldViews, sky };
 }
