@@ -37,13 +37,13 @@ const categories = [...library.categoryCounts.keys()].sort((a, b) => a.localeCom
 const altFeatured = ['lantern-shift', 'territorial', 'candy-box-2', 'terrace-workshop', 'tapamine-dash', 'voxelia', '2048', 'ffun-skyline-v1', 'snake', 'memory-match', 'pong'];
 const drawerMedia = matchMedia('(max-width: 860px)');
 const discoveryRoutes = { shorts: 'renderShorts', instagram: 'renderInstagram', community: 'renderCommunity', shopping: 'renderShopping' };
-const routes = new Set(['home', 'explore', 'discover', 'library', 'games', 'categories', 'trending', 'new', 'favorites', 'recent', 'youtube', 'movies', 'music', 'browse', 'web-search', 'blip', 'play-hub', 'settings', 'credits', 'play', ...Object.keys(discoveryRoutes)]);
+const routes = new Set(['home', 'explore', 'discover', 'library', 'games', 'categories', 'trending', 'new', 'favorites', 'recent', 'youtube', 'movies', 'music', 'browse', 'cloud-browser', 'web-search', 'blip', 'play-hub', 'settings', 'credits', 'play', ...Object.keys(discoveryRoutes)]);
 const gameSearchRoutes = new Set(['games', 'categories', 'trending', 'new', 'favorites', 'recent', 'play-hub']);
 const routeNames = {
   home: 'Home', explore: 'Explore', discover: 'Search the library', library: 'My library', games: 'All Games', categories: 'Categories', trending: 'Trending',
   new: 'New Games', favorites: 'Favorites', recent: 'Recently Played',
   youtube: 'YouTube', movies: 'Movies', music: 'Music', shorts: 'Short Videos', instagram: 'Instagram', community: 'Community', shopping: 'Shopping',
-  browse: 'Proxy Gemini', 'web-search': 'Web Search', blip: 'blip.ai', 'play-hub': 'Play Hub',
+  browse: 'Proxy Gemini', 'cloud-browser': 'Cloud Browser', 'web-search': 'Web Search', blip: 'blip.ai', 'play-hub': 'Play Hub',
   settings: 'Settings', credits: 'Credits'
 };
 const labels = { local: 'Built in', embed: 'In-page player', external: 'Catalog only', unverified: 'Play unavailable' };
@@ -2174,7 +2174,8 @@ async function renderRoute(focus = true) {
         target.append(element('p', 'boot-note', 'Loading music…'));
         const archive = route.params.has('view');
         const feature = archive ? 'music-library' : 'lyrics-library';
-        const [music] = await Promise.all([import(`./${feature}.js${assetVersion}`), loadFeatureStyles(feature)]);
+        const styles = archive ? ['music-library'] : ['music-library', 'lyrics-library'];
+        const [music] = await Promise.all([import(`./${feature}.js${assetVersion}`), ...styles.map(loadFeatureStyles)]);
         const render = archive ? music.renderMusic : music.renderLyrics;
         if (token === version) cleanup = render(target, route.params);
         break;
@@ -2238,6 +2239,16 @@ async function renderRoute(focus = true) {
             searchWeb: webProviderEnabled && gatewayConnected() ? searchGateway : undefined,
             savedPanel: route.params.get('panel')
           });
+        }
+        break;
+      }
+      case 'cloud-browser': {
+        target.append(element('p', 'boot-note', 'Loading Cloud Browser…'));
+        const [{ mountCloudBrowser }] = await Promise.all([import(`./cloud-browser.js${assetVersion}`), loadFeatureStyles('cloud-browser')]);
+        if (token === version) {
+          target.replaceChildren();
+          const viewer = mountCloudBrowser(target);
+          cleanup = () => viewer.destroy();
         }
         break;
       }

@@ -5,6 +5,7 @@ import { createCloverRoll } from "./clover-roll.js";
 import { createClockCourier, createFractionKitchen } from "./learning-games.js";
 import { createLanternShift } from "./lantern-shift.js";
 import { createBeaconAscent } from "./beacon-ascent.js";
+import { createPrismRelay } from "./prism-relay.js";
 
 const storageKey = "ffun-original-games-v1";
 const directions = {
@@ -2005,6 +2006,7 @@ const localGames = {
   "fraction-kitchen": { title: "Fraction Kitchen", run: context => playCanvas(context, createFractionKitchen) },
   "clock-courier": { title: "Clock Courier", run: context => playCanvas(context, createClockCourier) },
   "lantern-shift": { title: "Lantern Shift", run: context => playCanvas(context, createLanternShift) },
+  "prism-relay": { title: "Prism Relay", run: context => playCanvas(context, createPrismRelay) },
   "beacon-ascent": { title: "Beacon Ascent", run: context => playCanvas(context, () => nextTimedGame(createBeaconAscent)) },
   "terrace-workshop": {
     title: "Terrace Workshop",
