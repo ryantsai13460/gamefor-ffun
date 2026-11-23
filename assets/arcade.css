@@ -407,6 +407,7 @@ select.field { cursor: pointer; }
 }
 .player-fullscreen-exit { position: absolute; z-index: 2; inset: 7px 10px auto auto; }
 .player-stage iframe { display: block; width: 100%; min-height: clamp(360px, 64vh, 720px); border: 0; background: var(--panel-deep); }
+.player-stage .petverse-player { min-height: clamp(635px, 78vh, 820px); }
 .player-stage:fullscreen iframe { min-height: 0; height: 100%; }
 .player-stage:fullscreen > .local-game { max-height: 100%; }
 .player-stage .empty-state { min-height: 250px; align-content: center; border: 0; border-radius: 0; }

@@ -1,7 +1,7 @@
 import { browserBrowsingStorageKey as browsingStorageKey, createLibrary, normalize, queryLibrary } from "./library.js";
 
 const assetVersion = new URL(import.meta.url).search;
-const [{ games }, { mountLocalGame }, { arcadeEmbed, browserApps, gamepadPermission },
+const [{ games }, { mountLocalGame }, { arcadeEmbed, browserApps, gamepadPermission, localGameFile },
   { createGameAddressLookup, isGamePortalAddress }] = await Promise.all([
   import(`./catalog.js${assetVersion}`), import(`./local-games.js${assetVersion}`),
   import(`./embedded-content.js${assetVersion}`), import(`./game-play-policy.js${assetVersion}`)
@@ -121,7 +121,9 @@ export function resolveBrowserAddress(input, pageUrl) {
     const game = builtInGames.find(entry => entry.id === address.slice("arcade:".length));
     if (!game) return null;
     if (game.local === true) return { kind: "built-in", title: game.title, address, id: game.id };
-    return resolveBrowserAddress(game.local, pageUrl);
+    const file = localGameFile(game);
+    if (file === localPage) return resolveBrowserAddress(file, pageUrl);
+    return file ? { kind: "local", title: game.title, address, url: new URL(file, pageUrl).href } : null;
   }
 
   const local = new URL(localPage, pageUrl);
@@ -1295,7 +1297,7 @@ function createBrowser() {
     frame.addEventListener("load", () => {
       frameResponded = true;
       if (local) {
-        const ready = Boolean(frame.contentDocument?.getElementById("star"));
+        const ready = frame.contentDocument?.title === page.title;
         if (ready) finish("The game is ready.");
         else fail("The local game could not load", retryMessage);
       } else if (!youtube) finish(unverified);
