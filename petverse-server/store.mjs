@@ -28,7 +28,9 @@ export function openStore(path, profileLimit) {
   const save = db.prepare('UPDATE profiles SET progress = ?, revision = revision + 1 WHERE id = ? AND revision = ?');
   const receipt = db.prepare('SELECT event FROM receipts WHERE profile_id = ? AND request_id = ?');
   const addReceipt = db.prepare('INSERT INTO receipts (profile_id, request_id, revision, event) VALUES (?, ?, ?, ?)');
-  const prune = db.prepare('DELETE FROM receipts WHERE profile_id = ? AND revision <= ?');
+  const prune = db.prepare(`DELETE FROM receipts WHERE profile_id = ? AND revision <= (
+    SELECT revision FROM receipts WHERE profile_id = ? ORDER BY revision DESC LIMIT 1 OFFSET ?
+  )`);
 
   function transaction(write) {
     db.exec('BEGIN IMMEDIATE');
@@ -74,8 +76,13 @@ export function openStore(path, profileLimit) {
         saveProgress(player, progress);
         const revision = player.version + 1;
         addReceipt.run(player.id, requestId, revision, JSON.stringify(event));
-        prune.run(player.id, revision - receiptLimit);
+        prune.run(player.id, player.id, receiptLimit);
       });
+      player.progress = progress;
+      player.version++;
+    },
+    checkpoint(player, progress) {
+      saveProgress(player, progress);
       player.progress = progress;
       player.version++;
     },

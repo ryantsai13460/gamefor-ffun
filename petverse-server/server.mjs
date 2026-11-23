@@ -5,7 +5,10 @@ import { createServer } from 'node:http';
 import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { WebSocket, WebSocketServer } from 'ws';
-import { applyAction, collectionMetrics, SPAWN, VARIANTS, WORLD_LIMIT } from '../assets/petverse/model.js';
+import { applyAction, awardCrystalBreak, collectEligibleDrops, collectionMetrics, petCombatStats,
+  SPAWN, VARIANTS, WORLD_LIMIT } from '../assets/petverse/model.js';
+import { createFarmingWorld } from '../assets/petverse/farming.js';
+import { advanceGenerator, canOperateGenerator, GENERATOR_UPGRADES, markGeneratorStart } from '../assets/petverse/generator.js';
 import { openStore } from './store.mjs';
 import { createTrading } from './trading.mjs';
 import { createInviteLimiter, createRooms } from './rooms.mjs';
@@ -14,12 +17,15 @@ const endpoint = '/v1/petverse';
 const loopback = '127.0.0.1';
 const speedLimit = 7.25;
 const moveBurst = 2;
+const farmInterval = 100;
+const generatorInterval = 500;
+const generatorUpgradeIds = new Set(GENERATOR_UPGRADES.map(upgrade => upgrade.id));
 const requestPattern = /^[A-Za-z0-9_-]{1,64}$/;
 const tokenPattern = /^[A-Za-z0-9_-]{43}$/;
 const idPattern = /^[A-Za-z0-9_-]{1,48}$/;
 const trustedRandom = () => randomBytes(4).readUInt32BE() / 0x1_0000_0000;
 const variantKeys = VARIANTS.filter(variant => variant.id !== 'normal').map(variant => variant.id);
-const settingKeys = ['stopOnNew', 'stopOnFull', 'autoEquip', 'lockRare', 'multiHatch', 'autoCollect'];
+const settingKeys = ['stopOnNew', 'stopOnFull', 'stopOnNewVariant', 'autoEquip', 'lockRare', 'multiHatch', 'autoCollect', 'autoCollectGold'];
 
 function exactOrigins(initial) {
   const entries = typeof initial === 'string' ? initial.split(',') : initial;
@@ -70,6 +76,33 @@ function cleanAction(action) {
     }
     case 'gather':
       return validId(action.nodeId) ? { type, nodeId: action.nodeId, mode: mode === 'auto' ? 'auto' : 'manual' } : null;
+    case 'assign-farm-here':
+      return { type };
+    case 'farm-settings': {
+      const { settings } = action;
+      if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
+      const flags = booleanFields(settings, ['enabled', 'preferSpecial']);
+      if (settings.area !== undefined) {
+        if (settings.area !== null && !validId(settings.area)) return null;
+        flags.area = settings.area;
+      }
+      if (settings.policy !== undefined) {
+        if (!validId(settings.policy)) return null;
+        flags.policy = settings.policy;
+      }
+      return { type, settings: flags };
+    }
+    case 'generatorStart':
+    case 'generatorStop':
+      return { type };
+    case 'generatorClaim':
+      if (action.eggId === undefined) return { type };
+      return validId(action.eggId) ? { type, eggId: action.eggId } : null;
+    case 'generatorSelect':
+      return validId(action.eggId) ? { type, eggId: action.eggId } : null;
+    case 'fuse':
+      return action.confirm === true && Array.isArray(action.petIds) && action.petIds.length === 3 && action.petIds.every(validId)
+        ? { type, confirm: true, petIds: action.petIds } : null;
     case 'collect':
       return validId(action.dropId) ? { type, dropId: action.dropId } : null;
     case 'claim':
@@ -154,7 +187,7 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
       if (!bestEffort) socket.close(1013, 'Connection is too slow.');
       return;
     }
-    socket.send(JSON.stringify(message));
+    socket.send(typeof message === 'string' ? message : JSON.stringify(message));
   }
 
   function error(player, code, message, requestId) {
@@ -163,6 +196,55 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
 
   function progressMessage(player, event, options = {}) {
     return { ...options, progress: player.progress, version: player.version, event };
+  }
+
+  function passiveSave(player, progress) {
+    if (progress === player.progress) return true;
+    try {
+      store.checkpoint(player, progress);
+      return true;
+    } catch {
+      error(player, 'save_unavailable', 'Petverse paused because it could not save your progress. Rejoin to continue.');
+      player.socket.close(1011, 'Progress could not be saved.');
+      return false;
+    }
+  }
+
+  function checkpointCrank(player, now, force = false) {
+    if (!player.generatorActive) return;
+    if (!canOperateGenerator(player.position)) {
+      player.generatorActive = false;
+      return;
+    }
+    const elapsed = now - player.lastCrankAt;
+    if (!force && elapsed < generatorInterval) return;
+    player.lastCrankAt = now;
+    const next = advanceGenerator(player.progress, elapsed);
+    if (next !== player.progress && passiveSave(player, next)) {
+      send(player, progressMessage(player, { type: 'generator-progress' }, { type: 'player-state' }));
+    }
+  }
+
+  function crankAction(player, requestId, type, now) {
+    const start = type === 'generatorStart';
+    const reply = (event, extra = {}) => send(player, progressMessage(player, event, { type: 'result', requestId, ...extra }));
+    if (start && !canOperateGenerator(player.position)) {
+      return reply({ type: 'error', code: 'generator-out-of-range', message: 'Move next to the generator crank.' });
+    }
+    const event = { type: start ? 'generator-start' : 'generator-stop' };
+    if (start && !player.generatorActive) {
+      store.record(player, markGeneratorStart(player.progress), requestId, event);
+      player.lastCrankAt = now;
+      player.generatorActive = true;
+    } else {
+      if (!start) {
+        checkpointCrank(player, now, true);
+        player.generatorActive = false;
+      }
+      player.runtimeReceipts.set(requestId, event);
+      if (player.runtimeReceipts.size > 32) player.runtimeReceipts.delete(player.runtimeReceipts.keys().next().value);
+    }
+    return reply(event);
   }
 
   const trading = createTrading({ players, send, exchange: store.exchange,
@@ -229,6 +311,7 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
     }
     player.moveBudget -= distance;
     player.position = { x, z, heading: Math.atan2(Math.sin(heading), Math.cos(heading)) };
+    if (player.generatorActive && !canOperateGenerator(player.position)) player.generatorActive = false;
     dirtyRooms.add(player.room);
   }
 
@@ -236,17 +319,24 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
     const requestId = message.requestId;
     const command = cleanAction(message.action);
     if (!command) return error(player, 'invalid_action', 'Choose a supported Petverse action.', requestId);
-    const receipt = store.receipt(player, requestId);
+    const receipt = player.runtimeReceipts.get(requestId) ?? store.receipt(player, requestId);
     if (receipt) {
       send(player, progressMessage(player, receipt, { type: 'result', requestId, replayed: true }));
       return;
     }
+    if (command.type === 'generatorStart' || command.type === 'generatorStop') {
+      return crankAction(player, requestId, command.type, now);
+    }
+    if (command.type === 'generatorClaim' || command.type === 'rebirth' ||
+        (command.type === 'upgrade' && generatorUpgradeIds.has(command.id))) checkpointCrank(player, now, true);
     if (command.type === 'gather' && (player.room.nodeReadyAt.get(command.nodeId) || 0) > now) {
       return send(player, progressMessage(player, { type: 'error', code: 'node-cooldown',
         message: 'This resource is regrowing.', retryAt: player.room.nodeReadyAt.get(command.nodeId) },
       { type: 'result', requestId }));
     }
-    const { progress, event } = applyAction(player.progress, command, { now, random: trustedRandom, position: player.position });
+    const { progress, event } = applyAction(player.progress, command, {
+      now, random: trustedRandom, position: player.position, cranking: player.generatorActive
+    });
     if (event.type !== 'error') {
       store.record(player, progress, requestId, event);
       dirtyRooms.add(player.room);
@@ -301,16 +391,23 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
       if (token === undefined) return reject('profile_capacity', 'This server has reached its profile limit.');
       return reject('invalid_token', 'The saved online profile could not be found.');
     }
-    if (mode === 'create') room = rooms.create(profile.id, roomLimit, now);
+    if (mode === 'create') {
+      room = rooms.create(profile.id, roomLimit, now);
+      room.farming = createFarmingWorld({ stats: petCombatStats, random: trustedRandom });
+    }
     const { token: resumeToken, ...profileState } = profile;
     const player = peer.player = { ...profileState, room, socket: peer.socket, position: { ...SPAWN, heading: 0 },
-      lastMoveAt: now, lastCorrectionAt: 0, moveBudget: moveBurst };
+      lastMoveAt: now, lastCorrectionAt: 0, moveBudget: moveBurst, generatorActive: false, runtimeReceipts: new Map() };
     clearTimeout(peer.joinTimer);
     const peers = Array.from(room.members, playerAppearance);
     rooms.add(room, player);
     players.set(player.id, player);
+    const farm = room.farming.snapshot();
+    const currentOwners = new Set(peers.map(peer => peer.id)).add(player.id);
+    farm.pets = farm.pets.filter(pet => currentOwners.has(pet.ownerId));
     send(player, { type: 'welcome', token: resumeToken, self: playerAppearance(player), progress: player.progress,
-      version: player.version, peers, room: rooms.info(room, player.id), nodeReadyAt: Object.fromEntries(room.nodeReadyAt) });
+      version: player.version, peers, room: rooms.info(room, player.id), nodeReadyAt: Object.fromEntries(room.nodeReadyAt),
+      farm, generator: { active: false } });
     announceRoom(room);
     dirtyRooms.add(room);
   }
@@ -365,8 +462,10 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
         const { room } = player;
         if (players.get(player.id) === player) players.delete(player.id);
         trading.leave(player);
-        rooms.remove(room, player, Date.now());
+        const disconnectedAt = Date.now();
+        rooms.remove(room, player, disconnectedAt);
         if (rooms.contains(room)) {
+          if (!room.members.size) room.farming.advance([], disconnectedAt);
           announceRoom(room);
           dirtyRooms.add(room);
         }
@@ -374,11 +473,39 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
     });
   });
 
+  function updateFarm(room, now) {
+    const connected = Array.from(room.members).filter(player => player.socket.readyState === WebSocket.OPEN);
+    if (!connected.length) return;
+    const events = room.farming.advance(connected, now, (ownerId, reward) => {
+      const player = players.get(ownerId);
+      if (player?.room !== room || player.socket.readyState !== WebSocket.OPEN) return false;
+      const result = awardCrystalBreak(player.progress, reward, { now });
+      if (result.event.type === 'error' || !passiveSave(player, result.progress)) return false;
+      send(player, progressMessage(player, result.event, { type: 'player-state' }));
+      return true;
+    });
+    const farm = { ...room.farming.snapshot(), events };
+    const frames = new Map();
+    for (const player of connected) {
+      if (player.socket.readyState !== WebSocket.OPEN) continue;
+      const collection = collectEligibleDrops(player.progress, {
+        now, position: player.position, cranking: player.generatorActive, autoOnly: true
+      });
+      if (!passiveSave(player, collection.progress)) continue;
+      for (const event of collection.events) send(player, progressMessage(player, event, { type: 'player-state' }));
+      checkpointCrank(player, now);
+      const active = player.generatorActive;
+      if (!frames.has(active)) frames.set(active, JSON.stringify({ type: 'farm', farm, generator: { active } }));
+      send(player, frames.get(active), true);
+    }
+  }
+
   const tick = setInterval(() => {
     const now = Date.now();
     trading.expire(now);
     for (const room of rooms.expired(now)) endRoom(room, 'This private meadow has expired. Ask the host to create another.');
     for (const room of rooms.values()) {
+      updateFarm(room, now);
       for (const [nodeId, readyAt] of room.nodeReadyAt) {
         if (readyAt <= now) {
           room.nodeReadyAt.delete(nodeId);
@@ -407,7 +534,7 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
         }
       }
     }
-  }, 100);
+  }, farmInterval);
   tick.unref();
 
   return {

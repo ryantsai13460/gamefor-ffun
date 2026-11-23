@@ -41,6 +41,7 @@ const cueNotes = {
   ui: { channel: "ui", gap: .05, notes: [74], length: .10, gain: .12 },
   gather: { channel: "effects", gap: .065, notes: [69, 74], length: .21, gain: .135 },
   hatch: { channel: "hatch", gap: .095, notes: [62, 69, 74, 78], length: .38, gain: .14 },
+  crank: { channel: "effects", gap: .09, notes: [33, 31], length: .13, gain: .065, oscillator: "triangle" },
   rare: { channel: "rare", gap: .085, notes: [66, 73, 78, 81, 86], length: .49, gain: .16 },
   titanium: { channel: "rare", gap: .10, notes: [43, 55, 62, 74, 79], length: .76, gain: .16 }
 };
@@ -238,7 +239,7 @@ export function createSound() {
     lastCue.set(cue, now);
     effect.notes.forEach((pitch, index) => {
       const time = now + .008 + index * effect.gap;
-      tone(buses[effect.channel], pitch, time, effect.length, effect.gain);
+      tone(buses[effect.channel], pitch, time, effect.length, effect.gain, effect.oscillator);
       if (cue === "rare" || cue === "titanium") tone(buses.rare, pitch + 12, time, .24, .028);
     });
   }

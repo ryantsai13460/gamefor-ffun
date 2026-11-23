@@ -1,4 +1,4 @@
-import { audioDefaults } from './sound.js?v=20261123-2';
+import { audioDefaults } from './sound.js?v=20261123-3';
 
 export const soloKey = 'ffun-petverse-solo-v1';
 export const preferencesKey = 'ffun-petverse-preferences-v1';
@@ -6,21 +6,24 @@ export const preferencesKey = 'ffun-petverse-preferences-v1';
 export function defaultPreferences() {
   return {
     reveal: { animations: true, skipCommon: false, results: true, titaniumAnimation: true },
-    notifications: { shiny: true, metallic: true, gold: true, diamond: true, obsidian: true, titanium: true, mythic: true, newPet: true },
+    notifications: { shiny: true, metallic: true, gold: true, diamond: true, obsidian: true, titanium: true, mythic: true,
+      giant: true, newPet: true },
     audio: { ...audioDefaults },
     graphics: {
       quality: 'medium', particles: 'medium', shadows: true, petGlow: true, shinyEffects: true, rareAnimations: true,
       showPeerPets: true, showPeerTitanium: true, showPetNames: true, collectionNumbers: true, shake: false, cameraSensitivity: .5,
       reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches
     },
-    inventory: { sort: 'power', showDuplicates: true }
+    inventory: { sort: 'power', showDuplicates: true },
+    workshop: { keepAssigned: true, recallOnWorldChange: false, generatorSounds: true, crankAnimations: true,
+      showProgress: true, showRemoteRewards: true, showIncome: true, showPetActivity: true }
   };
 }
 
 const availableValues = {
   quality: ['low', 'medium', 'high'],
   particles: ['off', 'low', 'medium', 'high'],
-  sort: ['power', 'rarity', 'name', 'recent']
+  sort: ['power', 'rarity', 'name', 'recent', 'generation', 'variant']
 };
 
 export function readStorage(key) {

@@ -11,7 +11,10 @@ const tradeStates = new Set(["invited", "open", "closed"]);
 const roomSteps = new Set(["regenerate", "close"]);
 const roomCodePattern = /^PET-[0-9A-F]{10}$/;
 const metricPattern = /^[a-z][a-zA-Z0-9-]{0,47}$/;
-const positionActions = new Set(["gather", "collect", "rebirth"]);
+const positionActions = new Set(["gather", "collect", "rebirth", "assign-farm-here", "generatorStart", "generatorClaim"]);
+const worldIdentifier = /^[A-Za-z0-9_-]{1,64}$/;
+const farmEventTypes = new Set(["damage", "break", "respawn"]);
+const farmPetStates = new Set(["travel", "attack", "wait"]);
 
 export function normalizeRoomCode(value) {
   if (typeof value !== "string") return null;
@@ -138,6 +141,59 @@ function readResourceCooldowns(value) {
     /^[a-z0-9][a-z0-9-]{0,63}$/.test(nodeId) && Number.isSafeInteger(until) && until >= 0));
 }
 
+function farmId(value) {
+  return typeof value === "string" && worldIdentifier.test(value);
+}
+
+function farmPosition(value) {
+  return Number.isFinite(value?.x) && Number.isFinite(value.z) && Math.abs(value.x) <= 64 && Math.abs(value.z) <= 64;
+}
+
+function farmPoints(value) {
+  return Number.isFinite(value) && value >= 0 && value <= 1_000_000;
+}
+
+function specialTier(value) {
+  return Number.isInteger(value) && value >= 0 && value <= 2;
+}
+
+function readFarmCrystal(item) {
+  if (!farmPosition(item) || !farmId(item.id) || !farmId(item.areaId) || !farmId(item.familyId) ||
+      !farmPoints(item.health) || !farmPoints(item.maxHealth) || !item.maxHealth || item.health > item.maxHealth ||
+      !specialTier(item.specialTier)) return null;
+  const { id, areaId, familyId, x, z, health, maxHealth, targeted, specialTier: tier, readyAt } = item;
+  return { id, areaId, familyId, x, z, health, maxHealth, specialTier: tier,
+    targeted: Number.isInteger(targeted) && targeted >= 0 && targeted <= 256 ? targeted : 0,
+    readyAt: Number.isSafeInteger(readyAt) && readyAt >= 0 ? readyAt : 0 };
+}
+
+function readFarmPet(item) {
+  if (!farmPosition(item) || !farmId(item.id) || !farmId(item.ownerId) || !farmId(item.speciesId) ||
+      !farmId(item.variant) || !farmPetStates.has(item.state)) return null;
+  const { id, ownerId, speciesId, variant, x, z, heading, state, targetId } = item;
+  return { id, ownerId, speciesId, variant, x, z, state,
+    heading: Number.isFinite(heading) && Math.abs(heading) <= Math.PI ? heading : 0,
+    targetId: farmId(targetId) ? targetId : null };
+}
+
+function readFarmEvent(item) {
+  if (!farmPosition(item) || !Number.isSafeInteger(item.id) || item.id < 0 || !farmEventTypes.has(item.type) ||
+      !farmId(item.crystalId) || !farmId(item.areaId) || !farmId(item.familyId) || !specialTier(item.specialTier)) return null;
+  const { id, type, crystalId, areaId, familyId, x, z, specialTier: tier, ownerId, petId, damage, gold } = item;
+  return { id, type, crystalId, areaId, familyId, x, z, specialTier: tier,
+    ...(farmId(ownerId) ? { ownerId } : {}), ...(farmId(petId) ? { petId } : {}),
+    ...(farmPoints(damage) ? { damage } : {}), ...(farmPoints(gold) ? { gold } : {}) };
+}
+
+function readFarm(value) {
+  if (!Array.isArray(value?.crystals) || !Array.isArray(value.pets)) return null;
+  return {
+    crystals: value.crystals.slice(0, 128).map(readFarmCrystal).filter(Boolean),
+    pets: value.pets.slice(0, 256).map(readFarmPet).filter(Boolean),
+    events: Array.isArray(value.events) ? value.events.slice(0, 512).map(readFarmEvent).filter(Boolean) : []
+  };
+}
+
 function readLeaderboard(message, metric) {
   const { entries } = message;
   if (message.metric !== metric || !Array.isArray(entries) || entries.length > 32 ||
@@ -158,7 +214,8 @@ function parseMessage(value) {
   }
 }
 
-export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, onRoom, onRoomClosed, onResources, onClose } = {}) {
+export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, onRoom, onRoomClosed,
+  onResources, onFarm, onClose } = {}) {
   let active;
   let destroyed = false;
 
@@ -225,7 +282,8 @@ export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, o
       clearTimeout(session.connectTimer);
       storeToken(session.endpoint, message.token);
       session.resolve({ endpoint: session.endpoint, self, progress: message.progress, peers: readPeers(message.peers),
-        room, nodeReadyAt: readResourceCooldowns(message.nodeReadyAt) });
+        room, nodeReadyAt: readResourceCooldowns(message.nodeReadyAt), farm: readFarm(message.farm),
+        generator: { active: message.generator?.active === true } });
       return;
     }
 
@@ -243,6 +301,11 @@ export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, o
     }
     if (message.type === "resources") {
       onResources?.(readResourceCooldowns(message.nodeReadyAt));
+      return;
+    }
+    if (message.type === "farm") {
+      const farm = readFarm(message.farm);
+      if (farm) onFarm?.(farm, { active: message.generator?.active === true });
       return;
     }
     if (message.type === "peers") {
@@ -296,7 +359,6 @@ export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, o
     }
     request.resolve(result);
     sendNext(session);
-    if (message.type === "result") onProgress?.(result.progress, result.event);
   }
 
   async function connect(value, { mode, code, maxPlayers, newGuest = false } = {}) {

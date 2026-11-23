@@ -34,7 +34,12 @@
   --pv-gold: #864413;
   --pv-honey: #fae9ca;
   --pv-radius: 14px;
-  --pv-world-height: clamp(425px, calc(100dvh - 160px), 720px);
+  --pv-hud: #122a25ef;
+  --pv-hud-ink: #f8f4e4;
+  --pv-head-clear: 103px;
+  position: relative;
+  height: 100dvh;
+  min-height: 360px;
   width: 100%;
   min-width: 0;
   color: var(--pv-ink);
@@ -58,14 +63,20 @@
 }
 
 .pv-header {
+  position: absolute;
+  z-index: 4;
+  inset: 10px 10px auto;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px 18px;
-  padding: clamp(13px, 2.5vw, 23px) clamp(13px, 2.5vw, 25px);
-  border-block-end: 1px solid var(--pv-line);
-  background: var(--pv-card);
+  gap: 8px 12px;
+  min-height: 48px;
+  padding: 6px 9px;
+  border: 1px solid #d1e1cf47;
+  border-radius: 11px;
+  background: var(--pv-hud);
+  box-shadow: 0 3px 12px #172b2766;
 }
 
 .pv-brand {
@@ -91,8 +102,8 @@
 }
 
 .pv-title {
-  color: var(--pv-ink);
-  font-size: clamp(1.5rem, 3.7cqi, 2.2rem);
+  color: var(--pv-hud-ink);
+  font-size: clamp(1.02rem, 2.7cqi, 1.45rem);
   font-weight: 820;
   line-height: 1.04;
   letter-spacing: -.065em;
@@ -132,7 +143,7 @@
 }
 
 .pv-level {
-  color: var(--pv-muted);
+  color: #d2dfcf;
   font-size: .78rem;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
@@ -168,12 +179,14 @@
 }
 
 .pv-play-modes {
+  position: absolute;
+  z-index: 4;
+  inset: auto auto auto 10px;
+  top: calc(var(--pv-head-clear) - 40px);
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 8px clamp(12px, 2.5vw, 25px);
-  border-block-end: 1px solid var(--pv-line);
-  background: var(--pv-card);
+  gap: 4px;
+  max-width: calc(100% - 20px);
 }
 
 .pv-play-modes .pv-button { min-width: 0; max-width: 100%; white-space: normal; }
@@ -197,6 +210,8 @@
 .pv-ranking-list strong { font-variant-numeric: tabular-nums; }
 
 .pv-panel:fullscreen {
+  width: 100%;
+  height: 100%;
   background: var(--pv-paper);
   padding: clamp(1rem, 4vw, 3rem);
   overflow: auto;
@@ -204,28 +219,16 @@
 .pv-panel:fullscreen > .pv-section { max-width: 44rem; margin-inline: auto; }
 
 .pv-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
-  align-items: start;
-  gap: 12px;
+  position: absolute;
+  inset: 0;
   min-width: 0;
-  padding: 12px;
 }
 
-.pv-play,
-.pv-console {
-  position: relative;
-  min-width: 0;
-  border: 1px solid var(--pv-line);
-  border-radius: var(--pv-radius);
-  overflow: hidden;
-}
-
-.pv-play { background: #e4ebda; }
+.pv-play { position: absolute; inset: 0; background: #e4ebda; }
 
 .pv-world {
-  position: relative;
-  height: var(--pv-world-height);
+  position: absolute;
+  inset: 0;
   min-width: 0;
   overflow: hidden;
   background: linear-gradient(#bbd9cc, #dfe9bd 75%);
@@ -252,7 +255,7 @@
 .pv-world-label {
   position: absolute;
   z-index: 1;
-  inset: 12px auto auto 12px;
+  inset: calc(var(--pv-head-clear) + 6px) auto auto 10px;
   display: grid;
   gap: 2px;
   max-width: calc(100% - 24px);
@@ -275,18 +278,22 @@
 }
 
 .pv-field-bar {
+  position: absolute;
+  z-index: 2;
+  inset: auto auto 58px 10px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 10px;
-  border-block-start: 1px solid var(--pv-line);
+  padding: 3px;
+  border-radius: 8px;
+  pointer-events: none;
 }
 
-.pv-field-bar .pv-world-help { flex: 1 1 190px; }
+.pv-field-bar .pv-world-help { display: none; }
 
-.petverse .pv-field-bar .pv-reset-camera { min-height: 33px; font-size: .77rem; }
+.petverse .pv-field-bar .pv-button { min-height: 32px; font-size: .75rem; pointer-events: auto; }
 
 .pv-world-message {
   position: absolute;
@@ -309,7 +316,7 @@
 .pv-touch {
   position: absolute;
   z-index: 2;
-  inset: auto auto 10px 10px;
+  inset: auto auto 97px 10px;
   display: grid;
   grid-template: ". up . jump" 43px "left down right jump" 43px / 43px 43px 43px auto;
   gap: 5px;
@@ -355,28 +362,37 @@
 .pv-world > .pv-interact {
   position: absolute;
   z-index: 2;
-  inset: auto 12px 12px auto;
-  max-width: max(70px, calc(100% - 215px));
+  inset: auto auto 61px 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 24px);
 }
 
 .pv-console {
+  position: absolute;
+  z-index: 3;
+  inset: auto 10px 10px;
   display: flex;
   flex-direction: column;
-  height: calc(var(--pv-world-height) + 50px);
-  background: var(--pv-card);
+  max-height: calc(100% - var(--pv-head-clear) - 18px);
+  min-width: 0;
+  gap: 5px;
+  pointer-events: none;
 }
 
 .pv-nav {
+  order: 4;
   display: flex;
   flex: 0 0 auto;
   gap: 3px;
   min-width: 0;
   overflow: auto hidden;
-  padding: 6px;
-  border-block-end: 1px solid var(--pv-line);
-  background: var(--pv-surface);
+  padding: 4px;
+  border: 1px solid #d1e1cf47;
+  border-radius: 10px;
+  background: var(--pv-hud);
   scrollbar-color: var(--pv-control-line) transparent;
   scrollbar-width: thin;
+  pointer-events: auto;
 }
 
 .petverse .pv-nav button {
@@ -386,7 +402,7 @@
   border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
-  color: var(--pv-muted);
+  color: #e2eee0;
   font-size: .8rem;
   font-weight: 700;
   white-space: nowrap;
@@ -404,17 +420,52 @@
 .petverse .pv-nav button:focus-visible { outline-offset: -2px; }
 
 .pv-panel {
+  order: 1;
   display: grid;
   flex: 1 1 auto;
   align-content: start;
   gap: 11px;
   min-width: 0;
   min-height: 0;
+  width: min(100%, 382px);
+  margin-inline-start: auto;
   padding: 12px;
   overflow: auto;
+  border: 1px solid var(--pv-control-line);
+  border-radius: 11px;
+  background: var(--pv-card);
+  box-shadow: 0 6px 24px #1a332f66;
+  overscroll-behavior: contain;
+  pointer-events: auto;
   scrollbar-color: var(--pv-control-line) transparent;
   scrollbar-width: thin;
 }
+
+.pv-close-menu { order: 0; align-self: flex-end; flex-shrink: 0; pointer-events: auto; }
+
+.pv-farming-hud, .pv-crank-hud {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  gap: 3px;
+  padding: 7px 10px;
+  color: var(--pv-hud-ink);
+  background: var(--pv-hud);
+  border: 1px solid #d1e1cf47;
+  border-radius: 9px;
+  font-size: .8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pv-farming-hud { inset: calc(var(--pv-head-clear) + 45px) auto auto 10px; pointer-events: none; }
+.pv-crank-hud { inset: auto 10px 59px auto; width: min(244px, 65%); }
+.pv-crank-hud .pv-progress { accent-color: #8ddd9c; }
+.pv-farming-hud small, .pv-crank-hud small { color: #c6e3d4; }
+
+.pv-workshop-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.pv-workshop-stats > div { padding: 6px; border-radius: 5px; background: var(--pv-surface); }
+.pv-workshop-stats dt { font-size: .75rem; color: var(--pv-muted); }
+.pv-workshop-stats dd { font-weight: 720; font-variant-numeric: tabular-nums; }
 
 .pv-section { display: grid; gap: 8px; min-width: 0; }
 
@@ -734,8 +785,16 @@
   color: #843f22;
 }
 
-.pv-banner,
-.pv-auto-panel { flex: 0 0 auto; margin: 9px 12px 0; }
+.pv-auto-panel { flex: 0 0 auto; width: min(100%, 382px); margin-inline-start: auto; }
+.pv-play > .pv-banner {
+  position: absolute;
+  z-index: 4;
+  inset: calc(var(--pv-head-clear) + 5px) 10px auto auto;
+  width: max-content;
+  max-width: min(320px, calc(100% - 20px));
+  pointer-events: none;
+}
+.pv-auto-panel { order: 3; pointer-events: auto; }
 
 .pv-auto-status { gap: 5px; }
 
@@ -750,7 +809,7 @@
 .pv-play > .pv-toast {
   position: absolute;
   z-index: 2;
-  inset: 52px 12px auto auto;
+  inset: calc(var(--pv-head-clear) + 8px) 12px auto auto;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -810,36 +869,47 @@
 
 .pv-dialog::backdrop { background: #203a30a0; }
 
-.petverse:fullscreen { overflow: auto; }
+.petverse:fullscreen { width: 100%; height: 100%; min-height: 0; overflow: hidden; }
 
 @container petverse (max-width: 790px) {
-  .pv-layout { grid-template-columns: minmax(0, 1fr); }
-  .pv-world { height: clamp(330px, 60cqi, 455px); }
-  .pv-console { height: auto; }
+  .pv-level { display: none; }
+  .pv-header { gap: 5px 8px; }
+  .pv-brand { gap: 5px 7px; }
 }
 
-@container petverse (max-width: 420px) {
-  .pv-header { display: grid; gap: 8px; padding: 12px; }
-  .pv-layout { gap: 8px; padding: 8px; }
+@container petverse (max-width: 570px) {
+  .pv-header { min-height: 80px; padding: 6px; gap: 4px; }
+  .pv-wallet { order: 2; flex-basis: 100%; }
+  .pv-play-modes { top: 94px; }
+  .pv-play-modes .pv-button { padding-inline: 7px; font-size: .7rem; min-height: 33px; }
+  .pv-world-label { inset-block-start: 132px; }
+  .pv-farming-hud { inset-block-start: 168px; }
+  .pv-play > .pv-banner, .pv-play > .pv-toast { inset-block-start: 213px; }
+  .pv-console { max-height: calc(100% - 144px); }
   .pv-panel { padding: 9px; }
-  .petverse :is(.pv-button, .pv-interact) { min-height: 43px; }
   .petverse .pv-nav button { padding-inline: 6px; min-height: 43px; }
-  .pv-touch { grid-template: ". up jump" 43px "left down right" 43px / 43px 43px 43px; }
-  .petverse .pv-touch .pv-jump { width: 43px; padding-inline: 3px; }
-  .pv-world > .pv-interact { max-width: max(70px, calc(100% - 174px)); }
-  .petverse .pv-field-bar .pv-reset-camera { min-height: 43px; }
+  .pv-nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .pv-touch {
+    grid-template: ". up jump" 43px "left down right" 43px / 43px 43px 43px;
+    inset-block-end: 140px;
+  }
+  .pv-touch .pv-jump { width: 43px; padding-inline: 3px; }
+  .pv-world > .pv-interact { inset: auto 10px 104px auto; transform: none; max-width: calc(100% - 130px); }
+  .pv-crank-hud { inset-block-end: 151px; width: min(185px, 52%); }
+  .pv-field-bar { inset-block-end: 102px; }
+  .petverse .pv-field-bar .pv-button { min-height: 43px; }
   .pv-setting :where(input[type="range"], select) { max-width: 47%; }
 }
 
 @container petverse (max-width: 350px) {
-  .pv-nav {
-    display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
-
-  .pv-nav button { grid-column: span 2; }
-  .pv-play-modes .pv-button { flex: 1 1 auto; }
+  .pv-mark { display: none; }
+  .pv-brand .pv-status { padding-inline: 5px; }
+  .pv-wallet { gap: 4px; }
+  .pv-wallet-item { padding-inline: 6px; }
 }
+
+@media (pointer: fine) { .pv-touch { display: none; } }
+@media (any-pointer: coarse) { .pv-touch { display: grid; } }
 
 @media (prefers-reduced-motion: reduce) {
   .petverse *,

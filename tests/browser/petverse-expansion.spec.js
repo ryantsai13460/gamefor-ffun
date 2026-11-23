@@ -20,14 +20,17 @@ test.beforeEach(async ({ page }) => {
 async function openMeadow(page) {
   await page.goto(gameRoute);
   const frame = gameFrame(page);
+  await expect(canvas(frame)).toBeVisible({ timeout: 20_000 });
   await expect(frame.locator('.pv-world-message')).toBeHidden({ timeout: 15_000 });
-  await expect(canvas(frame)).toBeVisible();
   return frame;
 }
 
 test('magnet pickup credits a gathered drop once and persists the balance in solo play', async ({ page }) => {
-  await page.addInitScript(key => {
+  const progress = createProgress();
+  progress.farming.enabled = false;
+  await page.addInitScript(({ key, progress }) => {
     if (!location.pathname.endsWith('/petverse/index.html')) return;
+    if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(progress));
     const writes = [];
     const write = Storage.prototype.setItem;
     Object.defineProperty(window, '__petverseSaveWrites', { value: writes });
@@ -38,7 +41,7 @@ test('magnet pickup credits a gathered drop once and persists the balance in sol
         writes.push({ sunbeams: wallet.sunbeams, drops });
       }
     };
-  }, soloKey);
+  }, { key: soloKey, progress });
 
   const frame = await openMeadow(page);
   await expect(wallet(frame)).toHaveText('40');
@@ -78,6 +81,7 @@ test('Titanium can continue and then stop paid auto-hatching according to the sa
   progress.xp = 74;
   progress.wallet.sunbeams = 108;
   progress.upgrades.autoHatch = 1;
+  progress.farming.enabled = false;
   await page.addInitScript(({ key, progress }) => {
     if (!location.pathname.endsWith('/petverse/index.html')) return;
     Math.random = () => 0.999;
@@ -111,6 +115,7 @@ test('walking to the Rebirth Cave unlocks the paid second-generation egg and ach
   progress.xp = 12 * requirements.level * (requirements.level - 1);
   progress.wallet.sunbeams = requirements.sunbeams + egg.cost;
   progress.wallet.crystals = requirements.crystals;
+  progress.farming.enabled = false;
   await page.addInitScript(({ key, prefsKey, progress }) => {
     if (!location.pathname.endsWith('/petverse/index.html') || localStorage.getItem(key)) return;
     localStorage.setItem(key, JSON.stringify(progress));
