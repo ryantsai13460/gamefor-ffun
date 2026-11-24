@@ -1,9 +1,10 @@
-import { canFarmArea, crystalAtId, CRYSTAL_SITES, FARM_PRIORITIES, farmSettings, farmingAreaAt } from './farming.js';
+import { canEnterBiome, EXPEDITION_BIOMES, expeditionEggAt, WORLD_EXTENT } from './biomes.js?v=20261123-4';
+import { canFarmArea, crystalAtId, CRYSTAL_SITES, FARM_PRIORITIES, farmSettings, farmingAreaAt } from './farming.js?v=20261123-4';
 import { canOperateGenerator, createGeneratorProgress, GENERATOR_ACHIEVEMENTS, GENERATOR_UPGRADES,
-  generatorAction, generatorEggCost, generatorPlan, restoreGeneratorProgress, spendGeneratorCharge } from './generator.js';
+  generatorAction, generatorEggCost, generatorPlan, restoreGeneratorProgress, spendGeneratorCharge } from './generator.js?v=20261123-4';
 
 export const SAVE_VERSION = 1;
-export const WORLD_LIMIT = 27;
+export const WORLD_LIMIT = WORLD_EXTENT;
 export const SPAWN = Object.freeze({ x: 0, z: 11 });
 export const HATCHERY = Object.freeze({ x: 0, z: -4 });
 export const GATHER_DISTANCE = 3;
@@ -38,25 +39,55 @@ export const PETS = frozenCatalog([
   { id: 'glowgill', name: 'Glowgill', rarity: 'uncommon', power: 33, color: '#6babb5', accent: '#fff394', shape: 'axolotl', generation: 2 },
   { id: 'flintowl', name: 'Flintowl', rarity: 'rare', power: 44, color: '#65728e', accent: '#e6d5a4', shape: 'owl', generation: 2 },
   { id: 'shardstoat', name: 'Shardstoat', rarity: 'epic', power: 54, color: '#b58c9a', accent: '#ffc6a8', shape: 'fox', generation: 2 },
-  { id: 'forgeheart', name: 'Forgeheart', rarity: 'legendary', power: 69, color: '#783d55', accent: '#ffb873', shape: 'bear', generation: 2 }
+  { id: 'forgeheart', name: 'Forgeheart', rarity: 'legendary', power: 69, color: '#783d55', accent: '#ffb873', shape: 'bear', generation: 2 },
+  { id: 'tidecup', name: 'Tidecup', rarity: 'common', power: 22, color: '#db806a', accent: '#ffe0a4', shape: 'crab', biomeId: 'glasswater' },
+  { id: 'reedwake', name: 'Reedwake', rarity: 'uncommon', power: 29, color: '#508b8b', accent: '#ebcea4', shape: 'otter', biomeId: 'glasswater' },
+  { id: 'tesselshell', name: 'Tesselshell', rarity: 'rare', power: 37, color: '#66a796', accent: '#f9d897', shape: 'turtle', biomeId: 'glasswater' },
+  { id: 'glassfin', name: 'Glassfin', rarity: 'legendary', power: 44, color: '#4daec5', accent: '#b2f9ec', shape: 'seahorse', biomeId: 'glasswater' },
+  { id: 'mirrorwake', name: 'Mirrorwake', rarity: 'mythic', power: 61, color: '#5868a9', accent: '#d1fff5', shape: 'manta', biomeId: 'glasswater' },
+  { id: 'thawhoof', name: 'Thawhoof', rarity: 'common', power: 52, color: '#91a6bb', accent: '#f1e8d9', shape: 'yak', generation: 2, biomeId: 'frostpine' },
+  { id: 'snowstitch', name: 'Snowstitch', rarity: 'uncommon', power: 58, color: '#b5b8e1', accent: '#e4fbff', shape: 'hare', generation: 2, biomeId: 'frostpine' },
+  { id: 'windquill', name: 'Windquill', rarity: 'rare', power: 70, color: '#5b83aa', accent: '#d6ecff', shape: 'owl', generation: 2, biomeId: 'frostpine' },
+  { id: 'rimecoil', name: 'Rimecoil', rarity: 'legendary', power: 84, color: '#8cc6cb', accent: '#e8faf4', shape: 'stoat', generation: 2, biomeId: 'frostpine' },
+  { id: 'aurorawing', name: 'Aurorawing', rarity: 'mythic', power: 107, color: '#6a81c7', accent: '#98ffce', shape: 'moth', generation: 2, biomeId: 'frostpine' },
+  { id: 'coalfrill', name: 'Coalfrill', rarity: 'common', power: 89, color: '#a34e59', accent: '#ffb056', shape: 'salamander', generation: 3, biomeId: 'cinderbloom' },
+  { id: 'clinkhide', name: 'Clinkhide', rarity: 'uncommon', power: 104, color: '#703f6a', accent: '#ff9761', shape: 'armadillo', generation: 3, biomeId: 'cinderbloom' },
+  { id: 'cinderhorn', name: 'Cinderhorn', rarity: 'rare', power: 120, color: '#8d5042', accent: '#ffda7a', shape: 'yak', generation: 3, biomeId: 'cinderbloom' },
+  { id: 'spindleflare', name: 'Spindleflare', rarity: 'legendary', power: 143, color: '#963d75', accent: '#ffbb88', shape: 'moth', generation: 3, biomeId: 'cinderbloom' },
+  { id: 'embercoil', name: 'Embercoil', rarity: 'mythic', power: 175, color: '#562e63', accent: '#ffc747', shape: 'dragon', generation: 3, biomeId: 'cinderbloom' }
 ].map(pet => ({ generation: 1, ...pet })));
 
 export const GENERATIONS = frozenCatalog([
-  { id: 1, name: 'Meadow', rebirths: 0, description: 'Collect woodland companions from the Sunmeadow and Moonbloom eggs.' },
-  { id: 2, name: 'Emberdeep', rebirths: 1, description: 'Unlock the Ember Geode Egg with your first rebirth at the cavern altar.' }
+  { id: 1, name: 'Meadow', rebirths: 0, description: 'Collect woodland and shoreline companions from Sunstep Meadow and Glasswater Coast.' },
+  { id: 2, name: 'Emberdeep', rebirths: 1, description: 'Your first rebirth opens the Emberdeep collection and the route toward Frostpine.' },
+  { id: 3, name: 'Cinderbloom', rebirths: 2, description: 'Your second rebirth unlocks the third generation. Reach Level 7 to enter Cinderbloom Basin.' }
 ]);
 
-function weightedPool(start, weights) {
-  return frozenCatalog(weights.map((weight, index) => ({ speciesId: PETS[start + index].id, weight })));
+function weightedPool(species, weights) {
+  return frozenCatalog(weights.map((weight, index) => ({ speciesId: species[index].id, weight })));
 }
+
+const expeditionEggs = {
+  glasswater: { name: 'Tideglass Egg', description: 'A salt-polished shell with swift shoreline pets.', cost: 112, color: '#72dfd0',
+    weights: [4100, 2750, 1900, 1050, 200] },
+  frostpine: { name: 'Rimebranch Egg', description: 'An icy shell that shelters sure-footed alpine pets.', cost: 215, color: '#a6d6f2',
+    weights: [3950, 2780, 2010, 1040, 220] },
+  cinderbloom: { name: 'Caldera Egg', description: 'A basalt shell that holds the expedition’s strongest pets.', cost: 375, color: '#f7a365',
+    weights: [3800, 2810, 2050, 1100, 240] }
+};
 
 export const EGGS = frozenCatalog([
   { id: 'sunmeadow', name: 'Sunmeadow Egg', description: 'Warm shells from Sunstep Meadow. A gentle start with two elusive finds.', cost: 18, level: 1, color: '#ffcb78',
-    pool: weightedPool(0, [2400, 1900, 1700, 1450, 1000, 680, 470, 240, 120, 40]) },
+    pool: weightedPool(PETS.slice(0, 10), [2400, 1900, 1700, 1450, 1000, 680, 470, 240, 120, 40]) },
   { id: 'moonbloom', name: 'Moonbloom Egg', description: 'An evening bloom with a stronger collection and the chance to meet Auroracub.', cost: 62, level: 3, color: '#b7a2ff',
-    pool: weightedPool(10, [2150, 1800, 1550, 1350, 1100, 850, 600, 370, 180, 50]) },
+    pool: weightedPool(PETS.slice(10, 20), [2150, 1800, 1550, 1350, 1100, 850, 600, 370, 180, 50]) },
   { id: 'embergeode', name: 'Ember Geode Egg', description: 'A warm geode from the Rebirth Cave. Its companions have stronger gathering power.', cost: 85, level: 3, color: '#ea8b63', generation: 2,
-    pool: weightedPool(20, [4100, 3000, 1900, 850, 150]) }
+    pool: weightedPool(PETS.slice(20, 25), [4100, 3000, 1900, 850, 150]) },
+  ...EXPEDITION_BIOMES.map(({ id: biomeId, eggId: id, level, rebirths }) => {
+    const { weights, ...details } = expeditionEggs[biomeId];
+    return { id, biomeId, level, generation: rebirths + 1, ...details,
+      pool: weightedPool(PETS.filter(pet => pet.biomeId === biomeId), weights) };
+  })
 ].map(egg => ({ generation: 1, ...egg })));
 
 export const VARIANTS = frozenCatalog([
@@ -133,12 +164,15 @@ const statsKeys = ['eggsHatched', 'sunbeamsSpent', 'resourcesCollected', 'shinie
   'goldEarned', 'crystalsDestroyed', 'specialCrystalsDestroyed', 'fusions', 'assignedAreas', 'crankGold'];
 const rarityScores = { common: 10, uncommon: 14, rare: 22, epic: 35, legendary: 55, mythic: 85 };
 const variantScores = { shiny: 18, metallic: 30, gold: 48, diamond: 70, obsidian: 100, titanium: 140, mythic: 200, giant: 250 };
+const collectionBonuses = { glasswater: [30, 90], frostpine: [50, 150], cinderbloom: [80, 240] };
 const fusionTiers = { normal: 'shiny', shiny: 'metallic', metallic: 'gold', gold: 'diamond', diamond: 'obsidian',
   obsidian: 'titanium', titanium: 'giant', mythic: 'giant' };
 const shapeCombat = {
   pup: [1.2, 6.4], hare: [1.45, 7.5], bird: [1.35, 7.8], cat: [1.35, 6.6], axolotl: [1.05, 5.8],
   frog: [1.15, 6.7], bear: [.86, 5.6], moth: [1.36, 7.7], fox: [1.24, 7.2], deer: [.96, 7],
-  slug: [.93, 5.5], owl: [1.1, 7]
+  slug: [.93, 5.5], owl: [1.1, 7], crab: [1.14, 6.3], otter: [1.39, 8.4], turtle: [.86, 5.9],
+  seahorse: [1.42, 7.3], manta: [1.25, 8.25], yak: [.91, 6.2], stoat: [1.49, 8.3], salamander: [1.25, 7.1],
+  armadillo: [.95, 6.4], dragon: [1.2, 8]
 };
 
 export const ACHIEVEMENTS = frozenCatalog([
@@ -158,6 +192,13 @@ export const ACHIEVEMENTS = frozenCatalog([
   { id: 'cave-pledge', name: 'Keeper of the Ember', description: 'Complete a rebirth at the cave altar.', source: 'rebirths', target: 1, reward: 3, points: 50 },
   { id: 'meadow-complete', name: 'Meadow Field Guide', description: 'Discover every Meadow species.', source: 'meadowSpecies', target: 20, reward: 5, points: 70 },
   { id: 'ember-complete', name: 'Emberdeep Field Guide', description: 'Discover every Emberdeep species.', source: 'emberSpecies', target: 5, reward: 5, points: 70 },
+  { id: 'coast-complete', name: 'Shoreline Field Guide', description: 'Discover all five pets from Glasswater Coast.', source: 'glasswaterSpecies', target: 5, reward: 4, points: 55 },
+  { id: 'frost-complete', name: 'Snowline Field Guide', description: 'Discover all five pets from Frostpine Reach.', source: 'frostpineSpecies', target: 5, reward: 6, points: 80 },
+  { id: 'cinder-complete', name: 'Caldera Field Guide', description: 'Discover all five pets from Cinderbloom Basin.', source: 'cinderbloomSpecies', target: 5, reward: 8, points: 105 },
+  { id: 'expedition-complete', name: 'Grand Expedition', description: 'Complete all three expedition collections.', source: 'biomesCompleted', target: 3, reward: 12, points: 150 },
+  { id: 'collection-five-hundred', name: 'Collector’s Notebook', description: 'Reach 500 collection points.', source: 'collectionScore', target: 500, reward: 3, points: 30 },
+  { id: 'collection-twelve-hundred', name: 'Collector’s Field Guide', description: 'Reach 1,200 collection points.', source: 'collectionScore', target: 1_200, reward: 6, points: 60 },
+  { id: 'collection-twenty-four-hundred', name: 'Collector’s Atlas', description: 'Reach 2,400 collection points.', source: 'collectionScore', target: 2_400, reward: 10, points: 100 },
   ...GENERATOR_ACHIEVEMENTS
 ]);
 const achievementById = byId(ACHIEVEMENTS);
@@ -236,7 +277,7 @@ export function createProgress() {
 }
 
 function storageCapacity(upgrades) {
-  return 36 + upgrades.capacity * 12;
+  return 48 + upgrades.capacity * 12;
 }
 
 function teamCapacity(upgrades) {
@@ -258,9 +299,10 @@ export function petCombatStats(pet, progress) {
   const damage = Math.round(petPower(pet) * (1 + (upgrades.petDamage || 0) * .18));
   const attackRate = Number((rate * (1 + (upgrades.attackRate || 0) * .12) * (heavy ? .8 : 1)).toFixed(2));
   const moveSpeed = Number((speed * (heavy ? .82 : 1) + (upgrades.petSpeed || 0) * .8).toFixed(2));
-  // Estimate throughput across a typical 32-health crystal and the trip to that crystal.
-  const cycleSeconds = Math.ceil(32 / damage) / attackRate + 5 / moveSpeed;
-  return { damage, attackRate, moveSpeed, farmingPower: 32 / cycleSeconds };
+  // Include light, medium and heavy crystal trips so stronger hits matter as players explore.
+  const attackCount = Math.ceil(32 / damage) + Math.ceil(120 / damage) + Math.ceil(300 / damage);
+  const cycleSeconds = attackCount / attackRate + 15 / moveSpeed;
+  return { damage, attackRate, moveSpeed, farmingPower: 452 / cycleSeconds };
 }
 
 export function progression(progress) {
@@ -320,30 +362,65 @@ export function rebirthPlan(progress) {
   return { count, requirements, rewards, available: reason === null, reason };
 }
 
-function trackedMetrics(progress) {
-  const { stats } = progress;
+function scoreCollection(progress) {
   const species = new Set(progress.discovered);
-  let collectionScore = 0;
+  const regions = new Map(EXPEDITION_BIOMES.map(({ id, label, eggId }) => [id, {
+    id, label, eggId, discovered: 0, total: eggById.get(eggId).pool.length, points: 0,
+    bonus: 0, possibleBonus: collectionBonuses[id][1]
+  }]));
+  let discoveryPoints = 0;
+  let uniquePets = 0;
   let meadowSpecies = 0;
   let emberSpecies = 0;
   for (const id of species) {
     const pet = petById.get(id);
     if (!pet) continue;
-    collectionScore += rarityScores[pet.rarity];
-    if (pet.generation === 1) meadowSpecies++;
-    if (pet.generation === 2) emberSpecies++;
+    uniquePets++;
+    const points = rarityScores[pet.rarity];
+    discoveryPoints += points;
+    const region = regions.get(pet.biomeId);
+    if (region) {
+      region.discovered++;
+      region.points += points;
+    } else if (pet.generation === 1) meadowSpecies++;
+    else if (pet.generation === 2) emberSpecies++;
   }
   const variants = Object.fromEntries(variantIds.map(id => [id, 0]));
   for (const key of new Set(progress.variantDiscoveries)) {
-    const [id, variant, extra] = key.split(':');
-    if (!extra && species.has(id) && Object.hasOwn(variants, variant)) {
-      variants[variant]++;
-      collectionScore += variantScores[variant];
-    }
+    const [id, variant] = key.split(':');
+    const pet = petById.get(id);
+    if (!pet || key !== `${id}:${variant}` || !species.has(id) || !Object.hasOwn(variants, variant)) continue;
+    variants[variant]++;
+    const points = variantScores[variant];
+    discoveryPoints += points;
+    const region = regions.get(pet.biomeId);
+    if (region) region.points += points;
   }
+  const collections = [...regions.values()];
+  let expeditionBonus = 0;
+  let biomesCompleted = 0;
+  for (const region of collections) {
+    if (region.discovered === region.total) {
+      region.bonus = region.possibleBonus;
+      biomesCompleted++;
+    } else if (region.discovered >= 3) region.bonus = collectionBonuses[region.id][0];
+    expeditionBonus += region.bonus;
+  }
+  const counts = Object.fromEntries(collections.map(region => [`${region.id}Species`, region.discovered]));
+  return { collections, metrics: { collectionScore: discoveryPoints + expeditionBonus, discoveryPoints, expeditionBonus,
+    biomesCompleted, uniquePets, meadowSpecies, emberSpecies, ...counts, ...variants } };
+}
+
+export function expeditionCollections(progress) {
+  return scoreCollection(progress).collections;
+}
+
+function trackedMetrics(progress) {
+  const { stats } = progress;
+  const { metrics } = scoreCollection(progress);
   const { generation, rebirths, teamDamageRate } = progression(progress);
   const generator = progress.generator || createGeneratorProgress();
-  return { collectionScore, uniquePets: meadowSpecies + emberSpecies, ...variants,
+  return { ...metrics,
     eggsHatched: stats.eggsHatched, resourcesCollected: stats.resourcesCollected, rebirths, generation,
     goldEarned: stats.goldEarned || 0, crystalsDestroyed: stats.crystalsDestroyed || 0,
     specialCrystalsDestroyed: stats.specialCrystalsDestroyed || 0, fusions: stats.fusions || 0,
@@ -352,7 +429,7 @@ function trackedMetrics(progress) {
     generatorHatches: generator.hatches || 0, rebirthGeneratorHatches: generator.rebirthHatches || 0,
     generatorUpgradeRanks: GENERATOR_UPGRADES.reduce((sum, item) => sum + (progress.upgrades[item.id] || 0), 0),
     generatorTier: generatorPlan(progress).tier,
-    meadowSpecies, emberSpecies, magnetRange: progress.upgrades.magnetRange || 0 };
+    magnetRange: progress.upgrades.magnetRange || 0 };
 }
 
 export function collectionMetrics(progress) {
@@ -495,6 +572,7 @@ function pickWeighted(records, random) {
 const messages = {
   'unknown-egg': 'That egg is unavailable.',
   'egg-locked': 'Level up to unlock this egg.',
+  'egg-out-of-range': 'Move closer to this egg’s station before hatching.',
   'generation-locked': 'Rebirth at the cave altar to unlock this generation.',
   'auto-hatch-locked': 'Unlock Auto Hatch in Upgrades first.',
   'auto-collect-locked': 'Unlock Auto Collect and turn it on first.',
@@ -533,6 +611,7 @@ const messages = {
   'generator-egg-changed': 'The selected egg changed. Check the generator before hatching.',
   'trade-unavailable': 'Both offers must contain available, unequipped, unlocked pets.',
   'trade-generation-locked': 'Both explorers must unlock the generations of the companions they receive.',
+  'trade-biome-locked': 'Both explorers must unlock the expedition biomes of the companions they receive.',
   'unknown-achievement': 'This achievement is unavailable.',
   'achievement-incomplete': 'Complete this achievement before claiming its reward.',
   'achievement-claimed': 'You already collected this achievement reward.',
@@ -604,7 +683,7 @@ function receivePet(progress, speciesId, variant, now) {
   return { pet, fresh, freshVariant: variant !== 'normal' && !knownVariant };
 }
 
-function hatch(progress, action, now, random) {
+function hatch(progress, action, now, random, position) {
   const automatic = action.mode === 'auto';
   const plan = hatchPlan(progress, action.eggId, { mode: action.mode, count: action.count, now });
   if (plan.code) {
@@ -613,6 +692,9 @@ function hatch(progress, action, now, random) {
       stopReason: automatic && !canWait ? plan.code : null });
   }
   const egg = eggById.get(action.eggId);
+  if (egg.biomeId && action.mode !== 'generator' && !expeditionEggAt(position, egg.biomeId)) {
+    return failure(progress, 'egg-out-of-range', { stopReason: automatic ? 'egg-out-of-range' : null });
+  }
   const odds = hatchOdds(progress, action.eggId);
   const next = structuredClone(progress);
   const pets = [];
@@ -901,12 +983,15 @@ function generatorHatch(progress, action, now, position, random) {
 
 export function applyAction(progress, action, { now = Date.now(), random = Math.random, position, cranking = false } = {}) {
   switch (action?.type) {
-    case 'hatch': return hatch(progress, { ...action, mode: action.mode === 'auto' ? 'auto' : 'manual' }, timestamp(now), random);
+    case 'hatch': return hatch(progress, { ...action, mode: action.mode === 'auto' ? 'auto' : 'manual' }, timestamp(now), random, position);
     case 'gather': return gather(progress, action, timestamp(now), position);
     case 'collect': return collect(progress, action.dropId, timestamp(now), position, { cranking });
     case 'farm-settings':
     case 'assign-farm-here': return farmAction(progress, action, position);
-    case 'generatorSelect': return generatorAction(progress, action, { eggs: EGGS, level: progression(progress).level });
+    case 'generatorSelect': {
+      const { level, generation } = progression(progress);
+      return generatorAction(progress, action, { eggs: EGGS, level, generation });
+    }
     case 'generatorClaim': return generatorHatch(progress, action, timestamp(now), position, random);
     case 'rebirth': return rebirth(progress, action, position);
     case 'claim': return claim(progress, action.achievementId);
@@ -940,6 +1025,13 @@ function offeredPets(progress, ids) {
   return pets.every(pet => pet && !pet.locked && !pet.favorite && !progress.equipped.includes(pet.id)) ? pets : null;
 }
 
+function hasUnopenedBiomePet(pets, progress) {
+  return pets.some(pet => {
+    const { biomeId } = petById.get(pet.speciesId);
+    return biomeId && !canEnterBiome(progress, biomeId);
+  });
+}
+
 export function exchangePets(first, second, { firstIds, secondIds } = {}, { now = Date.now() } = {}) {
   const sends = offeredPets(first, firstIds);
   const receives = offeredPets(second, secondIds);
@@ -949,6 +1041,7 @@ export function exchangePets(first, second, { firstIds, secondIds } = {}, { now 
   const secondGeneration = progression(second).generation;
   if (receives.some(pet => petById.get(pet.speciesId).generation > firstGeneration) ||
       sends.some(pet => petById.get(pet.speciesId).generation > secondGeneration)) return fail('trade-generation-locked');
+  if (hasUnopenedBiomePet(receives, first) || hasUnopenedBiomePet(sends, second)) return fail('trade-biome-locked');
   if (first.inventory.length - sends.length + receives.length > storageCapacity(first.upgrades) ||
       second.inventory.length - receives.length + sends.length > storageCapacity(second.upgrades) ||
       first.nextPetId + receives.length - 1 > maxPetSerial || second.nextPetId + sends.length - 1 > maxPetSerial) {

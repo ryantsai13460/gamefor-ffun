@@ -467,6 +467,40 @@
 .pv-workshop-stats dt { font-size: .75rem; color: var(--pv-muted); }
 .pv-workshop-stats dd { font-weight: 720; font-variant-numeric: tabular-nums; }
 
+.pv-expedition-location {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: var(--pv-surface);
+  font-size: .8rem;
+}
+
+.pv-expedition-location span { color: var(--pv-muted); }
+.pv-expedition-location .pv-button { flex-basis: 100%; }
+
+.pv-card.pv-expedition-card {
+  border-inline-start: 4px solid var(--pv-biome-accent);
+  background: linear-gradient(125deg, var(--pv-biome-tint), var(--pv-card) 75%);
+}
+
+.pv-expedition-card[data-theme="coast"] { --pv-biome-accent: #267e83; --pv-biome-tint: #dff3e5; }
+.pv-expedition-card[data-theme="frost"] { --pv-biome-accent: #577fb0; --pv-biome-tint: #e9f3fd; }
+.pv-expedition-card[data-theme="cinder"] { --pv-biome-accent: #b66645; --pv-biome-tint: #feeee2; }
+
+.pv-expedition-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  column-gap: .55rem;
+}
+
+.pv-expedition-status { color: var(--pv-muted); font-size: .73rem; font-weight: 730; }
+
 .pv-section { display: grid; gap: 8px; min-width: 0; }
 
 .pv-panel :where(h2, h3) {
@@ -569,6 +603,7 @@
 .pv-pet-symbol[data-variant="obsidian"] { background: #e3d9ee; border-color: #c0a8d2; }
 .pv-pet-symbol[data-variant="titanium"] { background: #dbe7f1; border-color: #a6bacb; }
 .pv-pet-symbol[data-variant="mythic"] { background: #f7ddeb; border-color: #cf9eb9; }
+.pv-pet-symbol[data-variant="giant"] { background: #fae8ce; border-color: #c49465; }
 
 .pv-pet-head {
   position: relative;
@@ -608,6 +643,18 @@
 
 .pv-pet-symbol:is([data-shape="axolotl"], [data-shape="moth"]) .pv-pet-head::before,
 .pv-pet-symbol:is([data-shape="axolotl"], [data-shape="moth"]) .pv-pet-head::after { inset-block-start: 2px; background: var(--pv-pet-accent); }
+
+.pv-pet-symbol:is([data-shape="crab"], [data-shape="manta"], [data-shape="turtle"]) .pv-pet-head {
+  width: 31px;
+  border-radius: 56% 56% 40% 40%;
+}
+
+.pv-pet-symbol:is([data-shape="yak"], [data-shape="dragon"], [data-shape="seahorse"]) .pv-pet-head::before,
+.pv-pet-symbol:is([data-shape="yak"], [data-shape="dragon"], [data-shape="seahorse"]) .pv-pet-head::after {
+  inset-block-start: -10px;
+  border-radius: 72% 24% 40% 25%;
+  background: var(--pv-pet-accent);
+}
 
 .pv-odds {
   color: var(--pv-muted);
@@ -887,8 +934,8 @@
   .pv-play > .pv-banner, .pv-play > .pv-toast { inset-block-start: 213px; }
   .pv-console { max-height: calc(100% - 144px); }
   .pv-panel { padding: 9px; }
-  .petverse .pv-nav button { padding-inline: 6px; min-height: 43px; }
-  .pv-nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .petverse .pv-nav button { padding-inline: 3px; min-height: 43px; font-size: .72rem; }
+  .pv-nav { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .pv-touch {
     grid-template: ". up jump" 43px "left down right" 43px / 43px 43px 43px;
     inset-block-end: 140px;

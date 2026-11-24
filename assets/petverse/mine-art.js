@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three/three.module.min.js';
-import { CRYSTAL_FAMILIES } from './farming.js?v=20261123-3';
+import { CRYSTAL_FAMILIES } from './farming.js?v=20261123-4';
 
 const styles = [null,
   { name: 'Gleam', color: '#309d96', light: '#abf8e2', stone: '#4c7076' },
@@ -7,6 +7,12 @@ const styles = [null,
 ];
 const maximumShards = 90;
 const turn = Math.PI * 2;
+const formations = {
+  'tide-glass': { height: .85, width: 1.17, lean: 1.8, stone: '#53717a' },
+  'pearl-stone': { height: .69, width: 1.21, lean: .53, stone: '#8c7387' },
+  'rime-heart': { height: 1.40, width: .81, lean: .72, stone: '#57738a' },
+  'cinder-geode': { height: 1.06, width: 1.09, lean: 1.4, stone: '#51354f' }
+};
 
 function prism(radii, offset) {
   const [width, height, lean] = radii;
@@ -37,7 +43,7 @@ function prism(radii, offset) {
   return { vertices, colors };
 }
 
-function clusterGeometry(color, light) {
+function clusterGeometry(color, light, formation) {
   const chunks = [
     { shape: [.39, 1.52, -.10], spin: .04, x: 0, z: 0 },
     { shape: [.25, .94, -.23], spin: .36, x: -.32, z: .18 },
@@ -51,7 +57,9 @@ function clusterGeometry(color, light) {
   const tip = new THREE.Color(light);
   const face = new THREE.Color();
   for (const { shape, spin, x, z } of chunks) {
-    const { vertices, colors } = prism(shape, spin);
+    const [width, height, lean] = shape;
+    const radii = formation ? [width * formation.width, height * formation.height, lean * formation.lean] : shape;
+    const { vertices, colors } = prism(radii, spin);
     for (let i = 0; i < vertices.length; i += 3) {
       positions.push(vertices[i] + x, vertices[i + 1], vertices[i + 2] + z);
       face.copy(base).lerp(tip, Math.min(1, colors[i] * .62 + colors[i + 1] * .49));
@@ -103,10 +111,11 @@ export function createMineView(scene, kit, host, { groundHeight, projectLabel })
   function texture(state) {
     const family = families.get(state.familyId);
     const rare = styles[state.specialTier];
+    const formation = formations[state.familyId];
     return {
       color: rare?.color || family?.color || '#bc8b75', light: rare?.light || family?.glow || '#ffd4ab',
       name: rare ? `${rare.name} ${family?.label || 'crystal'}` : family?.label || 'Meadow crystal',
-      stone: rare?.stone || '#696962', radius: family?.radius || .9
+      formation, stone: rare?.stone || formation?.stone || '#696962', radius: family?.radius || .9
     };
   }
 
@@ -120,8 +129,8 @@ export function createMineView(scene, kit, host, { groundHeight, projectLabel })
     base.rotation.y = state.x + state.z;
     const rim = kit.mesh(group, 'ring', kit.paint(look.light, state.specialTier ? .29 : .12, .19), 0, .15, 0,
       radius * .93, radius * .93, radius * .93, [-Math.PI / 2, 0, .2]);
-    const key = `${look.color}:${look.light}`;
-    if (!geometry.has(key)) geometry.set(key, clusterGeometry(look.color, look.light));
+    const key = `${state.familyId}:${state.specialTier}`;
+    if (!geometry.has(key)) geometry.set(key, clusterGeometry(look.color, look.light, look.formation));
     const crystal = new THREE.Mesh(geometry.get(key), material);
     const size = (.46 + radius * .63) * (state.specialTier ? 1.19 : 1);
     crystal.position.y = .11;
@@ -130,7 +139,7 @@ export function createMineView(scene, kit, host, { groundHeight, projectLabel })
     crystal.castShadow = true;
     group.add(crystal);
     scene.add(group);
-    return { group, crystal, rim, size, look, height: size * 1.65 + .45, ...healthTag(host, state.id) };
+    return { group, crystal, rim, size, look, height: size * 1.65 * (look.formation?.height || 1) + .45, ...healthTag(host, state.id) };
   }
 
   function disposeView(view) {

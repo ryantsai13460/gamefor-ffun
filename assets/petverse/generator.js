@@ -76,9 +76,8 @@ export function generatorStats(progress) {
 
 export const generatorPlan = generatorStats;
 
-export function generatorAction(progress, action, { eggs, level }) {
+export function generatorAction(progress, action, { eggs, level, generation }) {
   const egg = eggs.find(item => item.id === action.eggId);
-  const generation = progress.rebirths ? 2 : 1;
   if (!egg || level < egg.level || generation < egg.generation) {
     return { progress, event: { type: 'error', code: 'generator-egg-locked', message: 'Unlock this egg before selecting it for the generator.' } };
   }
