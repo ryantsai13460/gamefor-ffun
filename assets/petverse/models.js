@@ -1,4 +1,5 @@
 import * as THREE from './vendor/three/three.module.min.js';
+import { bestiaryAnatomies, dressBestiaryPet } from './bestiary-art.js?v=20261124-1';
 
 const mutationColors = {
   shiny: '#ffe79a', metallic: '#a0aecd', gold: '#ffb741', diamond: '#8feef8',
@@ -388,12 +389,22 @@ const expeditionModels = {
   embercoil: makeEmbercoil
 };
 
-function createExpeditionPet(pet, spec, { mesh, paint, steel }, { hue, shell, accent, face }, build, titanium) {
+const bestiaryModels = {
+  hare: makeSnowstitch, owl: makeWindquill, turtle: makeTesselshell, otter: makeRiverbody, crab: makeTidecup,
+  yak: makeYak, moth: makeMoth, salamander: makeCoalfrill, armadillo: makeClinkhide, dragon: makeEmbercoil,
+  manta: makeMirrorwake, seahorse: makeGlassfin,
+  ...bestiaryAnatomies
+};
+
+function createExpeditionPet(pet, spec, kit, { hue, shell, accent, face }, build, titanium) {
+  const { mesh, paint, steel } = kit;
   const shape = host => (...args) => mesh(host, ...args);
   const part = shape(pet);
+  let mainVolume;
   const mass = (...args) => {
     const volume = part(...args);
     volume.castShadow = true;
+    mainVolume ||= volume;
     return volume;
   };
   const shade = titanium ? steel('#53677d', true) : paint(hue.clone().multiplyScalar(.56));
@@ -423,6 +434,7 @@ function createExpeditionPet(pet, spec, { mesh, paint, steel }, { hue, shell, ac
   }
   const details = build({ part, mass, eyes, tail, wings, shell, accent, shade, shine, face });
   pet.userData.strideScale = details.stride;
+  if (spec.bestiary) dressBestiaryPet(pet, spec, kit, mainVolume, titanium);
   return details;
 }
 
@@ -542,9 +554,14 @@ export function createPet(spec, variant, kit) {
   const inner = titanium ? '#85b1b5' : '#efb8a6';
   const face = '#352a43';
   const palette = { hue, shell, accent, inner, face };
-  const expedition = Object.hasOwn(expeditionModels, spec.id) ? expeditionModels[spec.id] : null;
-  const details = expedition ? createExpeditionPet(pet, spec, kit, palette, expedition, titanium) : null;
-  if (!expedition) createMeadowPet(pet, spec.shape, kit, palette);
+  const legacy = Object.hasOwn(expeditionModels, spec.id) ? expeditionModels[spec.id] : null;
+  const bestiary = spec.bestiary && Object.hasOwn(bestiaryModels, spec.shape) ? bestiaryModels[spec.shape] : null;
+  const sculpt = bestiary || legacy;
+  const anatomy = bestiary ? new THREE.Group() : pet;
+  if (bestiary) pet.add(anatomy);
+  const details = sculpt ? createExpeditionPet(anatomy, spec, kit, palette, sculpt, titanium) : null;
+  if (!sculpt) createMeadowPet(pet, spec.shape, kit, palette);
+  if (bestiary) Object.assign(pet.userData, anatomy.userData);
 
   if (special) {
     const glow = titanium ? '#7be4ca' : special;
@@ -554,7 +571,7 @@ export function createPet(spec, variant, kit) {
     if (details) {
       armor.position.set(0, details.y - .77 * details.scale, details.z + .20 * details.scale);
       armor.scale.setScalar(details.scale);
-      pet.add(armor);
+      anatomy.add(armor);
     }
     const body = (shape, material, x, y, z, w, h, d, rotation) => mesh(armor, shape, material, x, y, z, w, h, d, rotation);
     if (titanium) {

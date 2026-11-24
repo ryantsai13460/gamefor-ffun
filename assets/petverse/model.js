@@ -1,7 +1,10 @@
-import { canEnterBiome, EXPEDITION_BIOMES, expeditionEggAt, WORLD_EXTENT } from './biomes.js?v=20261123-4';
-import { canFarmArea, crystalAtId, CRYSTAL_SITES, FARM_PRIORITIES, farmSettings, farmingAreaAt } from './farming.js?v=20261123-4';
+import { canEnterBiome, EXPEDITION_BIOMES, expeditionEggAt, WORLD_EXTENT } from './biomes.js?v=20261124-1';
+import { canFarmArea, crystalAtId, CRYSTAL_SITES, FARM_PRIORITIES, farmSettings, farmingAreaAt } from './farming.js?v=20261124-1';
 import { canOperateGenerator, createGeneratorProgress, GENERATOR_ACHIEVEMENTS, GENERATOR_UPGRADES,
-  generatorAction, generatorEggCost, generatorPlan, restoreGeneratorProgress, spendGeneratorCharge } from './generator.js?v=20261123-4';
+  generatorAction, generatorEggCost, generatorPlan, restoreGeneratorProgress, spendGeneratorCharge } from './generator.js?v=20261124-1';
+import { BESTIARY_EGGS, BESTIARY_HABITATS, BESTIARY_PETS, PET_RARITIES } from './bestiary.js?v=20261124-1';
+
+export { BESTIARY_HABITATS, PET_RARITIES };
 
 export const SAVE_VERSION = 1;
 export const WORLD_LIMIT = WORLD_EXTENT;
@@ -14,7 +17,7 @@ function frozenCatalog(items) {
   return Object.freeze(items.map(Object.freeze));
 }
 
-export const PETS = frozenCatalog([
+const classicPets = frozenCatalog([
   { id: 'twigpup', name: 'Twigpup', rarity: 'common', power: 4, color: '#be8161', accent: '#ffe2a0', shape: 'pup' },
   { id: 'thimblehare', name: 'Thimblehare', rarity: 'common', power: 5, color: '#aa82dc', accent: '#f8d4e9', shape: 'hare' },
   { id: 'budfinch', name: 'Budfinch', rarity: 'common', power: 6, color: '#f3c76b', accent: '#fff6c6', shape: 'bird' },
@@ -57,6 +60,8 @@ export const PETS = frozenCatalog([
   { id: 'embercoil', name: 'Embercoil', rarity: 'mythic', power: 175, color: '#562e63', accent: '#ffc747', shape: 'dragon', generation: 3, biomeId: 'cinderbloom' }
 ].map(pet => ({ generation: 1, ...pet })));
 
+export const PETS = Object.freeze([...classicPets, ...BESTIARY_PETS]);
+
 export const GENERATIONS = frozenCatalog([
   { id: 1, name: 'Meadow', rebirths: 0, description: 'Collect woodland and shoreline companions from Sunstep Meadow and Glasswater Coast.' },
   { id: 2, name: 'Emberdeep', rebirths: 1, description: 'Your first rebirth opens the Emberdeep collection and the route toward Frostpine.' },
@@ -86,8 +91,9 @@ export const EGGS = frozenCatalog([
   ...EXPEDITION_BIOMES.map(({ id: biomeId, eggId: id, level, rebirths }) => {
     const { weights, ...details } = expeditionEggs[biomeId];
     return { id, biomeId, level, generation: rebirths + 1, ...details,
-      pool: weightedPool(PETS.filter(pet => pet.biomeId === biomeId), weights) };
-  })
+      pool: weightedPool(classicPets.filter(pet => pet.biomeId === biomeId), weights) };
+  }),
+  ...BESTIARY_EGGS
 ].map(egg => ({ generation: 1, ...egg })));
 
 export const VARIANTS = frozenCatalog([
@@ -134,6 +140,8 @@ const upgradeData = [
   { id: 'harvest', name: 'Harvest bonus', description: 'Collects two more Gold per resource for each rank.', costs: [32, 68, 128], level: 2 },
   { id: 'teamSize', name: 'Team size', description: 'Adds one equipped pet slot per rank.', costs: [52, 135], level: 3 },
   { id: 'capacity', name: 'Habitat space', description: 'Adds twelve inventory spaces per rank.', costs: [4, 9, 16], currency: 'crystals', level: 2 },
+  { id: 'habitatAnnex', name: 'Habitat annex', description: 'Adds 56 more pet slots per rank. Fully upgraded habitats can house all 500 species.',
+    costs: [15, 24, 36, 50, 68, 90, 115, 140], currency: 'crystals', level: 3 },
   { id: 'ascensionReach', name: 'Ascension reach', description: 'Adds 1.6 permanent steps of magnet reach per rank.', costs: [2, 4, 7], currency: 'ascension', level: 3, rebirths: 1 },
   { id: 'ascensionYield', name: 'Ascension yield', description: 'Increases Gold rewards by 12% per rank.', costs: [2, 4, 7], currency: 'ascension', level: 3, rebirths: 1 },
   ...GENERATOR_UPGRADES
@@ -149,8 +157,9 @@ const variantById = byId(VARIANTS);
 const eggById = byId(EGGS);
 const nodeById = byId(NODES);
 const upgradeById = byId(UPGRADES);
+const rarityById = byId(PET_RARITIES);
 const variantIds = VARIANTS.slice(1).map(variant => variant.id);
-const scarceRarities = new Set(['rare', 'epic', 'legendary', 'mythic']);
+const scarceRarities = new Set(PET_RARITIES.slice(2).map(rarity => rarity.id));
 const hatchIntervals = [1600, 1250, 950, 700];
 const maxNumber = 1_000_000_000;
 const maxPetSerial = 999_999_999_999;
@@ -162,9 +171,10 @@ const validProgressKey = /^pet-[1-9]\d{0,11}$/;
 const validDropKey = /^drop-[1-9]\d{0,11}$/;
 const statsKeys = ['eggsHatched', 'sunbeamsSpent', 'resourcesCollected', 'shinies', 'rareVariants',
   'goldEarned', 'crystalsDestroyed', 'specialCrystalsDestroyed', 'fusions', 'assignedAreas', 'crankGold'];
-const rarityScores = { common: 10, uncommon: 14, rare: 22, epic: 35, legendary: 55, mythic: 85 };
 const variantScores = { shiny: 18, metallic: 30, gold: 48, diamond: 70, obsidian: 100, titanium: 140, mythic: 200, giant: 250 };
 const collectionBonuses = { glasswater: [30, 90], frostpine: [50, 150], cinderbloom: [80, 240] };
+const bestiaryEggsById = byId(BESTIARY_EGGS);
+const bestiaryFullSetBonus = egg => 60 + egg.level * 8;
 const fusionTiers = { normal: 'shiny', shiny: 'metallic', metallic: 'gold', gold: 'diamond', diamond: 'obsidian',
   obsidian: 'titanium', titanium: 'giant', mythic: 'giant' };
 const shapeCombat = {
@@ -174,6 +184,12 @@ const shapeCombat = {
   seahorse: [1.42, 7.3], manta: [1.25, 8.25], yak: [.91, 6.2], stoat: [1.49, 8.3], salamander: [1.25, 7.1],
   armadillo: [.95, 6.4], dragon: [1.2, 8]
 };
+
+export const PET_COMBAT_ROLES = Object.freeze({
+  balanced: Object.freeze({ label: 'Balanced', damage: 1, rate: 1, speed: 1 }),
+  scout: Object.freeze({ label: 'Scout', damage: .84, rate: 1.16, speed: 1.22 }),
+  striker: Object.freeze({ label: 'Striker', damage: 1.23, rate: .84, speed: .9 })
+});
 
 export const ACHIEVEMENTS = frozenCatalog([
   { id: 'first-hatch', name: 'First Hatch', description: 'Hatch an egg in the meadow.', source: 'eggsHatched', target: 1, reward: 1, points: 10 },
@@ -199,6 +215,11 @@ export const ACHIEVEMENTS = frozenCatalog([
   { id: 'collection-five-hundred', name: 'Collector’s Notebook', description: 'Reach 500 collection points.', source: 'collectionScore', target: 500, reward: 3, points: 30 },
   { id: 'collection-twelve-hundred', name: 'Collector’s Field Guide', description: 'Reach 1,200 collection points.', source: 'collectionScore', target: 1_200, reward: 6, points: 60 },
   { id: 'collection-twenty-four-hundred', name: 'Collector’s Atlas', description: 'Reach 2,400 collection points.', source: 'collectionScore', target: 2_400, reward: 10, points: 100 },
+  { id: 'bestiary-fifty', name: 'Fifty Familiar Faces', description: 'Discover 50 different species.', source: 'uniquePets', target: 50, reward: 5, points: 65 },
+  { id: 'bestiary-century', name: 'One Hundred Companions', description: 'Discover 100 different species.', source: 'uniquePets', target: 100, reward: 10, points: 100 },
+  { id: 'bestiary-midpoint', name: 'The Living Library', description: 'Discover 250 different species.', source: 'uniquePets', target: 250, reward: 20, points: 180 },
+  { id: 'bestiary-complete', name: 'The Complete Bestiary', description: 'Discover all 500 species.', source: 'uniquePets', target: 500, reward: 40, points: 400 },
+  { id: 'bestiary-full-clutch', name: 'A Complete Clutch', description: 'Discover every species in one Bestiary egg.', source: 'bestiaryEggsCompleted', target: 1, reward: 5, points: 50 },
   ...GENERATOR_ACHIEVEMENTS
 ]);
 const achievementById = byId(ACHIEVEMENTS);
@@ -277,7 +298,7 @@ export function createProgress() {
 }
 
 function storageCapacity(upgrades) {
-  return 48 + upgrades.capacity * 12;
+  return 48 + (upgrades.capacity || 0) * 12 + (upgrades.habitatAnnex || 0) * 56;
 }
 
 function teamCapacity(upgrades) {
@@ -294,11 +315,12 @@ export function petCombatStats(pet, progress) {
   const species = petById.get(pet?.speciesId);
   if (!species) return { damage: 0, attackRate: 0, moveSpeed: 0, farmingPower: 0 };
   const upgrades = progress?.upgrades || {};
-  const [rate, speed] = shapeCombat[species.shape];
+  const [rate, speed] = shapeCombat[species.shape] || [1.13, 6.7];
+  const role = PET_COMBAT_ROLES[species.combatRole] || PET_COMBAT_ROLES.balanced;
   const heavy = pet.variant === 'titanium' || pet.variant === 'giant';
-  const damage = Math.round(petPower(pet) * (1 + (upgrades.petDamage || 0) * .18));
-  const attackRate = Number((rate * (1 + (upgrades.attackRate || 0) * .12) * (heavy ? .8 : 1)).toFixed(2));
-  const moveSpeed = Number((speed * (heavy ? .82 : 1) + (upgrades.petSpeed || 0) * .8).toFixed(2));
+  const damage = Math.round(petPower(pet) * role.damage * (1 + (upgrades.petDamage || 0) * .18));
+  const attackRate = Number((rate * role.rate * (1 + (upgrades.attackRate || 0) * .12) * (heavy ? .8 : 1)).toFixed(2));
+  const moveSpeed = Number((speed * role.speed * (heavy ? .82 : 1) + (upgrades.petSpeed || 0) * .8).toFixed(2));
   // Include light, medium and heavy crystal trips so stronger hits matter as players explore.
   const attackCount = Math.ceil(32 / damage) + Math.ceil(120 / damage) + Math.ceil(300 / damage);
   const cycleSeconds = attackCount / attackRate + 15 / moveSpeed;
@@ -372,14 +394,19 @@ function scoreCollection(progress) {
   let uniquePets = 0;
   let meadowSpecies = 0;
   let emberSpecies = 0;
+  let bestiarySpecies = 0;
+  const eggDiscoveries = new Map();
   for (const id of species) {
     const pet = petById.get(id);
     if (!pet) continue;
     uniquePets++;
-    const points = rarityScores[pet.rarity];
+    const points = rarityById.get(pet.rarity).points;
     discoveryPoints += points;
-    const region = regions.get(pet.biomeId);
-    if (region) {
+    const region = pet.bestiary ? undefined : regions.get(pet.biomeId);
+    if (pet.bestiary) {
+      bestiarySpecies++;
+      eggDiscoveries.set(pet.eggId, (eggDiscoveries.get(pet.eggId) || 0) + 1);
+    } else if (region) {
       region.discovered++;
       region.points += points;
     } else if (pet.generation === 1) meadowSpecies++;
@@ -393,7 +420,7 @@ function scoreCollection(progress) {
     variants[variant]++;
     const points = variantScores[variant];
     discoveryPoints += points;
-    const region = regions.get(pet.biomeId);
+    const region = pet.bestiary ? undefined : regions.get(pet.biomeId);
     if (region) region.points += points;
   }
   const collections = [...regions.values()];
@@ -407,12 +434,38 @@ function scoreCollection(progress) {
     expeditionBonus += region.bonus;
   }
   const counts = Object.fromEntries(collections.map(region => [`${region.id}Species`, region.discovered]));
-  return { collections, metrics: { collectionScore: discoveryPoints + expeditionBonus, discoveryPoints, expeditionBonus,
-    biomesCompleted, uniquePets, meadowSpecies, emberSpecies, ...counts, ...variants } };
+  const habitatCollections = new Map(BESTIARY_HABITATS.map(({ id, label }) => [id, {
+    id, label, discovered: 0, total: 0, bonus: 0, possibleBonus: 0, completeEggs: 0, totalEggs: 0
+  }]));
+  let bestiaryBonus = 0;
+  let bestiaryEggsCompleted = 0;
+  for (const egg of bestiaryEggsById.values()) {
+    const habitat = habitatCollections.get(egg.habitatId);
+    const count = eggDiscoveries.get(egg.id) || 0;
+    const complete = count === egg.pool.length;
+    const possible = bestiaryFullSetBonus(egg);
+    const bonus = complete ? possible : count >= 12 ? Math.floor(possible / 3) : 0;
+    habitat.discovered += count;
+    habitat.total += egg.pool.length;
+    habitat.bonus += bonus;
+    habitat.possibleBonus += possible;
+    habitat.completeEggs += Number(complete);
+    habitat.totalEggs++;
+    bestiaryBonus += bonus;
+    bestiaryEggsCompleted += Number(complete);
+  }
+  return { collections, bestiary: [...habitatCollections.values()],
+    metrics: { collectionScore: discoveryPoints + expeditionBonus + bestiaryBonus, discoveryPoints, expeditionBonus,
+      bestiaryBonus, bestiarySpecies, bestiaryEggsCompleted, biomesCompleted, uniquePets,
+      meadowSpecies, emberSpecies, ...counts, ...variants } };
 }
 
 export function expeditionCollections(progress) {
   return scoreCollection(progress).collections;
+}
+
+export function bestiaryCollections(progress) {
+  return scoreCollection(progress).bestiary;
 }
 
 function trackedMetrics(progress) {
@@ -612,6 +665,7 @@ const messages = {
   'trade-unavailable': 'Both offers must contain available, unequipped, unlocked pets.',
   'trade-generation-locked': 'Both explorers must unlock the generations of the companions they receive.',
   'trade-biome-locked': 'Both explorers must unlock the expedition biomes of the companions they receive.',
+  'trade-egg-locked': 'Both explorers must reach the Bestiary egg level of the companions they receive.',
   'unknown-achievement': 'This achievement is unavailable.',
   'achievement-incomplete': 'Complete this achievement before claiming its reward.',
   'achievement-claimed': 'You already collected this achievement reward.',
@@ -638,7 +692,7 @@ export function hatchPlan(progress, eggId, { mode = 'manual', now = Date.now(), 
   let code;
   if (!egg) code = 'unknown-egg';
   else if (limits.generation < egg.generation) code = 'generation-locked';
-  else if (limits.level < egg.level) code = 'egg-locked';
+  else if (limits.level < egg.level || (egg.biomeId && !canEnterBiome(progress, egg.biomeId))) code = 'egg-locked';
   else if (mode === 'auto' && !progress.upgrades.autoHatch) code = 'auto-hatch-locked';
   else if (capacity < 1) code = 'inventory-full';
   else if (!affordable) code = 'insufficient-sunbeams';
@@ -650,14 +704,23 @@ export function hatchPlan(progress, eggId, { mode = 'manual', now = Date.now(), 
 
 export function hatchOdds(progress, eggId) {
   const egg = eggById.get(eggId);
-  if (!egg) return { pool: [], variants: [] };
+  if (!egg) return { pool: [], variants: [], rarities: [] };
   const speciesRank = progress.upgrades.eggLuck || 0;
   const variantRank = progress.upgrades.variantLuck || 0;
   const boosted = (records, applies, multiplier) => records.map(record => applies(record)
     ? { ...record, weight: Math.round(record.weight * multiplier) } : record);
   const pool = speciesRank ? boosted(egg.pool, record => scarceRarities.has(petById.get(record.speciesId).rarity), 1 + speciesRank * .15) : egg.pool;
   const variants = variantRank ? boosted(VARIANTS, record => record.id !== 'normal', 1 + variantRank * .20) : VARIANTS;
-  return { pool, variants };
+  const weights = new Map();
+  for (const entry of pool) {
+    const rarity = petById.get(entry.speciesId).rarity;
+    const tally = weights.get(rarity) || { weight: 0, speciesCount: 0 };
+    tally.weight += entry.weight;
+    tally.speciesCount++;
+    weights.set(rarity, tally);
+  }
+  const rarities = PET_RARITIES.filter(rarity => weights.has(rarity.id)).map(rarity => ({ ...rarity, ...weights.get(rarity.id) }));
+  return { pool, variants, rarities };
 }
 
 function isRare(pet) {
@@ -1032,16 +1095,22 @@ function hasUnopenedBiomePet(pets, progress) {
   });
 }
 
+function hasUnopenedBestiaryEgg(pets, level) {
+  return pets.some(pet => (bestiaryEggsById.get(petById.get(pet.speciesId).eggId)?.level || 0) > level);
+}
+
 export function exchangePets(first, second, { firstIds, secondIds } = {}, { now = Date.now() } = {}) {
   const sends = offeredPets(first, firstIds);
   const receives = offeredPets(second, secondIds);
   const fail = code => ({ first, second, event: { type: 'error', code, message: messages[code] } });
   if (first === second || !sends || !receives) return fail('trade-unavailable');
-  const firstGeneration = progression(first).generation;
-  const secondGeneration = progression(second).generation;
-  if (receives.some(pet => petById.get(pet.speciesId).generation > firstGeneration) ||
-      sends.some(pet => petById.get(pet.speciesId).generation > secondGeneration)) return fail('trade-generation-locked');
+  const firstRequirements = progression(first);
+  const secondRequirements = progression(second);
+  if (receives.some(pet => petById.get(pet.speciesId).generation > firstRequirements.generation) ||
+      sends.some(pet => petById.get(pet.speciesId).generation > secondRequirements.generation)) return fail('trade-generation-locked');
   if (hasUnopenedBiomePet(receives, first) || hasUnopenedBiomePet(sends, second)) return fail('trade-biome-locked');
+  if (hasUnopenedBestiaryEgg(receives, firstRequirements.level) ||
+      hasUnopenedBestiaryEgg(sends, secondRequirements.level)) return fail('trade-egg-locked');
   if (first.inventory.length - sends.length + receives.length > storageCapacity(first.upgrades) ||
       second.inventory.length - receives.length + sends.length > storageCapacity(second.upgrades) ||
       first.nextPetId + receives.length - 1 > maxPetSerial || second.nextPetId + sends.length - 1 > maxPetSerial) {

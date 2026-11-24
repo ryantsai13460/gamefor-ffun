@@ -203,6 +203,17 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
     return { ...options, progress: player.progress, version: player.version, event };
   }
 
+  function sendPassiveProgress(player, previous, events) {
+    if (!events.length) return;
+    const change = player.compactProgress
+      ? { progressDelta: Object.fromEntries(Object.entries(player.progress)
+        .filter(([key, value]) => value !== previous[key])) }
+      : { progress: player.progress };
+    for (const event of events) {
+      send(player, { type: 'player-state', version: player.version, event, ...change });
+    }
+  }
+
   function passiveSave(player, progress) {
     if (progress === player.progress) return true;
     try {
@@ -224,9 +235,10 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
     const elapsed = now - player.lastCrankAt;
     if (!force && elapsed < generatorInterval) return;
     player.lastCrankAt = now;
-    const next = advanceGenerator(player.progress, elapsed);
-    if (next !== player.progress && passiveSave(player, next)) {
-      send(player, progressMessage(player, { type: 'generator-progress' }, { type: 'player-state' }));
+    const previous = player.progress;
+    const next = advanceGenerator(previous, elapsed);
+    if (next !== previous && passiveSave(player, next)) {
+      sendPassiveProgress(player, previous, [{ type: 'generator-progress' }]);
     }
   }
 
@@ -435,6 +447,7 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
     }
     const { token: resumeToken, ...profileState } = profile;
     const player = peer.player = { ...profileState, room, socket: peer.socket, position: { ...SPAWN, heading: 0 },
+      compactProgress: message.compactProgress === true,
       lastMoveAt: now, lastCorrectionAt: 0, moveBudget: moveBurst, generatorActive: false, runtimeReceipts: new Map() };
     clearTimeout(peer.joinTimer);
     const peers = Array.from(room.members, playerAppearance);
@@ -517,20 +530,22 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
     const events = room.farming.advance(connected, now, (ownerId, reward) => {
       const player = players.get(ownerId);
       if (player?.room !== room || player.socket.readyState !== WebSocket.OPEN) return false;
-      const result = awardCrystalBreak(player.progress, reward, { now });
+      const previous = player.progress;
+      const result = awardCrystalBreak(previous, reward, { now });
       if (result.event.type === 'error' || !passiveSave(player, result.progress)) return false;
-      send(player, progressMessage(player, result.event, { type: 'player-state' }));
+      sendPassiveProgress(player, previous, [result.event]);
       return true;
     });
     const farm = { ...room.farming.snapshot(), events };
     const frames = new Map();
     for (const player of connected) {
       if (player.socket.readyState !== WebSocket.OPEN) continue;
-      const collection = collectEligibleDrops(player.progress, {
+      const previous = player.progress;
+      const collection = collectEligibleDrops(previous, {
         now, position: player.position, cranking: player.generatorActive, autoOnly: true
       });
       if (!passiveSave(player, collection.progress)) continue;
-      for (const event of collection.events) send(player, progressMessage(player, event, { type: 'player-state' }));
+      sendPassiveProgress(player, previous, collection.events);
       checkpointCrank(player, now);
       const active = player.generatorActive;
       if (!frames.has(active)) frames.set(active, JSON.stringify({ type: 'farm', farm, generator: { active } }));

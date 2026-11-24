@@ -19,6 +19,8 @@ With matching Biome Expedition builds, a private room shares one map and each ex
 
 Keep the browser profiles separate during the test. An online explorer can occupy one session at a time. The database stores a hash of the browser's resume token. Retain the browser profile and database to recover the save. A server restart closes the rooms and keeps saved guests. Create a new room and share its new code after a restart.
 
+The game sends your complete save when you join, take an inventory action, or finish a trade. Current clients receive only changed save fields during automatic mining, Gold pickup, and crank updates, so a large bestiary uses less bandwidth. Earlier clients still receive complete snapshots.
+
 ## Host an approved pilot
 
 GitHub Pages can serve the game's HTML, JavaScript, and graphics. The live room and persistent database need a separate running Node.js server. The supplied process listens on IPv4 loopback with a default port of `4893`. Install it on a machine you administer. Set `PETVERSE_CLIENT_ORIGINS` to the exact approved frontend origin, such as `https://ryantsai13460.github.io`, and set `PETVERSE_DB_PATH` to a durable local path outside the published site. Configure an HTTPS reverse proxy for `/v1/petverse` and connect through its `wss://` address.

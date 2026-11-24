@@ -42,13 +42,15 @@ function farmNode(progress, node, now) {
   return collected.progress;
 }
 
-test('all eggs disclose the exact weighted chances for 40 playable species and nine forms', () => {
-  assert.equal(PETS.length, 40);
-  assert.equal(EGGS.length, 6);
+test('all eggs disclose the exact weighted chances for 500 playable species and nine forms', () => {
+  assert.equal(PETS.length, 500);
+  assert.equal(EGGS.length, 26);
+  assert.equal(PETS.filter(pet => !pet.bestiary).length, 40);
+  assert.equal(EGGS.filter(egg => !egg.bestiary).length, 6);
   assert.equal(VARIANTS.length, 9);
   assert.deepEqual(new Set(EGGS.flatMap(egg => egg.pool.map(entry => entry.speciesId))), new Set(PETS.map(pet => pet.id)));
   for (const egg of EGGS) {
-    assert.equal(egg.pool.length, egg.biomeId || egg.generation > 1 ? 5 : 10);
+    assert.equal(egg.pool.length, egg.bestiary ? 23 : egg.biomeId || egg.generation > 1 ? 5 : 10);
     assert.equal(egg.pool.reduce((sum, pet) => sum + pet.weight, 0), 10_000);
   }
   assert.equal(VARIANTS.reduce((sum, variant) => sum + variant.weight, 0), 10_000);

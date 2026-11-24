@@ -1,9 +1,9 @@
 import * as THREE from './vendor/three/three.module.min.js';
 import { biomeAt, canEnterBiome, mayEnterExpeditionBiome } from './biomes.js?v=20261123-4';
 import { BIOME_LIGHT } from './expedition-art.js?v=20261123-4';
-import { EGGS, GATHER_DISTANCE, magnetStats, NODES, PETS, REBIRTH_ALTAR, SPAWN, VARIANTS, WORLD_LIMIT } from './model.js?v=20261123-4';
-import { createMeadow } from './meadow.js?v=20261123-4';
-import { createModelKit, createPet, createTraveler, petScale } from './models.js?v=20261123-4';
+import { EGGS, GATHER_DISTANCE, magnetStats, NODES, PETS, REBIRTH_ALTAR, SPAWN, VARIANTS, WORLD_LIMIT } from './model.js?v=20261124-1';
+import { createMeadow } from './meadow.js?v=20261124-1';
+import { createModelKit, createPet, createTraveler, petScale } from './models.js?v=20261124-1';
 import { createMineView } from './mine-art.js?v=20261123-4';
 import { createGeneratorWorkshop } from './generator-art.js?v=20261123-4';
 import { canFarmArea } from './farming.js?v=20261123-4';
