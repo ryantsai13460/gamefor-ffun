@@ -5,6 +5,7 @@ import { createExpeditionTerrain } from './expedition-art.js?v=20261123-4';
 import { CRYSTAL_SITES, FARM_AREAS } from './farming.js?v=20261123-4';
 import { GENERATOR_SITE } from './generator.js?v=20261123-4';
 import { REBIRTH_ALTAR } from './model.js?v=20261123-4';
+import { buildMeadowTuft, buildMeadowWater, buildSunstepSurface, createSunstepHeight, sunstepCreekDistance } from './sunstep-art.js?v=20261125-1';
 
 const TAU = Math.PI * 2;
 
@@ -39,6 +40,7 @@ export function skyBackdrop(scene) {
       }`
   });
   const sky = new THREE.Mesh(geometry, material);
+  sky.name = 'petverse-sky';
   sky.renderOrder = -20;
   sky.frustumCulled = false;
   scene.add(sky);
@@ -55,10 +57,22 @@ export function createMeadow(scene, kit, nodes, eggs) {
   const obstacles = [];
   const nodeViews = new Map();
   const decorations = new Map();
+  const meadowGeometries = { grass: buildMeadowTuft(), canopy: new THREE.IcosahedronGeometry(1, 1) };
+  const terrainHeight = createSunstepHeight([
+    { x: 0, z: 11, radius: 3.0 },
+    { x: 0, z: -3.68, radius: 4.85 },
+    { x: -12.2, z: -5.7, radius: 3.4 },
+    { x: -14, z: 21.15, radius: 4.75 },
+    { x: -22, z: -18, radius: 7.7 },
+    { x: 8.8, z: 12.99, radius: 2.7 },
+    { x: 17.75, z: -25.1, radius: 3.3 },
+    ...nodes.map(({ x, z }) => ({ x, z, radius: 1.2 })),
+    ...CRYSTAL_SITES.map(({ x, z }) => ({ x, z, radius: 1.5 }))
+  ]);
 
   function groupAt(x, y, z, parent = world) {
     const group = new THREE.Group();
-    group.position.set(x, y, z);
+    group.position.set(x, y + (parent === world ? terrainHeight(x, z) : 0), z);
     parent.add(group);
     return group;
   }
@@ -106,15 +120,26 @@ export function createMeadow(scene, kit, nodes, eggs) {
     const curve = new THREE.CatmullRomCurve3(points.map(([x, z]) => new THREE.Vector3(x, height, z)));
     const vertices = [];
     const indices = [];
-    for (let i = 0; i <= 36; i++) {
-      const p = curve.getPointAt(i / 36);
-      const tangent = curve.getTangentAt(i / 36);
-      const edge = width * (.49 + .07 * Math.sin(i * .49));
-      vertices.push(p.x - tangent.z * edge, p.y, p.z + tangent.x * edge,
-        p.x + tangent.z * edge, p.y, p.z - tangent.x * edge);
-      if (i) {
-        const previous = (i - 1) * 2;
-        indices.push(previous, previous + 2, previous + 1, previous + 1, previous + 2, previous + 3);
+    const rows = Math.max(12, Math.ceil(curve.getLength() / .33));
+    const columns = Math.ceil(width / .34);
+    for (let row = 0; row <= rows; row++) {
+      const distance = row / rows;
+      const p = curve.getPointAt(distance);
+      const tangent = curve.getTangentAt(distance);
+      const edge = width * (.49 + .055 * Math.sin(distance * 17.5));
+      for (let column = 0; column <= columns; column++) {
+        const side = column / columns * 2 - 1;
+        const x = p.x + tangent.z * edge * side;
+        const z = p.z - tangent.x * edge * side;
+        const elevation = terrainHeight(x, z);
+        const rise = Math.min(.092, .034 + elevation * .22);
+        const creekEdge = THREE.MathUtils.smoothstep(sunstepCreekDistance(x, z), 1.9, 2.65);
+        vertices.push(x, THREE.MathUtils.lerp(.039, p.y + elevation + rise, creekEdge), z);
+        if (row && column) {
+          const at = row * (columns + 1) + column;
+          const back = at - columns - 1;
+          indices.push(at - 1, back, at, at - 1, back - 1, back);
+        }
       }
     }
     const geometry = new THREE.BufferGeometry();
@@ -125,12 +150,13 @@ export function createMeadow(scene, kit, nodes, eggs) {
     const road = ground(geometry, color, 0, 0, 0);
     road.material = paint(color).clone();
     road.material.side = THREE.DoubleSide;
+    road.material.flatShading = false;
   }
 
   function decoration(shape, color, x, y, z, sx, sy, sz, yaw = 0) {
     const key = `${shape}:${color}`;
     if (!decorations.has(key)) decorations.set(key, { shape, color, pieces: [] });
-    decorations.get(key).pieces.push({ x, y, z, sx, sy, sz, yaw });
+    decorations.get(key).pieces.push({ x, y: y + terrainHeight(x, z), z, sx, sy, sz, yaw });
   }
 
   function batchPlantedMeshes(parent) {
@@ -155,17 +181,19 @@ export function createMeadow(scene, kit, nodes, eggs) {
     }
   }
 
-  const island = ground(new THREE.CylinderGeometry(39, 38, .62, 32), '#88b87b', 0, -.31, 0);
+  const island = ground(new THREE.CylinderGeometry(39, 38, .62, 96, 1, true), '#88b87b', 0, -.31, 0);
   island.rotation.y = .09;
   ground(new THREE.CylinderGeometry(38.5, 34, 3.2, 24), '#729479', 0, -2.15, 0);
   ground(new THREE.CylinderGeometry(34, 29, 5.5, 20), '#6f8f8d', 0, -6.48, 0);
   ground(new THREE.CylinderGeometry(29, 23, 4.7, 16), '#879e9d', 0, -11.5, 0);
-  for (const [x, z, r, color] of [[-15, -8, 10, '#91bf7e'], [15, -14, 11, '#96bf81'], [13, 17, 11, '#9ac484'], [-13, 15, 11, '#81b577'], [-10, -21, 8, '#8eb872']]) {
-    const patch = ground(new THREE.CircleGeometry(r, 16), color, x, .011, z);
-    patch.rotation.x = -Math.PI / 2;
-    patch.rotation.z = random() * TAU;
-    patch.scale.y = .72;
-  }
+  const colorPatches = [
+    [-15, -8, 10, '#91b980'], [15, -14, 11, '#98bd80'], [13, 17, 11, '#a4c485'],
+    [-13, 15, 11, '#81b385'], [-10, -21, 8, '#8eb781']
+  ].map(([x, z, radius, color]) => {
+    const yaw = random() * TAU;
+    return { x, z, radius, tint: new THREE.Color(color), cos: Math.cos(yaw), sin: Math.sin(yaw) };
+  });
+  world.add(buildSunstepSurface(terrainHeight, colorPatches));
 
   path([[.4, 24], [-1.8, 18], [0, 11], [1.5, 4], [0, -3.9], [1, -11], [-2.6, -18]], 3.3, '#dbcc9d');
   path([[-25, 7], [-16, 4], [-11, 7], [-5, 5], [1.5, 4], [7.2, 8], [13.1, 11.4], [23.7, 9]], 2.8, '#ddcea0', .038);
@@ -206,9 +234,8 @@ export function createMeadow(scene, kit, nodes, eggs) {
   const expedition = createExpeditionTerrain(kit, { groupAt, ground, label, path, batch: batchPlantedMeshes, sites: CRYSTAL_SITES, eggs });
   for (const [id, view] of expedition.fieldViews) fieldViews.set(id, view);
 
-  // A shallow blue reed pond and timber bridge split the eastern trail.
-  path([[17, -24], [16, -17], [19, -7], [16, 0], [17, 8], [18, 17], [21, 28]], 5.1, '#79aeb0', .050);
-  path([[17, -24], [16, -17], [19, -7], [16, 0], [17, 8], [18, 17], [21, 28]], 4.4, '#91c8c2', .055);
+  const creek = buildMeadowWater(world, kit);
+  obstacles.push(...creek.obstacles);
   const bridge = groupAt(16.8, .08, 10.5);
   bridge.rotation.y = -.18;
   for (let i = 0; i < 16; i++) {
@@ -281,7 +308,7 @@ export function createMeadow(scene, kit, nodes, eggs) {
   }
   label(workshop, 'Workshop', '#dacc93', 4.95);
   batchPlantedMeshes(workshop);
-  obstacles.push({ x: -12.2, z: -6.0, radius: 2.40 });
+  obstacles.push({ x: -12.2, z: -6.0, radius: 2.40, height: 4.45 });
   interactables.push({ type: 'upgrade', id: 'upgrades', label: 'Workshop', x: -12.2, z: -3.45, group: workshop });
 
   const rebirthCave = createRebirthCave(world, kit, { origin: REBIRTH_ALTAR, egg: embergeode, label, batch: batchPlantedMeshes });
@@ -295,6 +322,7 @@ export function createMeadow(scene, kit, nodes, eggs) {
   mesh(caveTrail, 'box', '#8b8263', -.08, 1.39, 0, .98, .46, .136);
   mesh(caveTrail, 'cone', '#c3ba8a', -.68, 1.39, .012, .243, .42, .123, [0, 0, Math.PI / 2]);
   mesh(caveTrail, 'gem', paint('#87bfb2', .16), -.16, 1.38, .104, .135, .14, .046);
+  label(caveTrail, 'Rebirth Cave', '#c6e7d3', 2.36);
 
   const originalSites = CRYSTAL_SITES.filter(site => !expedition.fieldViews.has(site.areaId));
   const limits = [...nodes, ...interactables, ...originalSites, ...fieldSigns, rebirthCave.waitingArea, { x: 0, z: 11 }, { x: 7.4, z: 5.5 }];
@@ -364,7 +392,7 @@ export function createMeadow(scene, kit, nodes, eggs) {
     const scale = .10 + random() * .25;
     const yaw = random() * TAU;
     if (nearExpedition(x, z)) continue;
-    decoration('cone', tint, x, .28 + scale * .12, z, .14 + scale, .48 + scale, .17 + scale, yaw);
+    decoration('grass', tint, x, .016, z, .71 + scale, .45 + scale, .76 + scale, yaw);
     if (i % 7 === 0) decoration('round', ['#edd3a3', '#f1ab96', '#bacdd1'][i % 3], x, .48, z, .155, .09, .155);
   }
   for (let i = 0; i < 58; i++) {
@@ -378,21 +406,43 @@ export function createMeadow(scene, kit, nodes, eggs) {
       limits.some(point => Math.hypot(point.x - x, point.z - z) < 3.25)) continue;
     const size = .68 + random() * .86;
     if (nearExpedition(x, z)) continue;
-    const tint = ['#589479', '#649b70', '#9cae64', '#609a89'][i % 4];
+    const colors = [
+      ['#4c8d74', '#679e80', '#8dc092'], ['#588b70', '#72a47a', '#abc08a'],
+      ['#73976b', '#90ab73', '#b3bf82'], ['#5a9686', '#74ac93', '#9fc2a2']
+    ][i % 4];
     decoration('disc', '#77a173', x + size * .32, .020, z - size * .15, size * 1.75, 1, size * 1.31, angle);
-    decoration('beam', '#867c65', x, size * 1.05, z, .22 * size, 2.1 * size, .23 * size, angle);
+    decoration('beam', '#727967', x, size * .88, z, .25 * size, 1.76 * size, .25 * size, angle);
+    decoration('beam', '#92896c', x + size * .14, size * 1.79, z, .17 * size, 1.20 * size, .17 * size, angle);
     for (let crown = 0; crown < 3; crown++) {
-      decoration('facet', tint, x + Math.cos(angle + 2 * crown) * size * .44, size * (2.23 + crown * .54),
-        z + Math.sin(angle + 2 * crown) * size * .48, size * (1.51 - crown * .19), size * (1.40 - crown * .17), size * 1.28, angle + crown);
+      decoration('canopy', colors[crown], x + Math.cos(angle + 2 * crown) * size * .57, size * (2.22 + crown * .53),
+        z + Math.sin(angle + 2 * crown) * size * .58, size * (1.43 - crown * .18), size * (1.06 - crown * .15), size * 1.24, angle + crown);
     }
     if (i % 4 === 0) decoration('facet', '#a2a89a', x + size * .63, .26, z, size * .57, .46, size * .67, angle);
-    obstacles.push({ x, z, radius: .35 * size });
+    obstacles.push({ x, z, radius: .35 * size, height: 3.6 * size });
   }
+  const streamside = seededRandom(5376);
+  for (let index = 0; index < 48; index++) {
+    const z = -21.3 + streamside() * 47;
+    const x = (z > 8 ? 16.6 + (z - 8) * .17 : 16.7 + Math.sin(z * .25) * 1.08) +
+      (index % 2 ? -1 : 1) * (2.55 + streamside() * .86);
+    if (limits.some(point => Math.hypot(point.x - x, point.z - z) < 1.5) ||
+        (Math.abs(z - 10.5) < 3.1 && Math.abs(x - 16.8) < 4.2)) continue;
+    const height = .40 + streamside() * .47;
+    decoration('grass', '#729678', x, .015, z, .37, height, .37, streamside() * TAU);
+    if (index % 3 === 0) decoration('round', '#efc293', x, height * .78, z - .10, .089, .19, .087);
+  }
+  const grassPaint = new Map();
   const transform = new THREE.Object3D();
   for (const { shape, color, pieces } of decorations.values()) {
-    const plant = new THREE.InstancedMesh(geometries[shape], paint(color), pieces.length);
+    if (shape === 'grass' && !grassPaint.has(color)) {
+      const material = paint(color).clone();
+      material.side = THREE.DoubleSide;
+      grassPaint.set(color, material);
+    }
+    const plant = new THREE.InstancedMesh(meadowGeometries[shape] || geometries[shape],
+      shape === 'grass' ? grassPaint.get(color) : paint(color), pieces.length);
     plant.receiveShadow = true;
-    plant.castShadow = shape === 'facet';
+    plant.castShadow = shape === 'facet' || shape === 'canopy';
     pieces.forEach(({ x, y, z, sx, sy, sz, yaw }, i) => {
       transform.position.set(x, y, z);
       transform.scale.set(sx, sy, sz);
@@ -422,5 +472,5 @@ export function createMeadow(scene, kit, nodes, eggs) {
     batchPlantedMeshes(cloud);
   }
 
-  return { interactables, obstacles, nodeViews, rebirthCave, fieldViews, sky };
+  return { interactables, obstacles, nodeViews, rebirthCave, fieldViews, sky, terrainHeight, updateScenery: creek.update };
 }

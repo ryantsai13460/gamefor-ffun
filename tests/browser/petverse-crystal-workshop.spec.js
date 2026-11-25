@@ -11,7 +11,7 @@ const control = (frame, name) => frame.getByRole('button', { name, exact: true }
 test.use({ launchOptions: {
   executablePath: process.env.ARCADE_CHROMIUM || undefined,
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']
-} });
+}, viewport: { width: 1040, height: 830 } });
 
 test.beforeEach(async ({ page }) => {
   await page.route('https://**/*', route => route.abort());
@@ -82,6 +82,7 @@ async function faceNorth(page, frame) {
 async function walkAxis(page, frame, axis, target, tolerance = .48) {
   const surface = canvas(frame);
   const scene = page.frames().find(child => /\/petverse\/index\.html(?:\?|$)/.test(child.url()));
+  await expect(surface).toHaveAttribute('data-player-motion', 'idle');
   const from = await scene.evaluate(axis => window.__petverseObservedWorld.position()[axis], axis);
   if (Math.abs(target - from) <= tolerance) return;
   const sign = Math.sign(target - from);
@@ -92,6 +93,9 @@ async function walkAxis(page, frame, axis, target, tolerance = .48) {
     await scene.waitForFunction(({ axis, target, sign, tolerance }) =>
       sign * (target - window.__petverseObservedWorld.position()[axis]) < tolerance,
     { axis, target, sign, tolerance }, { timeout: 24_000 });
+  } catch (error) {
+    const position = await scene.evaluate(() => window.__petverseObservedWorld.position());
+    throw new Error(`Could not walk to ${axis}=${target}. Stopped at ${position.x}, ${position.z}.`, { cause: error });
   } finally {
     await page.keyboard.up(key);
   }
@@ -103,7 +107,7 @@ async function enterWorkshop(page, frame) {
   await walkAxis(page, frame, 'z', 19.3, .7);
   await walkAxis(page, frame, 'x', -3.1);
   await walkAxis(page, frame, 'z', 25.3);
-  await walkAxis(page, frame, 'x', GENERATOR_SITE.x);
+  await walkAxis(page, frame, 'x', GENERATOR_SITE.x + .65);
   await walkAxis(page, frame, 'z', GENERATOR_SITE.z + .9);
   await expect(frame.locator('.pv-interact')).toContainText(/operate generator/i);
 }
@@ -122,17 +126,24 @@ test('a starter pet damages a crystal and the magnet credits the dropped Gold ex
   const writes = () => canvas(frame).evaluate(() => window.__petverseObservedSaves);
   const openingGold = createProgress().wallet.sunbeams;
   await expect.poll(async () => (await readSolo(frame)).wallet.sunbeams, { timeout: 15_000 }).toBeGreaterThan(openingGold);
-  const saves = await writes();
   const firstCrystalDrop = drop => drop.kind === 'crystal-gold';
-  const broke = saves.find(save => save.stats.crystalsDestroyed > 0 && save.drops?.some(firstCrystalDrop));
+  const broke = (await writes()).find(save => save.stats.crystalsDestroyed > 0 && save.drops?.some(firstCrystalDrop));
   expect(broke).toBeDefined();
   expect(broke.wallet.sunbeams).toBe(openingGold);
   const reward = broke.drops.find(firstCrystalDrop);
   expect(await canvas(frame).evaluate((_, id) => window.__petverseObservedWorld.damaged.has(id), reward.crystalId)).toBe(true);
-  const collected = saves.find(save => save.wallet.sunbeams > openingGold && !save.drops.some(drop => drop.id === reward.id));
+  const findPickup = saves => saves.findIndex((save, index) =>
+    saves[index - 1]?.drops.some(drop => drop.id === reward.id) && !save.drops.some(drop => drop.id === reward.id));
+  await expect.poll(async () => findPickup(await writes()), { timeout: 15_000 }).toBeGreaterThan(0);
+  const saves = await writes();
+  const pickupIndex = findPickup(saves);
+  const collected = saves[pickupIndex];
   expect(collected).toBeDefined();
-  expect(collected.wallet.sunbeams).toBe(openingGold + reward.sunbeams);
-  expect(collected.stats.goldEarned).toBe(reward.sunbeams);
+  const holding = saves[pickupIndex - 1];
+  const pickupGold = holding.drops.filter(drop => firstCrystalDrop(drop) &&
+    !collected.drops.some(next => next.id === drop.id)).reduce((total, drop) => total + drop.sunbeams, 0);
+  expect(collected.wallet.sunbeams - holding.wallet.sunbeams).toBe(pickupGold);
+  expect(collected.stats.goldEarned - holding.stats.goldEarned).toBe(pickupGold);
 
   await control(frame, 'Farming').click();
   await frame.getByRole('checkbox', { name: 'Automatic Crystal Targeting', exact: true }).uncheck();

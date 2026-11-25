@@ -301,8 +301,21 @@ function storageCapacity(upgrades) {
   return 48 + (upgrades.capacity || 0) * 12 + (upgrades.habitatAnnex || 0) * 56;
 }
 
+const baseTeamSlots = 2;
+
 function teamCapacity(upgrades) {
-  return 2 + upgrades.teamSize;
+  return baseTeamSlots + (upgrades.teamSize || 0);
+}
+
+export function teamSlotStatus(progress) {
+  const upgrade = upgradeById.get('teamSize');
+  const ownedSlots = teamCapacity(progress.upgrades);
+  return Array.from({ length: baseTeamSlots + upgrade.costs.length }, (_, index) => {
+    const number = index + 1;
+    if (number <= ownedSlots) return { number, petId: progress.equipped[index] ?? null };
+    const rank = number - baseTeamSlots;
+    return { number, requirement: { rank, level: upgrade.level, cost: upgrade.costs[rank - 1], currency: upgrade.currency } };
+  });
 }
 
 export function petPower(pet) {
@@ -1068,6 +1081,10 @@ export function applyAction(progress, action, { now = Date.now(), random = Math.
       const next = structuredClone(progress);
       equipBest(next);
       return { progress: next, event: { type: 'equip-best' } };
+    }
+    case 'unequip-all': {
+      const count = progress.equipped.length;
+      return { progress: count ? { ...progress, equipped: [] } : progress, event: { type: 'unequip-all', count } };
     }
     case 'settings': {
       const next = structuredClone(progress);

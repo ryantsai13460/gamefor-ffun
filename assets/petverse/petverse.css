@@ -62,10 +62,16 @@
   outline-offset: 3px;
 }
 
-.pv-header {
+.pv-top-hud {
   position: absolute;
   z-index: 4;
   inset: 10px 10px auto;
+  display: grid;
+  gap: 5px;
+  pointer-events: none;
+}
+
+.pv-header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -77,6 +83,7 @@
   border-radius: 11px;
   background: var(--pv-hud);
   box-shadow: 0 3px 12px #172b2766;
+  pointer-events: auto;
 }
 
 .pv-brand {
@@ -149,6 +156,43 @@
   font-variant-numeric: tabular-nums;
 }
 
+.pv-header-actions { display: flex; gap: 5px; align-items: center; }
+
+.pv-crosshair {
+  position: absolute;
+  z-index: 2;
+  inset: 50% auto auto 50%;
+  width: 14px;
+  height: 14px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  color: #fff9df;
+  filter: drop-shadow(0 1px 1px #15221e);
+}
+
+.pv-crosshair::before, .pv-crosshair::after {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 13px;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  content: '';
+  transform: translate(-50%, -50%);
+}
+
+.pv-crosshair::after { transform: translate(-50%, -50%) rotate(90deg); }
+
+.pv-lock-message {
+  align-self: center;
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: var(--pv-hud);
+  color: var(--pv-hud-ink);
+  font-size: .74rem;
+  font-weight: 650;
+}
+
 .pv-wallet-item {
   display: inline-flex;
   align-items: baseline;
@@ -179,17 +223,13 @@
 }
 
 .pv-play-modes {
-  position: absolute;
-  z-index: 4;
-  inset: auto auto auto 10px;
-  top: calc(var(--pv-head-clear) - 40px);
+  justify-self: start;
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  max-width: calc(100% - 20px);
 }
 
-.pv-play-modes .pv-button { min-width: 0; max-width: 100%; white-space: normal; }
+.pv-play-modes .pv-button { min-width: 0; max-width: 100%; white-space: normal; pointer-events: auto; }
 .pv-invite-card input[readonly] { font-family: ui-monospace, monospace; letter-spacing: .045em; }
 
 .pv-progress { width: 100%; height: .65rem; accent-color: var(--pv-pine); }
@@ -926,13 +966,11 @@
 
 @container petverse (max-width: 570px) {
   .pv-header { min-height: 80px; padding: 6px; gap: 4px; }
+  .pv-header-actions { gap: 4px; }
+  .petverse .pv-header-actions .pv-button { min-height: 32px; padding-inline: 6px; font-size: .73rem; }
   .pv-wallet { order: 2; flex-basis: 100%; }
-  .pv-play-modes { top: 94px; }
   .pv-play-modes .pv-button { padding-inline: 7px; font-size: .7rem; min-height: 33px; }
-  .pv-world-label { inset-block-start: 132px; }
-  .pv-farming-hud { inset-block-start: 168px; }
-  .pv-play > .pv-banner, .pv-play > .pv-toast { inset-block-start: 213px; }
-  .pv-console { max-height: calc(100% - 144px); }
+  .pv-play > .pv-banner, .pv-play > .pv-toast { inset-block-start: calc(var(--pv-head-clear) + 86px); }
   .pv-panel { padding: 9px; }
   .petverse .pv-nav button { padding-inline: 3px; min-height: 43px; font-size: .72rem; }
   .pv-nav { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
@@ -957,6 +995,12 @@
 
 @media (pointer: fine) { .pv-touch { display: none; } }
 @media (any-pointer: coarse) { .pv-touch { display: grid; } }
+.petverse[data-input-mode="mouse"] .pv-touch,
+.petverse[data-input-mode="keyboard"] .pv-touch { display: none; }
+.petverse[data-input-mode="touch"] .pv-touch { display: grid; }
+@media (any-pointer: coarse) and (any-hover: none) {
+  .petverse:not([data-input-mode="keyboard"]) .pv-shift-lock { display: none; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .petverse *,

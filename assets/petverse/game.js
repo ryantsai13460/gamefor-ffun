@@ -1,10 +1,12 @@
 import { PETS, EGGS, VARIANTS, UPGRADES, GENERATIONS, REBIRTH_ALTAR, BESTIARY_HABITATS, PET_RARITIES,
   PET_COMBAT_ROLES, achievementStatus, applyAction, awardCrystalBreak, bestiaryCollections, collectEligibleDrops,
   collectionMetrics, createProgress, expeditionCollections, fusionOptions, generationStatus, hatchOdds, hatchPlan, magnetStats,
-  petCombatStats, progression, rebirthPlan, restoreProgress } from './model.js?v=20261124-1';
+  petCombatStats, progression, rebirthPlan, restoreProgress, teamSlotStatus } from './model.js?v=20261125-1';
 import { createOnlineClient } from './online.js?v=20261124-1';
-import { defaultPreferences, preferencesKey, readPreferences, readStorage, soloKey, writeStorage } from './preferences.js?v=20261123-4';
-import { createSound } from './sound.js?v=20261123-4';
+import { defaultPreferences, preferencesKey, readPreferences, readStorage, shiftLockKeys, soloKey,
+  sprintKeys, writeStorage } from './preferences.js?v=20261125-1';
+import { createSound } from './sound.js?v=20261125-1';
+import { createPetPreviews } from './pet-preview.js?v=20261125-1';
 import { FARM_AREAS, FARM_PRIORITIES, canFarmArea, createFarmingWorld, farmSettings, farmingAreaAt } from './farming.js?v=20261123-4';
 import { advanceGenerator, canOperateGenerator, GENERATOR_UPGRADES, generatorEggCost,
   generatorPlan, markGeneratorStart } from './generator.js?v=20261123-4';
@@ -14,6 +16,7 @@ const root = document.getElementById('petverse');
 const scope = new AbortController();
 const { signal } = scope;
 const sound = createSound();
+const petPreviews = createPetPreviews();
 const speciesById = new Map(PETS.map(pet => [pet.id, pet]));
 const variantById = new Map(VARIANTS.map(variant => [variant.id, variant]));
 const eggsById = new Map(EGGS.map(egg => [egg.id, egg]));
@@ -33,7 +36,7 @@ const rankingMetrics = {
   biomesCompleted: 'Biome collections completed', expeditionBonus: 'Expedition bonus',
   bestiarySpecies: 'Bestiary species', bestiaryBonus: 'Bestiary bonus', bestiaryEggsCompleted: 'Bestiary egg sets completed'
 };
-const settingGroups = ['General', 'Generation', 'Stop rules', 'Notifications', 'Audio', 'Graphics', 'Inventory', 'Workshop', 'Accessibility'];
+const settingGroups = ['Controls', 'Graphics', 'General', 'Generation', 'Stop rules', 'Notifications', 'Audio', 'Inventory', 'Workshop', 'Accessibility'];
 const stopLabels = {
   'new-discovery': 'New species discovered', 'new-variant': 'New variant discovered', 'inventory-full': 'Inventory full',
   'insufficient-sunbeams': 'More Gold needed', 'egg-out-of-range': 'Return to the regional egg station'
@@ -85,6 +88,7 @@ let rankFilter = '';
 let rankRevision = 0;
 let rankState;
 let worldReady = false;
+let pointerLockState = { active: false, available: false };
 let fullscreenError = '';
 let farming = null;
 let soloFarm;
@@ -168,7 +172,9 @@ const balances = Object.fromEntries(Object.entries(currencyNames).map(([id, name
 }));
 const level = el('span', 'pv-level');
 const fullscreen = button('Fullscreen', toggleFullscreen, { className: 'pv-button pv-fullscreen' });
-header.append(brand, wallet, level, fullscreen);
+const headerActions = el('div', 'pv-header-actions');
+headerActions.append(button('Ranks', () => openJournal('Leaderboards'), { label: 'Open Leaderboards' }), fullscreen);
+header.append(brand, wallet, level, headerActions);
 
 const modes = el('nav', 'pv-play-modes');
 modes.setAttribute('aria-label', 'Play modes');
@@ -179,6 +185,8 @@ const soloChoice = button('Play Solo', () => {
 const createChoice = button('Create Private Server', () => chooseRoom('create'));
 const joinChoice = button('Join With Code', () => chooseRoom('join'));
 modes.append(soloChoice, createChoice, joinChoice);
+const topHud = el('div', 'pv-top-hud');
+topHud.append(header, modes);
 
 const layout = el('div', 'pv-layout');
 const play = el('section', 'pv-play');
@@ -217,6 +225,16 @@ for (const [direction, glyph] of Object.entries(controls)) {
 touch.append(button('Jump', () => world?.jump(), { className: 'pv-button pv-jump' }));
 const interact = button('Interact', () => world?.interact(), { className: 'pv-button pv-primary pv-interact', disabled: true });
 const resetCamera = button('Reset camera', () => world?.resetCamera(), { className: 'pv-button pv-reset-camera' });
+const lockStatus = el('span', 'pv-lock-message');
+lockStatus.setAttribute('role', 'status');
+lockStatus.hidden = true;
+const shiftLock = button('Shift Lock', () => {
+  if (screen) closeMenu();
+  world?.toggleShiftLock();
+}, { className: 'pv-button pv-shift-lock', pressed: false, disabled: true });
+const crosshair = el('span', 'pv-crosshair');
+crosshair.hidden = true;
+crosshair.setAttribute('aria-hidden', 'true');
 const farmHud = el('aside', 'pv-farming-hud');
 const farmHudTitle = el('strong');
 const farmHudMetrics = el('small');
@@ -229,9 +247,9 @@ const crankDetails = el('small');
 const stopCranking = button('Stop Cranking', () => void setCranking(false));
 crankHud.append(crankTitle, crankMeter, crankDetails, stopCranking);
 crankHud.hidden = true;
-terrain.append(worldLabel, worldNotice, touch, interact, farmHud, crankHud);
+terrain.append(worldLabel, worldNotice, crosshair, touch, interact, farmHud, crankHud);
 const fieldBar = el('div', 'pv-field-bar');
-fieldBar.append(worldHelp, resetCamera, button('Ranks', () => openJournal('Leaderboards'), { label: 'Open Leaderboards' }));
+fieldBar.append(worldHelp, resetCamera, shiftLock, lockStatus);
 const toast = el('aside', 'pv-toast');
 toast.hidden = true;
 toast.setAttribute('role', 'status');
@@ -252,7 +270,12 @@ const autoPanel = el('div', 'pv-auto-panel');
 autoPanel.hidden = true;
 consolePanel.append(nav, autoPanel, panel);
 layout.append(play, consolePanel);
-root.replaceChildren(header, modes, layout);
+root.replaceChildren(topHud, layout);
+const topHudSize = new ResizeObserver(() => {
+  root.style.setProperty('--pv-head-clear', `${topHud.offsetTop + topHud.offsetHeight}px`);
+});
+topHudSize.observe(topHud);
+signal.addEventListener('abort', () => topHudSize.disconnect(), { once: true });
 const menuClose = button('Close menu', closeMenu, { className: 'pv-button pv-close-menu' });
 consolePanel.append(menuClose);
 
@@ -344,9 +367,11 @@ function updateHeader() {
 
 function updateWorld(farmingEvents) {
   root.dataset.reducedMotion = String(prefs.graphics.reducedMotion);
+  updateLockControl();
   const visibleProgress = self ? { ...progress, nodeReadyAt: { ...progress.nodeReadyAt, ...roomResources } } : progress;
   const generator = generatorPlan(progress);
-  world?.update({ progress: visibleProgress, peers, graphics: prefs.graphics, magnetPreview: screen === 'Upgrades',
+  world?.update({ progress: visibleProgress, peers, graphics: prefs.graphics, controls: prefs.controls, overlayOpen: Boolean(screen),
+    magnetPreview: screen === 'Upgrades',
     farming, farmingEvents, farmOwnerId: self?.id || 'solo', generator: { active: crankActive, ratio: generator.ratio,
       tier: generator.tier, rate: generator.speed, animate: prefs.workshop.crankAnimations } });
 }
@@ -355,6 +380,7 @@ function refreshPanel({ resetScroll = false } = {}) {
   const focus = panel.contains(document.activeElement) ? document.activeElement.dataset.focusKey : null;
   const scroll = panel.scrollTop;
   root.dataset.menuOpen = String(Boolean(screen));
+  root.dataset.screen = screen?.toLowerCase() || '';
   panel.hidden = !screen;
   menuClose.hidden = !screen;
   for (const [index, node] of navControls.entries()) node.setAttribute('aria-pressed', String(navNames[index] === screen));
@@ -386,6 +412,18 @@ function openScreen(next) {
   updateWorld();
   refreshPanel({ resetScroll: true });
   if (next === 'Journal' && journalView === 'Leaderboards') void updateLeaderboard();
+}
+
+function updateLockControl(state = pointerLockState) {
+  pointerLockState = state;
+  shiftLock.disabled = !prefs.controls.shiftLockEnabled || !state.available || Boolean(state.pending);
+  shiftLock.setAttribute('aria-pressed', String(Boolean(state.active)));
+  root.dataset.shiftLocked = String(Boolean(state.active));
+  crosshair.hidden = !state.active;
+  shiftLock.title = state.active ? 'Press Escape to release the pointer' :
+    state.reason || 'Lock the pointer for mouse-look and strafing';
+  lockStatus.textContent = state.active ? 'Esc to release' : state.reason || '';
+  lockStatus.hidden = !lockStatus.textContent;
 }
 
 function commit(next, farmingEvents) {
@@ -473,12 +511,12 @@ function reportAction(event, action, { quiet, automatic }) {
       (event.crystals ? ' and ' + format(event.crystals) + (event.crystals === 1 ? ' Crystal.' : ' Crystals.') : '.'));
   } else if (event.type === 'fuse') {
     if (prefs.reveal.animations && !prefs.graphics.reducedMotion) world?.showBurst({ kind: 'hatch', variant: event.pet.variant });
-    sound.play('rare');
+    sound.play('fusion');
     showFeedback('Fused ' + describePet(event.pet), { pet: event.pet });
   } else if (event.type === 'expedition-travel') {
     arriveAtExpedition(event.areaId, event.position);
   } else if (event.type === 'upgrade') {
-    sound.play('ui');
+    sound.play('upgrade');
     showFeedback((UPGRADES.find(upgrade => upgrade.id === action.id)?.name || 'Upgrade') + ' purchased.');
   } else if (event.type === 'rebirth') {
     if (prefs.reveal.animations && !prefs.graphics.reducedMotion) world?.showBurst({ kind: 'hatch', variant: 'mythic' });
@@ -490,7 +528,7 @@ function reportAction(event, action, { quiet, automatic }) {
   }
 }
 
-function petPortrait(species, variant = 'normal') {
+function petPortrait(species, variant = 'normal', revealModel = true) {
   const portrait = el('span', 'pv-pet-symbol');
   portrait.setAttribute('aria-hidden', 'true');
   portrait.dataset.shape = species?.shape || 'round';
@@ -498,6 +536,7 @@ function petPortrait(species, variant = 'normal') {
   portrait.style.setProperty('--pv-pet-color', species?.color || '#b39268');
   portrait.style.setProperty('--pv-pet-accent', species?.accent || '#fff5d6');
   portrait.append(el('span', 'pv-pet-head'));
+  if (revealModel && species) petPreviews.attach(portrait, species, variant);
   return portrait;
 }
 
@@ -630,6 +669,7 @@ function arriveAtExpedition(areaId, position) {
   world?.setPosition(position, { reorient: true });
   updateLocation(biomeAt(position));
   closeMenu();
+  sound.play('portal');
   showFeedback('Arrived at ' + label + '.');
 }
 
@@ -649,6 +689,7 @@ async function travelTo(areaId) {
 
 function renderHatch() {
   const facts = progression(progress);
+  const autoLimit = Number(prefs.hatching.autoLimit) || null;
   const area = section('Egg nursery', 'Send your pets to break crystals, collect the Gold, and hatch stronger companions.');
   const stats = statLine(format(progress.stats.eggsHatched) + ' hatched · ' + progress.discovered.length + '/' + PETS.length + ' discovered · ' + progress.stats.shinies + ' shiny');
   const modes = row(button('Classic eggs', () => {
@@ -663,6 +704,11 @@ function renderHatch() {
   modes.setAttribute('role', 'group');
   modes.setAttribute('aria-label', 'Egg groups');
   area.append(stats, modes);
+  if (progress.upgrades.autoHatch) area.append(select('Auto-hatch session limit', prefs.hatching.autoLimit,
+    [['none', 'Until a stop rule'], ['10', '10 eggs'], ['25', '25 eggs'], ['50', '50 eggs'], ['100', '100 eggs']], value => {
+      changePreference('hatching', 'autoLimit', value);
+      refreshPanel();
+    }));
   if (eggView === 'bestiary') area.append(select('Egg habitat', eggHabitat,
     BESTIARY_HABITATS.map(habitat => [habitat.id, habitat.label]), id => {
       eggHabitat = id;
@@ -708,6 +754,9 @@ function renderHatch() {
       if (progress.upgrades.autoHatch) actions.append(button('Auto hatch', () => startAuto(egg.id),
         { label: 'Auto hatch ' + egg.name, disabled: auto?.state === 'active' || auto?.state === 'paused' }));
       card.append(actions);
+      if (progress.upgrades.autoHatch && autoLimit) {
+        card.append(el('p', 'pv-summary', 'Auto hatch up to ' + autoLimit + ' eggs · ' + format(autoLimit * egg.cost) + ' Gold max'));
+      }
     }
     const odds = hatchOdds(progress, egg.id);
     card.append(disclosure('egg-rarity-odds-' + egg.id, 'Rarity odds',
@@ -747,6 +796,7 @@ function buildAutoPanel() {
   area.classList.add('pv-auto-status');
   const headline = statLine('');
   const totals = el('p', 'pv-summary');
+  const budget = el('p', 'pv-summary');
   const ruleText = el('p', 'pv-summary');
   const rules = button('Edit stop rules', () => {
     settingsGroup = 'Stop rules';
@@ -773,9 +823,9 @@ function buildAutoPanel() {
   }, { label: 'Stop auto hatch' });
   const ruleDetails = el('details', 'pv-auto-rules');
   ruleDetails.append(el('summary', '', 'Active stop conditions'), ruleText);
-  area.append(headline, totals, row(pause, resume, stop, rules), ruleDetails);
+  area.append(headline, totals, budget, row(pause, resume, stop, rules), ruleDetails);
   autoPanel.append(area);
-  return { headline, totals, ruleText, pause, resume, stop };
+  return { headline, totals, budget, ruleText, pause, resume, stop };
 }
 
 function syncAutoPanel() {
@@ -790,6 +840,9 @@ function syncAutoPanel() {
   autoView.headline.textContent = state + (auto.reason ? ' · ' + auto.reason : ' · ' + eggsById.get(auto.eggId).name);
   autoView.totals.textContent = auto.count + ' hatched · ' + format(auto.spent) + ' Gold spent · ' + auto.shinies +
     ' shiny · ' + auto.rare + ' variants · ' + (progression(progress).hatchInterval / 1000) + 's interval';
+  autoView.budget.hidden = !auto.limit;
+  autoView.budget.textContent = auto.limit ?
+    'Session limit · ' + auto.limit + ' eggs · ' + format(auto.limit * eggsById.get(auto.eggId).cost) + ' Gold max' : '';
   const rules = VARIANTS.slice(1).filter(item => progress.settings.stopVariants[item.id]).map(item => item.name);
   if (progress.settings.stopOnNew) rules.push('New discovery');
   if (progress.settings.stopOnNewVariant) rules.push('New variant');
@@ -814,7 +867,7 @@ function startAuto(eggId) {
     return;
   }
   activeEgg = eggId;
-  auto = { eggId, state: 'active', reason: '', count: 0, spent: 0, shinies: 0, rare: 0 };
+  auto = { eggId, state: 'active', reason: '', limit: Number(prefs.hatching.autoLimit) || null, count: 0, spent: 0, shinies: 0, rare: 0 };
   refreshPanel();
   scheduleAuto();
 }
@@ -829,15 +882,26 @@ function scheduleAuto(delay = 75) {
 async function runAuto() {
   const session = auto;
   if (session?.state !== 'active') return;
-  if (busy || document.hidden) { scheduleAuto(500); return; }
-  const event = await act({ type: 'hatch', eggId: session.eggId, mode: 'auto' }, { automatic: true });
-  if (session !== auto || !event) return;
+  if (busy || activeAction || document.hidden) { scheduleAuto(500); return; }
+  const remaining = session.limit ? session.limit - session.count : Infinity;
+  const limitReason = 'Reached the ' + session.limit + '-egg limit';
+  if (remaining <= 0) {
+    stopAuto(limitReason);
+    refreshPanel();
+    return;
+  }
+  const batchSize = progress.upgrades.multiHatch && progress.settings.multiHatch ? 3 : 1;
+  const event = await act({ type: 'hatch', eggId: session.eggId, mode: 'auto',
+    count: Math.min(batchSize, remaining) }, { automatic: true });
+  if (session !== auto) return;
+  if (!event) { scheduleAuto(500); return; }
   if (event.type === 'hatch') {
     session.count += event.pets.length;
     session.spent += event.spent;
     session.shinies += event.pets.filter(pet => pet.variant === 'shiny').length;
     session.rare += event.pets.filter(pet => pet.variant !== 'normal').length;
     if (event.stopReason) stopAuto(textForStop(event.stopReason));
+    else if (event.pets.length >= remaining) stopAuto(limitReason);
   } else if (event.type === 'error' && !event.retryAt) {
     stopAuto(event.message || textForStop(event.stopReason || event.code),
       event.code === 'inventory-full' && !progress.settings.stopOnFull);
@@ -909,7 +973,7 @@ function collectionEntry({ species, habitat, egg }, discovered, variantDiscoveri
   const variants = VARIANTS.filter(item => variantDiscoveries.has(species.id + ':' + item.id));
   copy.append(el('h3', '', species.name), row(badge, el('span', 'pv-pet-meta', habitat?.label || '')),
     el('p', 'pv-summary', encountered ? variants.map(item => item.name).join(', ') || 'Discovered' : 'Undiscovered'));
-  head.append(petPortrait(species, filterVariant || 'normal'), copy);
+  head.append(petPortrait(species, filterVariant || 'normal', encountered), copy);
   card.append(head);
   if (egg) card.append(el('p', 'pv-summary pv-journal-egg', egg.name));
   return card;
@@ -944,10 +1008,52 @@ function appendCollectionTotals(area, discovered, variantDiscoveries) {
     disclosure('original-expedition-totals', 'Original expedition sets', expeditionScoreSection(true)));
 }
 
+function equippedTeam(facts) {
+  const team = el('section', 'pv-equipped-team');
+  team.setAttribute('aria-label', 'Equipped team');
+  const title = el('div', 'pv-equipped-title');
+  title.append(el('h3', '', 'Equipped team'), statLine(progress.equipped.length + ' / ' + facts.equipSlots +
+    ' equipped · ' + format(facts.teamDamageRate) + ' team damage/s'));
+  const slots = el('ol', 'pv-equipped-slots');
+  const owned = new Map(progress.inventory.map(pet => [pet.id, pet]));
+  for (const { number, petId, requirement } of teamSlotStatus(progress)) {
+    const slot = el('li', 'pv-equipped-slot');
+    const pet = owned.get(petId);
+    const copy = el('div', 'pv-equipped-slot-text');
+    if (pet) {
+      const species = speciesById.get(pet.speciesId);
+      const stats = petCombatStats(pet, progress);
+      slot.dataset.state = 'equipped';
+      slot.append(petPortrait(species, pet.variant));
+      copy.append(el('strong', '', describePet(pet)),
+        el('small', '', 'Slot ' + number + ' · ' + format(stats.damage) + ' damage'));
+    } else if (requirement) {
+      slot.dataset.state = 'locked';
+      copy.append(el('strong', '', 'Locked slot ' + number),
+        el('small', '', 'Team size rank ' + requirement.rank + ' · Level ' + requirement.level +
+          ' · ' + format(requirement.cost) + ' ' + currencyNames[requirement.currency]));
+    } else {
+      slot.dataset.state = 'open';
+      copy.append(el('strong', '', 'Open slot ' + number));
+    }
+    slot.append(copy);
+    slots.append(slot);
+  }
+  const best = button('Equip best', () => act({ type: 'equip-best' }), { key: 'equip-team-best', primary: true });
+  const clear = button('Unequip all', async () => {
+    const event = await act({ type: 'unequip-all' });
+    if (event?.type === 'unequip-all' && screen === 'Pets' && petView === 'Inventory') {
+      panel.querySelector('[data-focus-key="equip-team-best"]')?.focus({ preventScroll: true });
+    }
+  }, { disabled: !progress.equipped.length, key: 'unequip-team-all' });
+  team.append(title, slots, row(best, clear));
+  return team;
+}
+
 function renderPets() {
   const facts = progression(progress);
-  const area = section('Pet journal', progress.inventory.length + '/' + facts.capacity + ' pets · ' +
-    progress.equipped.length + '/' + facts.equipSlots + ' equipped · ' + format(facts.teamDamageRate) + ' team damage/s');
+  const area = section('Pet journal', progress.inventory.length + ' / ' + facts.capacity + ' pets');
+  area.classList.add('pv-inventory-screen');
   area.append(row(...['Inventory', 'Collection', 'Fusion'].map(view => button(view, () => {
     petView = view;
     refreshPanel();
@@ -987,7 +1093,7 @@ function renderPets() {
       filterGeneration = value;
       filterChanged();
     }));
-  const cards = el('div', 'pv-cards');
+  const cards = el('div', 'pv-cards pv-inventory-cards');
   const results = statLine('');
   results.setAttribute('role', 'status');
   results.classList.add('pv-pet-results');
@@ -1003,7 +1109,7 @@ function renderPets() {
         changePreference('inventory', 'sort', value);
         filterChanged();
       }));
-    area.append(button('Equip best', () => act({ type: 'equip-best' })));
+    area.append(equippedTeam(facts));
   } else {
     appendCollectionTotals(area, discovered, variantDiscoveries);
     filters.append(
@@ -1432,17 +1538,31 @@ function renderSettings() {
       hatch: 'Hatching volume', rare: 'Rare discovery volume', ui: 'Interface volume'
     })) group.append(slider(label, id));
     for (const [id, label] of Object.entries({
-      enableMusic: 'Music', enableAmbient: 'Meadow ambience', enableEffects: 'Gathering sounds',
+      enableMusic: 'Music', enableAmbient: 'World ambience', enableEffects: 'Gameplay sound effects',
+      enableCrystalHits: 'Crystal impact sounds', enableCrystalBreaks: 'Crystal breaking sounds',
       enableHatch: 'Hatching sounds', enableRare: 'Rare discovery sounds', enableUI: 'Interface sounds',
       muteBackground: 'Mute when the game is in the background'
     })) group.append(choice('audio', id, label));
+  } else if (settingsGroup === 'Controls') {
+    group.append(choice('controls', 'shiftLockEnabled', 'Shift Lock', 'Toggle in the game to use mouse-look and strafe. Press Escape to release the pointer.'),
+      select('Shift Lock key', prefs.controls.shiftLockKey, shiftLockKeys, value => changePreference('controls', 'shiftLockKey', value)),
+      choice('controls', 'sprintEnabled', 'Sprint', 'Hold your sprint key while moving.'),
+      select('Sprint key', prefs.controls.sprintKey, sprintKeys, value => changePreference('controls', 'sprintKey', value)),
+      slider('Camera distance', 'cameraDistance', 'graphics'), slider('Camera sensitivity', 'cameraSensitivity', 'graphics'));
   } else if (settingsGroup === 'Graphics') {
-    group.append(select('Graphics quality', prefs.graphics.quality, [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']],
+    const qualityOptions = [['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['ultra', 'Ultra']];
+    group.append(select('Graphics quality', prefs.graphics.quality, qualityOptions,
       value => changePreference('graphics', 'quality', value)),
+    slider('Render resolution', 'resolution', 'graphics'),
+    slider('Draw distance', 'drawDistance', 'graphics'),
+    select('Shadow quality', prefs.graphics.shadowQuality, qualityOptions, value => changePreference('graphics', 'shadowQuality', value)),
+    select('Texture quality', prefs.graphics.textureQuality, qualityOptions.slice(0, 3), value => changePreference('graphics', 'textureQuality', value)),
     select('Particles', prefs.graphics.particles, [['off', 'Off'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High']],
       value => changePreference('graphics', 'particles', value)), slider('Camera sensitivity', 'cameraSensitivity', 'graphics'));
     for (const [id, label] of Object.entries({
-      shadows: 'Shadows at High quality', petGlow: 'Pet glow', shinyEffects: 'Shiny effects', rareAnimations: 'Rare variant animations',
+      shadows: 'Dynamic shadows', antiAliasing: 'Anti-aliasing', bloom: 'Bloom',
+      petGlow: 'Pet glow', shinyEffects: 'Shiny effects', rareAnimations: 'Rare variant animations', giantEffects: 'Giant pet effects',
+      showPeerGiants: 'Show other players’ Giant pets',
       showPeerPets: 'Show other players’ pets', showPeerTitanium: 'Show other players’ Titanium pets', showPetNames: 'Show pet names',
       collectionNumbers: 'Collection numbers', shake: 'Camera shake', reducedMotion: 'Reduced motion'
     })) group.append(choice('graphics', id, label));
@@ -1506,6 +1626,7 @@ function confirmRelease(pet) {
 }
 
 async function toggleFullscreen() {
+  world?.releaseShiftLock?.();
   try {
     if (document.fullscreenElement) await document.exitFullscreen();
     else await root.requestFullscreen();
@@ -1750,6 +1871,12 @@ async function setCranking(active) {
 }
 
 function showFarmingEvents(events = []) {
+  const position = world?.getPosition();
+  if (position) {
+    const nearbyEffect = event => Math.hypot(event.x - position.x, event.z - position.z) < 13;
+    if (events.some(event => event.type === 'break' && nearbyEffect(event))) sound.play('crystalBreak');
+    else if (events.some(event => event.type === 'damage' && nearbyEffect(event))) sound.play('crystalHit');
+  }
   const found = events.find(event => event.type === 'respawn' && event.specialTier &&
     (event.areaId === farmSettings(progress).area || event.areaId === currentField()?.id));
   if (found) {
@@ -1957,6 +2084,7 @@ function setProximity(target) {
 function updateLocation(biome) {
   if (visibleBiome === biome?.id) return;
   visibleBiome = biome?.id;
+  sound.setHabitat(visibleBiome);
   worldLabel.textContent = biome?.label || 'Sunstep Meadow';
   play.setAttribute('aria-label', 'Explore ' + worldLabel.textContent);
   if (screen === 'Explore') refreshPanel();
@@ -1966,7 +2094,7 @@ let altarNearby = false;
 
 async function startWorld() {
   try {
-    const { mountWorld } = await import('./world.js?v=20261124-1');
+    const { mountWorld } = await import('./world.js?v=20261125-1');
     if (signal.aborted) return;
     world = mountWorld(terrain, {
       onGather: nodeId => void act({ type: 'gather', nodeId }),
@@ -2010,6 +2138,7 @@ async function startWorld() {
         }
       },
       onBiome: updateLocation,
+      onLockChange: updateLockControl,
       onProximity: setProximity,
       onReady({ available }) {
         worldReady = available;
@@ -2028,6 +2157,18 @@ async function startWorld() {
 }
 
 sound.configure(prefs.audio);
+root.addEventListener('pointerdown', event => {
+  root.dataset.inputMode = event.pointerType === 'touch' ? 'touch' : 'mouse';
+}, { capture: true, signal });
+root.addEventListener('keydown', event => {
+  if (event.target.matches('input, textarea, select, [contenteditable]') || event.ctrlKey || event.metaKey) return;
+  root.dataset.inputMode = 'keyboard';
+  if (event.code === 'KeyI' && !event.repeat && event.target.matches('.pv-world canvas')) {
+    event.preventDefault();
+    if (screen === 'Pets') closeMenu();
+    else openScreen('Pets');
+  }
+}, { capture: true, signal });
 root.addEventListener('pointerdown', () => void sound.unlock(), { capture: true, once: true, signal });
 root.addEventListener('keydown', () => void sound.unlock(), { capture: true, once: true, signal });
 root.addEventListener('click', event => {
@@ -2058,6 +2199,7 @@ window.addEventListener('pagehide', event => {
   scope.abort();
   online.destroy();
   world?.destroy();
+  petPreviews.dispose();
   sound.destroy();
 }, { signal });
 

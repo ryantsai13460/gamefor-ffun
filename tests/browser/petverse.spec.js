@@ -64,7 +64,7 @@ test('Petverse launches through the arcade, moves in 3D, gathers, hatches and re
 test('Stop When Shiny is independent of notification preferences and auto-hatch never resumes on reload', async ({ page }) => {
   const save = createProgress();
   save.xp = 74;
-  save.wallet.sunbeams = 156;
+  save.wallet.sunbeams = 216;
   save.farming.enabled = false;
   await page.addInitScript(seed => {
     if (!location.pathname.endsWith('/petverse/index.html')) return;
@@ -75,7 +75,7 @@ test('Stop When Shiny is independent of notification preferences and auto-hatch 
   const frame = gameFrame(page);
   await frame.getByRole('button', { name: 'Upgrades', exact: true }).click();
   await frame.getByRole('button', { name: 'Buy Auto Hatch', exact: true }).click();
-  await expect(frame.locator('[data-currency="sunbeams"] strong')).toHaveText('120');
+  await expect(frame.locator('[data-currency="sunbeams"] strong')).toHaveText('180');
   await frame.getByRole('button', { name: 'Settings', exact: true }).click();
   await frame.getByRole('button', { name: 'Stop rules', exact: true }).click();
   await frame.getByRole('checkbox', { name: /Stop When Shiny/ }).uncheck();
@@ -84,8 +84,10 @@ test('Stop When Shiny is independent of notification preferences and auto-hatch 
   await frame.getByRole('button', { name: 'Hatch', exact: true }).click();
   await frame.getByRole('button', { name: 'Auto hatch Sunmeadow Egg', exact: true }).click();
   const session = frame.locator('.pv-auto-status');
-  await expect(session).toContainText('2 hatched', { timeout: 12_000 });
-  await frame.getByRole('button', { name: 'Pause auto hatch' }).click();
+  await expect.poll(() => canvas(frame).evaluate(element =>
+    JSON.parse(element.ownerDocument.defaultView.localStorage.getItem('ffun-petverse-solo-v1')).stats.eggsHatched),
+  { timeout: 12_000 }).toBeGreaterThanOrEqual(2);
+  await frame.getByRole('button', { name: 'Pause auto hatch' }).press('Enter');
   await expect(session).toContainText('Paused');
   await frame.getByRole('button', { name: 'Edit stop rules' }).click();
   await frame.getByRole('checkbox', { name: /Stop When Shiny/ }).check();

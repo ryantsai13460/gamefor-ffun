@@ -9,6 +9,8 @@ export const audioDefaults = Object.freeze({
   enableMusic: true,
   enableAmbient: true,
   enableEffects: true,
+  enableCrystalHits: true,
+  enableCrystalBreaks: true,
   enableHatch: true,
   enableRare: true,
   enableTitanium: true,
@@ -37,9 +39,22 @@ const meadowScore = [
   [[45, 57, 64, 69], [[0, 78], [1.5, 76], [2.75, 74]]]
 ];
 const beat = 60 / 86;
+const habitatSounds = {
+  meadow: { wind: 540, swell: .16, transpose: 0, pace: 1, calls: [88, 91, 86, 89], interval: 1 },
+  glasswater: { wind: 320, swell: .35, transpose: 2, pace: 1.12, calls: [79, 85, 81, 83], interval: 1.05 },
+  frostpine: { wind: 940, swell: .12, transpose: 5, pace: 1.27, calls: [91, 95, 90, 93], interval: 1.45 },
+  cinderbloom: { wind: 180, swell: .21, transpose: -7, pace: 1.18, calls: [60, 67, 63, 68], interval: 1.38 }
+};
 const cueNotes = {
   ui: { channel: "ui", gap: .05, notes: [74], length: .10, gain: .12 },
   gather: { channel: "effects", gap: .065, notes: [69, 74], length: .21, gain: .135 },
+  crystalHit: { channel: "effects", setting: "enableCrystalHits", gap: .034, notes: [71, 66], length: .095,
+    gain: .035, oscillator: "triangle", interval: .36 },
+  crystalBreak: { channel: "effects", setting: "enableCrystalBreaks", gap: .032, notes: [49, 64, 78], length: .22,
+    gain: .075, oscillator: "triangle", interval: .28 },
+  portal: { channel: "effects", gap: .085, notes: [55, 62, 71, 79], length: .37, gain: .075 },
+  fusion: { channel: "hatch", gap: .055, notes: [62, 69, 77, 74, 81], length: .31, gain: .084 },
+  upgrade: { channel: "effects", gap: .068, notes: [60, 67, 72], length: .19, gain: .085 },
   hatch: { channel: "hatch", gap: .095, notes: [62, 69, 74, 78], length: .38, gain: .14 },
   crank: { channel: "effects", gap: .09, notes: [33, 31], length: .13, gain: .065, oscillator: "triangle" },
   rare: { channel: "rare", gap: .085, notes: [66, 73, 78, 81, 86], length: .49, gain: .16 },
@@ -56,6 +71,9 @@ export function createSound() {
   let buses;
   let timer;
   let wind;
+  let windFilter;
+  let windSwell;
+  let habitat = habitatSounds.meadow;
   let nextMeasure;
   let nextBird;
   let measure = 0;
@@ -114,20 +132,31 @@ export function createSound() {
     wind = context.createBufferSource();
     wind.buffer = buffer;
     wind.loop = true;
-    const filter = context.createBiquadFilter();
-    filter.type = "bandpass";
-    filter.frequency.value = 540;
-    filter.Q.value = .47;
+    windFilter = context.createBiquadFilter();
+    windFilter.type = "bandpass";
+    windFilter.frequency.value = habitat.wind;
+    windFilter.Q.value = .47;
     const air = context.createGain();
     air.gain.value = .065;
-    const swell = context.createOscillator();
-    swell.frequency.value = .16;
+    windSwell = context.createOscillator();
+    windSwell.frequency.value = habitat.swell;
     const depth = context.createGain();
     depth.gain.value = .025;
-    swell.connect(depth).connect(air.gain);
-    wind.connect(filter).connect(air).connect(buses.ambient);
+    windSwell.connect(depth).connect(air.gain);
+    wind.connect(windFilter).connect(air).connect(buses.ambient);
     wind.start();
-    swell.start();
+    windSwell.start();
+  }
+
+  function setHabitat(id) {
+    const next = Object.hasOwn(habitatSounds, id) ? habitatSounds[id] : habitatSounds.meadow;
+    if (next === habitat || disposed) return;
+    habitat = next;
+    nextBird = undefined;
+    if (windFilter) {
+      windFilter.frequency.setTargetAtTime(habitat.wind, context.currentTime, .45);
+      windSwell.frequency.setTargetAtTime(habitat.swell, context.currentTime, .45);
+    }
   }
 
   function tick() {
@@ -137,14 +166,15 @@ export function createSound() {
       if (nextMeasure < now + .22) {
         const [arpeggio, melody] = meadowScore[measure];
         const start = Math.max(nextMeasure, now + .008);
-        arpeggio.forEach((pitch, step) => tone(buses.music, pitch, start + step * beat, 1.22, step ? .08 : .11));
+        const regionalBeat = beat * habitat.pace;
+        arpeggio.forEach((pitch, step) => tone(buses.music, pitch + habitat.transpose, start + step * regionalBeat, 1.22, step ? .08 : .11));
         melody.forEach(([step, pitch]) => {
-          const at = start + step * beat;
-          tone(buses.music, pitch, at, 1.05, .085);
-          tone(buses.music, pitch + 12, at, .22, .013);
+          const at = start + step * regionalBeat;
+          tone(buses.music, pitch + habitat.transpose, at, 1.05, .085);
+          tone(buses.music, pitch + habitat.transpose + 12, at, .22, .013);
         });
         measure = (measure + 1) % meadowScore.length;
-        nextMeasure = start + 4 * beat;
+        nextMeasure = start + 4 * regionalBeat;
       }
     } else nextMeasure = undefined;
 
@@ -152,10 +182,10 @@ export function createSound() {
       if (nextBird === undefined) nextBird = now + 2.5;
       if (nextBird < now + .15) {
         const at = Math.max(nextBird, now + .025);
-        const pitch = [88, 91, 86, 89][bird];
+        const pitch = habitat.calls[bird];
         tone(buses.ambient, pitch, at, .19, .028, "sine", pitch + 4);
         tone(buses.ambient, pitch + 1, at + .22, .17, .021, "sine", pitch - 3);
-        nextBird = at + [8.4, 12.1, 7.6, 10.9][bird];
+        nextBird = at + [8.4, 12.1, 7.6, 10.9][bird] * habitat.interval;
         bird = (bird + 1) % 4;
       }
     } else nextBird = undefined;
@@ -232,10 +262,11 @@ export function createSound() {
 
   function play(cue) {
     const effect = Object.hasOwn(cueNotes, cue) && cueNotes[cue];
-    if (!effect || (cue === "titanium" && !settings.enableTitanium) || disposed || context?.state !== "running" || mutedInBackground() ||
+    if (!effect || (effect.setting && !settings[effect.setting]) || (cue === "titanium" && !settings.enableTitanium) ||
+        disposed || context?.state !== "running" || mutedInBackground() ||
         settings.master === 0 || !channelEnabled(effect.channel)) return;
     const now = context.currentTime;
-    if (now - (lastCue.get(cue) ?? -10) < .10) return;
+    if (now - (lastCue.get(cue) ?? -10) < (effect.interval ?? .10)) return;
     lastCue.set(cue, now);
     effect.notes.forEach((pitch, index) => {
       const time = now + .008 + index * effect.gap;
@@ -254,10 +285,12 @@ export function createSound() {
     if (context.state !== "closed") void context.close().catch(() => {});
     context = undefined;
     wind = undefined;
+    windFilter = undefined;
+    windSwell = undefined;
     buses = undefined;
     foreground = undefined;
     output = undefined;
   }
 
-  return { configure, unlock, play, destroy };
+  return { configure, unlock, play, setHabitat, destroy };
 }

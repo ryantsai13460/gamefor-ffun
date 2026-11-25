@@ -10,13 +10,13 @@ import { applyAction, awardCrystalBreak, collectEligibleDrops, collectionMetrics
 import { expeditionDestination, EXPEDITION_BIOMES, mayEnterExpeditionBiome } from '../assets/petverse/biomes.js';
 import { createFarmingWorld } from '../assets/petverse/farming.js';
 import { advanceGenerator, canOperateGenerator, GENERATOR_UPGRADES, markGeneratorStart } from '../assets/petverse/generator.js';
+import { PLAYER_NETWORK_SPEED_LIMIT } from '../assets/petverse/movement-rules.js';
 import { openStore } from './store.mjs';
 import { createTrading } from './trading.mjs';
 import { createInviteLimiter, createRooms } from './rooms.mjs';
 
 const endpoint = '/v1/petverse';
 const loopback = '127.0.0.1';
-const speedLimit = 7.25;
 const moveBurst = 2;
 const travelCooldownMs = 1100;
 const farmInterval = 100;
@@ -121,6 +121,7 @@ function cleanAction(action) {
     case 'release':
       return validId(action.petId) && action.confirm === true ? { type, petId: action.petId, confirm: true } : null;
     case 'equip-best':
+    case 'unequip-all':
       return { type };
     case 'upgrade':
       return validId(action.id) ? { type, id: action.id } : null;
@@ -348,7 +349,7 @@ export function createPetverseServer({ clientOrigins, dbPath = ':memory:', maxPl
       ? Math.hypot(x - player.position.x, z - player.position.z) : Infinity;
     const elapsed = (now - player.lastMoveAt) / 1000;
     player.lastMoveAt = now;
-    player.moveBudget = Math.min(moveBurst, player.moveBudget + Math.max(0, elapsed) * speedLimit);
+    player.moveBudget = Math.min(moveBurst, player.moveBudget + Math.max(0, elapsed) * PLAYER_NETWORK_SPEED_LIMIT);
     if (distance > player.moveBudget || !Number.isFinite(heading) || Math.abs(heading) > 32 ||
         !mayEnterExpeditionBiome(player.progress, x, z, player.position)) {
       if (now - player.lastCorrectionAt >= 400) {

@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three/three.module.min.js';
-import { bestiaryAnatomies, dressBestiaryPet } from './bestiary-art.js?v=20261124-1';
+import { bestiaryAnatomies, dressBestiaryPet } from './bestiary-art.js?v=20261125-1';
 
 const mutationColors = {
   shiny: '#ffe79a', metallic: '#a0aecd', gold: '#ffb741', diamond: '#8feef8',
@@ -37,6 +37,8 @@ export function createModelKit() {
   const geometries = {
     box: new THREE.BoxGeometry(1, 1, 1),
     round: new THREE.SphereGeometry(1, 12, 8),
+    soft: new THREE.SphereGeometry(1, 16, 12),
+    bead: new THREE.SphereGeometry(1, 10, 7),
     facet: new THREE.IcosahedronGeometry(1, 0),
     disc: new THREE.CircleGeometry(1, 18).rotateX(-Math.PI / 2),
     gem: new THREE.OctahedronGeometry(1, 0),
@@ -46,18 +48,20 @@ export function createModelKit() {
   };
   const materials = new Map();
   let reflection;
-  function paint(color, emissive = 0, metalness = 0) {
+  function paint(color, emissive = 0, metalness = 0, finish = 'matte') {
     const hex = new THREE.Color(color).getHex();
-    const key = `${hex}:${emissive}:${metalness}`;
+    const key = `${hex}:${emissive}:${metalness}:${finish}`;
     if (!materials.has(key)) materials.set(key, new THREE.MeshStandardMaterial({
-      color: hex, flatShading: true, roughness: .83 - metalness * .5, metalness,
+      color: hex, flatShading: finish === 'matte',
+      roughness: finish === 'polished' ? .22 : finish === 'soft' ? .55 : .83 - metalness * .5, metalness,
       emissive: hex, emissiveIntensity: emissive
     }));
     return materials.get(key);
   }
 
   function mesh(parent, shape, color, x, y, z, w, h, d, rotation) {
-    const part = new THREE.Mesh(geometries[shape], color?.isMaterial ? color : paint(color));
+    const part = new THREE.Mesh(geometries[shape], color?.isMaterial ? color :
+      paint(color, 0, 0, shape === 'soft' ? 'soft' : 'matte'));
     part.position.set(x, y, z);
     part.scale.set(w, h, d);
     if (rotation) part.rotation.set(...rotation);
@@ -72,14 +76,19 @@ export function createModelKit() {
     if (!materials.has(key)) {
       reflection ||= steelReflection();
       materials.set(key, new THREE.MeshStandardMaterial({
-        color: hex, flatShading: true, metalness: polished ? .85 : .75, roughness: polished ? .23 : .34,
+        color: hex, metalness: polished ? .85 : .75, roughness: polished ? .23 : .34,
         envMap: reflection, envMapIntensity: 1.5
       }));
     }
     return materials.get(key);
   }
 
-  return { mesh, paint, steel, geometries, materials };
+  return { mesh, paint, steel, geometries, materials, dispose() {
+    for (const geometry of Object.values(geometries)) geometry.dispose();
+    for (const material of materials.values()) material.dispose();
+    reflection?.dispose();
+    materials.clear();
+  } };
 }
 
 export function createTraveler(kit, remote = false) {
@@ -112,6 +121,41 @@ export function createTraveler(kit, remote = false) {
 }
 
 const sides = [-1, 1];
+
+function expressiveEyes(host, kit, hue, spread, height, front, size, tall = 1.22) {
+  const iris = kit.paint(hue.clone().multiplyScalar(.50).lerp(new THREE.Color('#536986'), .34), 0, .05, 'polished');
+  const pupil = kit.paint('#191c32', 0, 0, 'polished');
+  const rim = kit.paint('#3b303c', 0, 0, 'soft');
+  const reflection = kit.paint('#fffaf1', .17, 0, 'polished');
+  host.userData.eyes ||= [];
+  for (const side of sides) {
+    const eye = new THREE.Group();
+    eye.position.set(side * spread, height, front);
+    eye.rotation.y = side * .12;
+    host.add(eye);
+    host.userData.eyes.push(eye);
+    const eyeHeight = size * tall;
+    const draw = (material, x, y, z, sx, sy, sz) => kit.mesh(eye, 'bead', material,
+      x * size, y * eyeHeight, z * size, sx * size, sy * eyeHeight, sz * size);
+    draw(rim, 0, 0, .02, 1.04, 1.04, .58);
+    draw(iris, 0, -.06, .39, .86, .88, .30);
+    draw(pupil, -.06, .03, .58, .70, .76, .26);
+    draw(reflection, -.30, .34, .79, .27, .24, .10);
+    draw(reflection, .27, -.23, .77, .09, .09, .045);
+  }
+}
+
+/** Mild blinks and accessory motion complement the world's stride, wing and attack poses. */
+export function animatePetFace(pet, time, reducedMotion = false) {
+  const { eyes, facePhase = 0, shimmer } = pet.userData;
+  const moment = (time + facePhase) % 4.9;
+  const blink = !reducedMotion && moment < .22 ? .12 + .88 * Math.abs(moment - .11) / .11 : 1;
+  for (const eye of eyes || []) eye.scale.y = blink;
+  for (const { piece, lift, spin } of shimmer || []) {
+    piece.position.y = lift + (reducedMotion ? 0 : Math.sin(time * 2.5 + facePhase) * .041);
+    piece.rotation.y = spin + (reducedMotion ? 0 : time * .63);
+  }
+}
 
 function makeTidecup({ part, mass, eyes, shell, accent, shade }) {
   mass('round', shell, 0, .57, -.06, .61, .32, .43);
@@ -398,7 +442,7 @@ const bestiaryModels = {
 
 function createExpeditionPet(pet, spec, kit, { hue, shell, accent, face }, build, titanium) {
   const { mesh, paint, steel } = kit;
-  const shape = host => (...args) => mesh(host, ...args);
+  const shape = host => (form, ...args) => mesh(host, form === 'round' ? 'soft' : form, ...args);
   const part = shape(pet);
   let mainVolume;
   const mass = (...args) => {
@@ -407,13 +451,10 @@ function createExpeditionPet(pet, spec, kit, { hue, shell, accent, face }, build
     mainVolume ||= volume;
     return volume;
   };
-  const shade = titanium ? steel('#53677d', true) : paint(hue.clone().multiplyScalar(.56));
-  const shine = paint(titanium ? '#7be4ca' : spec.accent || '#fff1cc', .19, .12);
+  const shade = titanium ? steel('#53677d', true) : paint(hue.clone().multiplyScalar(.56), 0, 0, 'soft');
+  const shine = paint(titanium ? '#7be4ca' : spec.accent || '#fff1cc', .19, .12, 'polished');
   function eyes(spread, y, z, size) {
-    for (const side of sides) {
-      part('round', face, side * spread, y, z, size, size * 1.22, size * .53);
-      part('round', '#fff3e7', side * spread - size * .23, y + size * .32, z + size * .48, size * .28, size * .30, size * .13);
-    }
+    expressiveEyes(pet, kit, hue, spread, y, z, size);
   }
   function joint(x, y, z) {
     const group = new THREE.Group();
@@ -438,18 +479,22 @@ function createExpeditionPet(pet, spec, kit, { hue, shell, accent, face }, build
   return details;
 }
 
-function createMeadowPet(pet, silhouette, { mesh }, { hue, shell, accent, inner, face }) {
-  const body = (shape, material, x, y, z, w, h, d, rot) => mesh(pet, shape, material, x, y, z, w, h, d, rot);
+function createMeadowPet(pet, silhouette, kit, { hue, shell, accent, inner, face }) {
+  const { mesh } = kit;
+  const body = (shape, material, x, y, z, w, h, d, rot) =>
+    mesh(pet, shape === 'round' ? 'soft' : shape, material, x, y, z, w, h, d, rot);
   body('round', shell, 0, .68, -.2, .53, .48, .63).castShadow = true;
   body('round', shell, 0, .97, .19, .51, .48, .47).castShadow = true;
   body('round', accent, 0, .73, .47, .255, .17, .19);
   for (const side of [-1, 1]) {
     body('round', shell, side * .35, .26, .24, .15, .15, .22);
     body('round', shell, side * .31, .27, -.47, .17, .17, .21);
-    body('round', face, side * .20, 1.0, .597, .073, .097, .036);
-    body('round', '#fff4df', side * .20 - .016, 1.035, .624, .024, .030, .012);
     body('round', inner, side * .34, .88, .55, .07, .035, .03);
+    if (!['bird', 'owl', 'moth', 'frog'].includes(silhouette)) {
+      body('round', face, side * .057, .753, .644, .054, .013, .010, [0, 0, side * .25]);
+    }
   }
+  if (silhouette !== 'frog') expressiveEyes(pet, kit, hue, .20, 1, .597, .079, 1.28);
   body('round', face, 0, .804, .632, .067, .044, .026);
 
   function ears(shape, height, spread = .34, width = .15, twist = .36) {
@@ -464,8 +509,8 @@ function createMeadowPet(pet, silhouette, { mesh }, { hue, shell, accent, inner,
       const wing = new THREE.Group();
       wing.position.set(side * .43, .86, -.20);
       pet.add(wing);
-      mesh(wing, 'round', accent, side * (big ? .43 : .26), .05, -.10, big ? .55 : .35, .12, big ? .48 : .36, [0, side * .28, side * .22]);
-      mesh(wing, 'round', hue, side * .10, .008, -.15, big ? .38 : .24, .13, .31, [0, side * .20, side * .29]);
+      mesh(wing, 'soft', accent, side * (big ? .43 : .26), .05, -.10, big ? .55 : .35, .12, big ? .48 : .36, [0, side * .28, side * .22]);
+      mesh(wing, 'soft', hue, side * .10, .008, -.15, big ? .38 : .24, .13, .31, [0, side * .20, side * .29]);
       return wing;
     });
   }
@@ -532,8 +577,8 @@ function createMeadowPet(pet, silhouette, { mesh }, { hue, shell, accent, inner,
     case 'frog':
       for (const side of [-1, 1]) {
         body('round', shell, side * .33, 1.27, .22, .23, .22, .20);
-        body('round', face, side * .33, 1.30, .405, .058, .065, .035);
       }
+      expressiveEyes(pet, kit, hue, .33, 1.30, .405, .062);
       break;
     default:
       ears('gem', .32);
@@ -548,9 +593,14 @@ export function createPet(spec, variant, kit) {
   const hue = new THREE.Color(spec.color || '#76c491');
   const special = mutationColors[variant];
   const titanium = variant === 'titanium';
-  if (special) hue.lerp(new THREE.Color(titanium ? '#90a2b8' : special), titanium ? .82 : variant === 'shiny' ? .36 : .65);
-  const accent = titanium ? steel('#b8cbd0', true) : spec.accent || '#fff1cc';
-  const shell = titanium ? steel(hue) : paint(hue, special ? .065 : 0, ['metallic', 'gold'].includes(variant) ? .45 : 0);
+  const reflective = titanium || variant === 'metallic' || variant === 'gold';
+  const obsidian = variant === 'obsidian';
+  if (special) hue.lerp(new THREE.Color(titanium ? '#90a2b8' : obsidian ? '#2b2244' : special),
+    titanium || obsidian ? .82 : variant === 'shiny' ? .36 : .65);
+  const accent = titanium ? steel('#b8cbd0', true) : variant === 'gold' ? steel('#ffe49a', true) : spec.accent || '#fff1cc';
+  const polished = variant === 'diamond' || obsidian;
+  const shell = reflective ? steel(hue, !titanium) :
+    paint(hue, variant === 'shiny' ? .18 : special ? .065 : 0, polished ? .36 : 0, polished ? 'polished' : 'soft');
   const inner = titanium ? '#85b1b5' : '#efb8a6';
   const face = '#352a43';
   const palette = { hue, shell, accent, inner, face };
@@ -562,10 +612,12 @@ export function createPet(spec, variant, kit) {
   const details = sculpt ? createExpeditionPet(anatomy, spec, kit, palette, sculpt, titanium) : null;
   if (!sculpt) createMeadowPet(pet, spec.shape, kit, palette);
   if (bestiary) Object.assign(pet.userData, anatomy.userData);
+  pet.userData.facePhase = [...String(spec.id || spec.shape || '')].reduce((phase, character) =>
+    phase + character.charCodeAt(0), 0) % 47 / 10;
 
   if (special) {
     const glow = titanium ? '#7be4ca' : special;
-    const aura = mesh(pet, 'ring', paint(glow, titanium ? .19 : .33, .1), 0, .20, 0, .84, .84, .84, [Math.PI / 2, 0, 0]);
+    const aura = mesh(pet, 'ring', paint(glow, titanium ? .19 : .27, .1), 0, .20, 0, .84, .84, .84, [Math.PI / 2, 0, 0]);
     pet.userData.aura = aura;
     const armor = details ? new THREE.Group() : pet;
     if (details) {
@@ -590,8 +642,36 @@ export function createPet(spec, variant, kit) {
         body('facet', trim, side * .50, .75, -.11, .21, .29, .30, [0, 0, side * .24]);
         body('gem', crystal, side * .59, 1.03, -.18, .073, .25, .072, [-.15, 0, -side * .34]);
       }
-    } else for (const side of [-1, 1]) body('gem', paint(glow, .35), side * .76, 1.12, -.2, .09, .15, .09);
+    } else addVariantFinish(pet, variant, body, kit, glow);
   }
   pet.scale.multiplyScalar(petScale(variant));
   return pet;
+}
+
+function addVariantFinish(pet, variant, draw, kit, glow) {
+  const light = kit.paint(glow, .39, .12, 'polished');
+  if (variant === 'diamond' || variant === 'obsidian') {
+    const base = kit.paint(variant === 'diamond' ? '#489dba' : '#30243e', .12, .36, 'polished');
+    const edge = kit.paint(variant === 'diamond' ? '#d4fdff' : '#bf8bf2', .22, .21, 'polished');
+    for (const side of sides) {
+      draw('facet', base, side * .49, .83, -.29, .18, .28, .33, [.24, side * .24, side * .28]);
+      draw('gem', edge, side * .53, 1.08, -.32, .083, .262, .093, [-.30, .42, side * -.52]);
+      draw('gem', light, side * .615, .94, -.42, .063, .153, .067, [-.42, .31, side * -.74]);
+    }
+  } else if (variant === 'metallic' || variant === 'gold') {
+    const inlay = kit.steel(variant === 'gold' ? '#ffe38c' : '#b8e1e5', true);
+    for (const side of sides) {
+      draw('facet', inlay, side * .49, .84, -.30, .17, .25, .31, [.24, side * .20, side * .24]);
+      draw('box', light, side * .60, .91, -.28, .026, .035, .21, [0, side * .25, side * .14]);
+    }
+    if (variant === 'gold') draw('gem', inlay, 0, 1.30, -.46, .12, .24, .117, [.1, .44, 0]);
+  } else {
+    const ornaments = sides.map(side => {
+      const lift = side === 1 ? 1.04 : 1.23;
+      const spin = side * .34;
+      const piece = draw('gem', light, side * .68, lift, -.16, .077, .132, .077, [.31, spin, side * .36]);
+      return { piece, lift, spin };
+    });
+    pet.userData.shimmer = [...(pet.userData.shimmer || []), ...ornaments];
+  }
 }

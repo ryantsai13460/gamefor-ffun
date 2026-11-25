@@ -9,6 +9,7 @@ import { WebSocket } from 'ws';
 import { biomeAt, expeditionDestination, EXPEDITION_BIOMES, mayEnterExpeditionBiome } from '../assets/petverse/biomes.js';
 import { FARM_AREAS } from '../assets/petverse/farming.js';
 import { GENERATOR_SITE } from '../assets/petverse/generator.js';
+import { PLAYER_SPRINT_SPEED } from '../assets/petverse/movement-rules.js';
 import { collectionMetrics, EGGS, PETS, REBIRTH_ALTAR, SPAWN, VARIANTS, rebirthPlan, restoreProgress } from '../assets/petverse/model.js';
 import { createOnlineClient } from '../assets/petverse/online.js';
 import { createPetverseServer } from './server.mjs';
@@ -361,6 +362,33 @@ test('synchronizes two real peers and validates movement, proximity, and server-
   assert.equal(hatch.progress.inventory.length, 2);
   await first.close();
   await second.receive(message => message.type === 'peers' && message.peers.length === 0);
+});
+
+test('accepts sustained sprint movement and shares bulk unequip without deleting a saved pet', async context => {
+  const server = createPetverseServer({ clientOrigins: [clientOrigin] });
+  context.after(() => server.close());
+  const origin = await server.listen();
+  const { first, second, me } = await joinPair(origin);
+  const stepLength = PLAYER_SPRINT_SPEED * .18;
+  const steps = 13;
+  for (let step = 1; step <= steps; step++) {
+    await delay(180);
+    first.send({ type: 'move', x: SPAWN.x + step * stepLength, z: SPAWN.z });
+  }
+  const lastX = SPAWN.x + stepLength * steps;
+  await second.receive(message => message.type === 'peers' && message.peers.some(peer => peer.id === me.self.id && peer.x === lastX));
+
+  const cleared = await first.action('clear-equipped-team', { type: 'unequip-all' });
+  assert.deepEqual(cleared.event, { type: 'unequip-all', count: 1 });
+  assert.deepEqual(cleared.progress.equipped, []);
+  assert.deepEqual(cleared.progress.inventory, me.progress.inventory);
+  await second.receive(message => message.type === 'peers' && message.peers.some(peer => peer.id === me.self.id && peer.pet === null));
+  await first.close();
+  await second.receive(message => message.type === 'peers' && !message.peers.some(peer => peer.id === me.self.id));
+  const resumed = await connect(origin, { token: me.token });
+  const restored = (await resumed.receive(type('welcome'))).progress;
+  assert.deepEqual(restored.equipped, []);
+  assert.deepEqual(restored.inventory, me.progress.inventory);
 });
 
 test('validates expedition travel, locked terrain, and room synchronization', async context => {

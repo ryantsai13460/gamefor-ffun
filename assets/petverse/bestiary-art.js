@@ -281,25 +281,44 @@ function addOriginMarks(draw, shape, pattern, { x, y, z, w, h, d }, mark, trim) 
 }
 
 function addRarityDetail(draw, rarity, { x, y, z, w, h, d }, trim, mark, shell) {
+  const shimmer = [];
+  const suspend = (material, atX, lift, front, sx, sy, sz, rotation) => {
+    const piece = draw('gem', material, atX, lift, front, sx, sy, sz, rotation);
+    shimmer.push({ piece, lift, spin: rotation[1] });
+  };
   if (rarity === 'primordial') {
-    draw('gem', mark, x, y + h + .17, z - d * .55, .128, .223, .124, [-.27, .38, 0]);
+    suspend(mark, x, y + h + .17, z - d * .55, .128, .223, .124, [-.27, .38, 0]);
     for (const side of sides) {
       draw('facet', shell, x + side * w * .47, y + h * .67, z - d * .52, .164, .124, .212, [0, side * .29, -side * .36]);
       draw('gem', mark, x + side * w * .66, y + h * .95, z - d * .52, .076, .143, .076, [.12, side * .29, -side * .49]);
     }
   } else if (rarity === 'ethereal') {
     for (const side of sides) {
-      draw('gem', mark, x + side * w * 1.01, y + h * .56, z - d * .63, .065, .125, .139, [-.2, side * .42, side * .16]);
+      suspend(mark, x + side * w * 1.01, y + h * .56, z - d * .63, .065, .125, .139, [-.2, side * .42, side * .16]);
       draw('gem', trim, x + side * w * .71, y + h * .52, z - d * 1.13, .044, .080, .110, [0, side * .38, side * .2]);
     }
   } else if (rarity === 'celestial') {
     draw('ring', trim, x, y + h + .064, z - d * .68, .18, .17, .18, [1.14, 0, -.24]);
-    draw('gem', mark, x + w * .10, y + h + .18, z - d * .67, .065, .083, .055, [.22, .57, .3]);
+    suspend(mark, x + w * .10, y + h + .18, z - d * .67, .065, .083, .055, [.22, .57, .3]);
   } else if (rarity === 'exalted') {
     for (const side of sides) {
       draw('gem', trim, x + side * w * .78, y + h * .60, z - d * .48, .048, .113, .090, [.24, 0, -side * .73]);
     }
+  } else if (rarity === 'mythic') {
+    for (const side of sides) {
+      suspend(mark, x + side * w * 1.12, y + h * .66, z - d * .40, .059, .139, .083, [-.48, side * .49, side * -.43]);
+      draw('gem', trim, x + side * w * .81, y + h * .57, z - d * .55, .103, .069, .155, [-.36, side * .49, side * -.45]);
+    }
+  } else if (rarity === 'legendary') {
+    draw('gem', trim, x, y + h * 1.09, z - d * .64, .122, .153, .147, [-.52, .19, 0]);
+    draw('gem', mark, x, y + h * 1.37, z - d * .74, .054, .114, .084, [-.57, .20, 0]);
+  } else if (rarity === 'epic' || rarity === 'rare') {
+    const width = rarity === 'epic' ? .095 : .051;
+    for (const side of sides) {
+      draw('gem', trim, x + side * w * .64, y + h * .76, z - d * .45, width, .082, .145, [-.39, side * .44, side * -.36]);
+    }
   }
+  return shimmer;
 }
 
 export function dressBestiaryPet(group, spec, kit, mass, titanium) {
@@ -311,11 +330,11 @@ export function dressBestiaryPet(group, spec, kit, mass, titanium) {
     x: mass.position.x, y: mass.position.y, z: mass.position.z,
     w: mass.scale.x, h: mass.scale.y, d: mass.scale.z
   };
-  const metalTrim = titanium ? kit.steel('#668593', true) : kit.paint(spec.accent, .09, .29);
-  const mark = kit.paint(light, .16, .13);
+  const metalTrim = titanium ? kit.steel('#668593', true) : kit.paint(spec.accent, .09, .29, 'soft');
+  const mark = kit.paint(light, .16, .13, 'polished');
   const top = { ...origin, y: origin.y + origin.h * .93 };
   addOriginMarks(draw, spec.shape, pattern, origin, mark, metalTrim);
   addCrest(draw, crest, top, metalTrim, mark, count + (seed % 3 === 0 ? 1 : 0), plume);
-  addRarityDetail(draw, spec.rarity, origin, metalTrim, mark, mass.material);
+  group.userData.shimmer = addRarityDetail(draw, spec.rarity, origin, metalTrim, mark, mass.material);
   group.scale.set(breadth * (.958 + (seed % 19) / 230), .94 + (seed >>> 8 & 31) / 250, .94 + (seed >>> 16 & 31) / 260);
 }
