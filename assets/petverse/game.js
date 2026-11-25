@@ -1,7 +1,8 @@
-import { PETS, EGGS, VARIANTS, UPGRADES, GENERATIONS, REBIRTH_ALTAR, achievementStatus, applyAction,
-  awardCrystalBreak, collectEligibleDrops, collectionMetrics, createProgress, expeditionCollections, fusionOptions, generationStatus,
-  hatchOdds, hatchPlan, magnetStats, petCombatStats, progression, rebirthPlan, restoreProgress } from './model.js?v=20261123-4';
-import { createOnlineClient } from './online.js?v=20261123-4';
+import { PETS, EGGS, VARIANTS, UPGRADES, GENERATIONS, REBIRTH_ALTAR, BESTIARY_HABITATS, PET_RARITIES,
+  PET_COMBAT_ROLES, achievementStatus, applyAction, awardCrystalBreak, bestiaryCollections, collectEligibleDrops,
+  collectionMetrics, createProgress, expeditionCollections, fusionOptions, generationStatus, hatchOdds, hatchPlan, magnetStats,
+  petCombatStats, progression, rebirthPlan, restoreProgress } from './model.js?v=20261124-1';
+import { createOnlineClient } from './online.js?v=20261124-1';
 import { defaultPreferences, preferencesKey, readPreferences, readStorage, soloKey, writeStorage } from './preferences.js?v=20261123-4';
 import { createSound } from './sound.js?v=20261123-4';
 import { FARM_AREAS, FARM_PRIORITIES, canFarmArea, createFarmingWorld, farmSettings, farmingAreaAt } from './farming.js?v=20261123-4';
@@ -17,6 +18,7 @@ const speciesById = new Map(PETS.map(pet => [pet.id, pet]));
 const variantById = new Map(VARIANTS.map(variant => [variant.id, variant]));
 const eggsById = new Map(EGGS.map(egg => [egg.id, egg]));
 const biomesById = new Map(EXPEDITION_BIOMES.map(biome => [biome.id, biome]));
+const petRarityById = new Map(PET_RARITIES.map(rarity => [rarity.id, rarity]));
 const currencyNames = { sunbeams: 'Gold', crystals: 'Crystals', ascension: 'Ascension' };
 const number = new Intl.NumberFormat('en');
 const percent = new Intl.NumberFormat('en', { maximumFractionDigits: 3, style: 'percent' });
@@ -28,9 +30,9 @@ const rankingMetrics = {
   mythic: 'Mythic discoveries', eggsHatched: 'Eggs hatched', resourcesCollected: 'Resources collected', rebirths: 'Rebirths',
   generation: 'Highest generation', achievementPoints: 'Achievement points', goldEarned: 'Gold earned',
   crystalsDestroyed: 'Crystals destroyed', specialCrystalsDestroyed: 'Special crystals destroyed',
-  biomesCompleted: 'Biome collections completed', expeditionBonus: 'Expedition bonus'
+  biomesCompleted: 'Biome collections completed', expeditionBonus: 'Expedition bonus',
+  bestiarySpecies: 'Bestiary species', bestiaryBonus: 'Bestiary bonus', bestiaryEggsCompleted: 'Bestiary egg sets completed'
 };
-const rarityOrder = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic', 'celestial'];
 const settingGroups = ['General', 'Generation', 'Stop rules', 'Notifications', 'Audio', 'Graphics', 'Inventory', 'Workshop', 'Accessibility'];
 const stopLabels = {
   'new-discovery': 'New species discovered', 'new-variant': 'New variant discovered', 'inventory-full': 'Inventory full',
@@ -75,6 +77,8 @@ let feedbackTimer;
 let lastReveal = [];
 let storageAvailable = true;
 let activeEgg = EGGS[0].id;
+let eggView = 'classic';
+let eggHabitat = BESTIARY_HABITATS[0].id;
 let journalView = 'Milestones';
 let rankMetric = 'collectionScore';
 let rankFilter = '';
@@ -448,12 +452,15 @@ function reportAction(event, action, { quiet, automatic }) {
     const interesting = (prefs.notifications.titanium && titan) ||
       event.pets.find(pet => pet.variant !== 'normal' && prefs.notifications[pet.variant]);
     const discovered = event.pets.find(pet => event.newSpecies.includes(pet.speciesId));
-    const spotlight = interesting || (prefs.notifications.newPet && discovered ? { ...discovered, variant: 'normal' } : null);
+    const topDiscovery = prefs.notifications.newPet && event.pets.find(pet => event.newSpecies.includes(pet.speciesId) &&
+      petRarityById.get(speciesById.get(pet.speciesId)?.rarity)?.points >= petRarityById.get('mythic').points);
+    const spotlight = interesting || topDiscovery || (prefs.notifications.newPet && discovered ? { ...discovered, variant: 'normal' } : null);
     const animate = prefs.reveal.animations && !prefs.graphics.reducedMotion && (!titan || prefs.reveal.titaniumAnimation) &&
       !(prefs.reveal.skipCommon && event.pets.every(pet => pet.variant === 'normal' && speciesById.get(pet.speciesId)?.rarity.toLowerCase() === 'common'));
-    if (animate) world?.showBurst({ kind: 'hatch', variant: titan?.variant || spotlight?.variant || 'normal' });
-    sound.play(titan && prefs.notifications.titanium && prefs.audio.enableTitanium ? 'titanium' : interesting && !titan ? 'rare' : 'hatch');
-    if (spotlight) showFeedback('Discovered ' + describePet(spotlight) + ' · ' + speciesById.get(spotlight.speciesId).rarity, { pet: spotlight });
+    if (animate) world?.showBurst({ kind: 'hatch', variant: titan?.variant || interesting?.variant || (topDiscovery ? 'mythic' : 'normal') });
+    sound.play(titan && prefs.notifications.titanium && prefs.audio.enableTitanium ? 'titanium' : (interesting || topDiscovery) && !titan ? 'rare' : 'hatch');
+    if (spotlight) showFeedback('Discovered ' + describePet(spotlight) + ' · ' +
+      petRarityById.get(speciesById.get(spotlight.speciesId).rarity).label, { pet: spotlight });
     else if (!automatic && !quiet) showFeedback('Hatched ' + event.pets.map(describePet).join(', ') + '.');
   } else if (event.type === 'gather') {
     world?.showBurst({ kind: 'gather', nodeId: action.nodeId });
@@ -644,12 +651,31 @@ function renderHatch() {
   const facts = progression(progress);
   const area = section('Egg nursery', 'Send your pets to break crystals, collect the Gold, and hatch stronger companions.');
   const stats = statLine(format(progress.stats.eggsHatched) + ' hatched · ' + progress.discovered.length + '/' + PETS.length + ' discovered · ' + progress.stats.shinies + ' shiny');
-  area.append(stats);
+  const modes = row(button('Classic eggs', () => {
+    eggView = 'classic';
+    refreshPanel({ resetScroll: true });
+  }, { pressed: eggView === 'classic' }), button('Bestiary eggs', () => {
+    const current = biomeAt(world?.getPosition());
+    if (eggView !== 'bestiary' && current) eggHabitat = current.id;
+    eggView = 'bestiary';
+    refreshPanel({ resetScroll: true });
+  }, { pressed: eggView === 'bestiary' }));
+  modes.setAttribute('role', 'group');
+  modes.setAttribute('aria-label', 'Egg groups');
+  area.append(stats, modes);
+  if (eggView === 'bestiary') area.append(select('Egg habitat', eggHabitat,
+    BESTIARY_HABITATS.map(habitat => [habitat.id, habitat.label]), id => {
+      eggHabitat = id;
+      refreshPanel({ resetScroll: true });
+    }));
   const cards = el('div', 'pv-cards');
   const selected = eggsById.get(activeEgg);
-  const orderedEggs = selected?.biomeId ? [selected, ...EGGS.filter(egg => egg !== selected)] : EGGS;
+  const visibleEggs = EGGS.filter(egg => eggView === 'bestiary' ? egg.habitatId === eggHabitat : !egg.bestiary);
+  const orderedEggs = selected?.biomeId && visibleEggs.includes(selected) ?
+    [selected, ...visibleEggs.filter(egg => egg !== selected)] : visibleEggs;
   for (const egg of orderedEggs) {
     const card = el('article', 'pv-card pv-egg-card');
+    card.dataset.eggId = egg.id;
     card.dataset.current = String(egg.id === activeEgg);
     const eggArt = el('span', 'pv-egg-art');
     eggArt.style.setProperty('--pv-egg-color', egg.color);
@@ -683,8 +709,11 @@ function renderHatch() {
         { label: 'Auto hatch ' + egg.name, disabled: auto?.state === 'active' || auto?.state === 'paused' }));
       card.append(actions);
     }
-    card.append(disclosure('egg-odds-' + egg.id, 'Species odds',
-      oddsList(hatchOdds(progress, egg.id).pool, reward => speciesById.get(reward.speciesId).name)));
+    const odds = hatchOdds(progress, egg.id);
+    card.append(disclosure('egg-rarity-odds-' + egg.id, 'Rarity odds',
+      oddsList(odds.rarities, rarity => rarity.label)),
+    disclosure('egg-odds-' + egg.id, 'Species odds',
+      oddsList(odds.pool, reward => speciesById.get(reward.speciesId).name)));
     cards.append(card);
   }
   area.append(cards, disclosure('variant-odds', 'Variant odds and power',
@@ -817,17 +846,42 @@ async function runAuto() {
   if (session.state === 'active') scheduleAuto(event.retryAt ? Math.max(75, event.retryAt - Date.now()) : 75);
 }
 
+const petPageSize = 24;
+const petPages = { Inventory: 1, Collection: 1 };
+const journalHabitats = new Map(BESTIARY_HABITATS.map(habitat => [habitat.id, habitat]));
+const journalEggs = new Map(EGGS.flatMap(egg => egg.pool.map(({ speciesId }) => [speciesId, egg])));
+const originalHabitats = { sunmeadow: 'sunstep', moonbloom: 'fernwild', embergeode: 'emberdeep' };
+const journalSpecies = PETS.map(species => {
+  const egg = journalEggs.get(species.id);
+  const habitat = journalHabitats.get(species.habitatId || species.biomeId || originalHabitats[egg?.id]);
+  const rarity = petRarityById.get(species.rarity);
+  const search = [species.name, rarity.label, habitat?.label, egg?.name].join(' ').toLowerCase();
+  return { species, egg, habitat, rarity, search };
+});
+const journalSpeciesById = new Map(journalSpecies.map(entry => [entry.species.id, entry]));
+let filterRarity = '';
+let filterDiscovery = '';
+let collectionOrder = 'catalog';
+
+function rarityBadge(card, species) {
+  const rarity = petRarityById.get(species.rarity);
+  card.dataset.rarity = rarity.id;
+  card.style.setProperty('--pv-journal-rarity', rarity.color);
+  return el('span', 'pv-rarity-badge', rarity.label);
+}
+
 function petEntry(pet, manage = false) {
   const species = speciesById.get(pet.speciesId);
   const card = el('article', 'pv-card pv-pet-card');
-  card.dataset.rarity = species.rarity;
+  const badge = rarityBadge(card, species);
   const head = el('div', 'pv-card-head');
   const copy = el('div');
   const equipped = progress.equipped.includes(pet.id);
   const stats = petCombatStats(pet, progress);
-  copy.append(el('h3', '', describePet(pet)), el('p', 'pv-pet-meta',
-    species.rarity + ' · Gen ' + species.generation + (equipped ? ' · Equipped' : '')),
-  el('p', 'pv-summary', `${stats.damage} damage · ${stats.attackRate} hits/s · ${stats.moveSpeed} m/s`));
+  const role = PET_COMBAT_ROLES[species.combatRole]?.label;
+  copy.append(el('h3', '', describePet(pet)), row(badge, el('span', 'pv-pet-meta',
+    ['Gen ' + species.generation, role, equipped ? 'Equipped' : ''].filter(Boolean).join(' · '))),
+    el('p', 'pv-summary', `${stats.damage} damage · ${stats.attackRate} hits/s · ${stats.moveSpeed} m/s`));
   head.append(petPortrait(species, pet.variant), copy);
   card.append(head);
   if (manage) {
@@ -845,6 +899,51 @@ function petEntry(pet, manage = false) {
   return card;
 }
 
+function collectionEntry({ species, habitat, egg }, discovered, variantDiscoveries) {
+  const card = el('article', 'pv-card pv-collection-card');
+  const encountered = discovered.has(species.id);
+  card.dataset.discovered = String(encountered);
+  const badge = rarityBadge(card, species);
+  const head = el('div', 'pv-card-head');
+  const copy = el('div');
+  const variants = VARIANTS.filter(item => variantDiscoveries.has(species.id + ':' + item.id));
+  copy.append(el('h3', '', species.name), row(badge, el('span', 'pv-pet-meta', habitat?.label || '')),
+    el('p', 'pv-summary', encountered ? variants.map(item => item.name).join(', ') || 'Discovered' : 'Undiscovered'));
+  head.append(petPortrait(species, filterVariant || 'normal'), copy);
+  card.append(head);
+  if (egg) card.append(el('p', 'pv-summary pv-journal-egg', egg.name));
+  return card;
+}
+
+function appendCollectionTotals(area, discovered, variantDiscoveries) {
+  const scores = collectionMetrics(progress);
+  area.append(statLine(discovered.size + ' of ' + PETS.length + ' species discovered · ' + percent.format(discovered.size / PETS.length)));
+  const score = el('dl', 'pv-workshop-stats');
+  metric(score, 'Collection score', format(scores.collectionScore));
+  metric(score, 'Bestiary bonus', '+' + format(scores.bestiaryBonus));
+  area.append(score);
+  const totals = el('dl', 'pv-workshop-stats');
+  for (const variant of VARIANTS) {
+    const found = PETS.filter(species => variantDiscoveries.has(species.id + ':' + variant.id)).length;
+    metric(totals, variant.name, found + ' / ' + PETS.length);
+  }
+  const habitats = el('div', 'pv-cards');
+  for (const collection of bestiaryCollections(progress)) {
+    const card = el('article', 'pv-card');
+    const meter = el('progress', 'pv-progress');
+    meter.max = collection.total;
+    meter.value = collection.discovered;
+    meter.setAttribute('aria-label', collection.label + ' bestiary collection');
+    card.append(el('h3', '', collection.label), meter,
+      statLine(collection.discovered + ' / ' + collection.total + ' species · ' + collection.completeEggs + ' / ' + collection.totalEggs + ' egg sets'),
+      el('p', 'pv-summary', format(collection.bonus) + ' / ' + format(collection.possibleBonus) + ' bonus points'));
+    habitats.append(card);
+  }
+  area.append(disclosure('bestiary-habitat-totals', 'Habitat collection totals', habitats),
+    disclosure('discovery-totals', 'Variant collection totals', totals),
+    disclosure('original-expedition-totals', 'Original expedition sets', expeditionScoreSection(true)));
+}
+
 function renderPets() {
   const facts = progression(progress);
   const area = section('Pet journal', progress.inventory.length + '/' + facts.capacity + ' pets · ' +
@@ -858,90 +957,146 @@ function renderPets() {
     panel.append(area);
     return;
   }
-  const filters = el('div', 'pv-filters');
+  const inventory = petView === 'Inventory';
+  const discovered = new Set(progress.discovered);
+  const variantDiscoveries = new Set(progress.variantDiscoveries);
+  const filters = el('div', 'pv-filters pv-pet-filters');
   const search = el('input');
   search.type = 'search';
-  search.placeholder = 'Search by name or rarity';
+  search.placeholder = 'Name, habitat or rarity';
   search.value = query;
   search.setAttribute('aria-label', 'Search pets');
   search.dataset.focusKey = 'search-pets';
-  search.addEventListener('input', () => { query = search.value; refreshCards(); });
+  search.addEventListener('input', () => { query = search.value; filterChanged(); });
   const searchLabel = el('label', 'pv-field');
   searchLabel.append(el('span', '', 'Search pets'), search);
-  filters.append(searchLabel, select('Variant', filterVariant, [['', 'All variants'], ...VARIANTS.map(item => [item.id, item.name])], value => {
-    filterVariant = value;
-    refreshCards();
-  }), select('Generation', filterGeneration, [['', 'All generations'], ...GENERATIONS.map(item => [String(item.id), item.name])], value => {
-    filterGeneration = value;
-    refreshCards();
-  }), select('Biome', filterBiome, [['', 'All biomes'], ['meadow', 'Sunstep and Emberdeep'], ...EXPEDITION_BIOMES.map(item => [item.id, item.label])], value => {
-    filterBiome = value;
-    refreshCards();
-  }));
+  filters.append(searchLabel,
+    select('Rarity', filterRarity, [['', 'All rarities'], ...PET_RARITIES.map(item => [item.id, item.label])], value => {
+      filterRarity = value;
+      filterChanged();
+    }),
+    select('Habitat', filterBiome, [['', 'All habitats'], ...BESTIARY_HABITATS.map(item => [item.id, item.label])], value => {
+      filterBiome = value;
+      filterChanged();
+    }),
+    select('Variant', filterVariant, [['', 'All variants'], ...VARIANTS.map(item => [item.id, item.name])], value => {
+      filterVariant = value;
+      filterChanged();
+    }),
+    select('Generation', filterGeneration, [['', 'All generations'], ...GENERATIONS.map(item => [String(item.id), item.name])], value => {
+      filterGeneration = value;
+      filterChanged();
+    }));
   const cards = el('div', 'pv-cards');
-  if (petView === 'Inventory') {
+  const results = statLine('');
+  results.setAttribute('role', 'status');
+  results.classList.add('pv-pet-results');
+  const previous = button('Previous page', () => turnPage(-1), { key: 'pet-page-previous' });
+  const next = button('Next page', () => turnPage(1), { key: 'pet-page-next' });
+  const pageStatus = el('span', 'pv-pet-page-status');
+  const pages = el('nav', 'pv-pet-pagination');
+  pages.setAttribute('aria-label', 'Pet journal pages');
+  pages.append(previous, pageStatus, next);
+  if (inventory) {
     filters.append(select('Sort pets', prefs.inventory.sort,
       [['power', 'Farming strength'], ['rarity', 'Rarity'], ['generation', 'Generation'], ['variant', 'Variant'], ['name', 'Name'], ['recent', 'Recently obtained']], value => {
         changePreference('inventory', 'sort', value);
-        refreshCards();
+        filterChanged();
       }));
     area.append(button('Equip best', () => act({ type: 'equip-best' })));
   } else {
-    area.append(statLine(progress.discovered.length + ' of ' + PETS.length + ' species discovered · ' +
-      percent.format(progress.discovered.length / PETS.length)));
-    const totals = el('dl', 'pv-workshop-stats');
-    for (const variant of VARIANTS) {
-      const found = progress.variantDiscoveries.filter(key => key.endsWith(':' + variant.id)).length;
-      metric(totals, variant.name, found + ' / ' + PETS.length);
-    }
-    area.append(disclosure('discovery-totals', 'Variant collection totals', totals));
-    area.append(expeditionScoreSection(true));
+    appendCollectionTotals(area, discovered, variantDiscoveries);
+    filters.append(
+      select('Discovery', filterDiscovery, [['', 'All species'], ['known', 'Discovered'], ['missing', 'Undiscovered']], value => {
+        filterDiscovery = value;
+        filterChanged();
+      }),
+      select('Sort collection', collectionOrder,
+        [['catalog', 'Catalog order'], ['rarity', 'Highest rarity'], ['power', 'Highest base power'], ['name', 'Name']], value => {
+          collectionOrder = value;
+          filterChanged();
+        }));
   }
-  area.append(filters, cards);
+  area.append(filters, results, pages, cards);
   panel.append(area);
 
-  function matches(species) {
-    return (!filterGeneration || String(species.generation) === filterGeneration) &&
-      (!filterBiome || (species.biomeId || 'meadow') === filterBiome) &&
-      (species.name + ' ' + species.rarity).toLowerCase().includes(query.trim().toLowerCase());
+  function filterChanged() {
+    petPages.Inventory = petPages.Collection = 1;
+    refreshCards();
+  }
+
+  function turnPage(step) {
+    petPages[petView] += step;
+    refreshCards();
+    if (step === -1 && previous.disabled) next.focus();
+    else if (step === 1 && next.disabled) previous.focus();
   }
 
   function refreshCards() {
-    cards.replaceChildren();
-    if (petView === 'Inventory') {
-      const selectors = {
-        power: (a, b) => petCombatStats(b, progress).farmingPower - petCombatStats(a, progress).farmingPower,
-        rarity: (a, b) => rarityOrder.indexOf(speciesById.get(b.speciesId).rarity.toLowerCase()) - rarityOrder.indexOf(speciesById.get(a.speciesId).rarity.toLowerCase()),
-        generation: (a, b) => speciesById.get(b.speciesId).generation - speciesById.get(a.speciesId).generation,
-        variant: (a, b) => VARIANTS.indexOf(variantById.get(b.variant)) - VARIANTS.indexOf(variantById.get(a.variant)),
-        name: (a, b) => describePet(a).localeCompare(describePet(b)),
-        recent: (a, b) => b.obtainedAt - a.obtainedAt
-      };
-      const seen = new Set();
-      const owned = progress.inventory.filter(pet => matches(speciesById.get(pet.speciesId)) && (!filterVariant || pet.variant === filterVariant))
-        .sort((a, b) => Number(b.favorite) - Number(a.favorite) || selectors[prefs.inventory.sort](a, b));
-      for (const pet of owned) {
-        const key = pet.speciesId + ':' + pet.variant;
-        if (!prefs.inventory.showDuplicates && seen.has(key)) continue;
-        seen.add(key);
-        cards.append(petEntry(pet, true));
-      }
-    } else for (const species of PETS) {
-      if (!matches(species) || (filterVariant && !progress.variantDiscoveries.includes(species.id + ':' + filterVariant))) continue;
-      const encountered = progress.discovered.includes(species.id);
-      const card = el('article', 'pv-card pv-collection-card');
-      card.dataset.discovered = String(encountered);
-      const head = el('div', 'pv-card-head');
-      const copy = el('div');
-      const variants = VARIANTS.filter(item => progress.variantDiscoveries.includes(species.id + ':' + item.id));
-      copy.append(el('h3', '', species.name), el('p', 'pv-summary', encountered ? variants.map(item => item.name).join(', ') || 'Discovered' : 'Undiscovered'));
-      head.append(petPortrait(species, filterVariant || 'normal'), copy);
-      card.append(head);
-      cards.append(card);
-    }
-    if (!cards.childElementCount) cards.append(el('p', 'pv-summary', 'No pets match these filters.'));
+    const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const matches = entry => (!filterGeneration || String(entry.species.generation) === filterGeneration) &&
+      (!filterBiome || entry.habitat?.id === filterBiome) && (!filterRarity || entry.rarity.id === filterRarity) &&
+      terms.every(term => entry.search.includes(term));
+    const matching = inventory
+      ? matchingOwnedPets(matches)
+      : matchingCollection(matches, discovered, variantDiscoveries);
+    const limit = Math.max(1, Math.ceil(matching.length / petPageSize));
+    const current = petPages[petView] = Math.max(1, Math.min(limit, petPages[petView]));
+    const start = (current - 1) * petPageSize;
+    const page = matching.slice(start, start + petPageSize);
+    const displayed = page.length === 1 ? String(start + 1) : `${start + 1}–${start + page.length}`;
+    const unit = inventory ? (matching.length === 1 ? 'pet' : 'pets') : 'species';
+    results.textContent = matching.length ? `Showing ${displayed} of ${format(matching.length)} ${unit}` : 'No pets match these filters.';
+    pages.hidden = limit === 1;
+    pageStatus.textContent = 'Page ' + current + ' of ' + limit;
+    previous.disabled = current === 1;
+    next.disabled = current === limit;
+    cards.replaceChildren(...page.map(entry => inventory ? petEntry(entry.pet, true) : collectionEntry(entry, discovered, variantDiscoveries)));
   }
   refreshCards();
+}
+
+function matchingOwnedPets(matches) {
+  const sort = prefs.inventory.sort;
+  const matching = [];
+  for (const pet of progress.inventory) {
+    const entry = journalSpeciesById.get(pet.speciesId);
+    if (entry && matches(entry) && (!filterVariant || pet.variant === filterVariant)) {
+      const power = sort === 'power' ? petCombatStats(pet, progress).farmingPower : 0;
+      matching.push({ ...entry, pet, power });
+    }
+  }
+  const selectors = {
+    power: (a, b) => b.power - a.power,
+    rarity: (a, b) => b.rarity.points - a.rarity.points,
+    generation: (a, b) => b.species.generation - a.species.generation,
+    variant: (a, b) => VARIANTS.indexOf(variantById.get(b.pet.variant)) - VARIANTS.indexOf(variantById.get(a.pet.variant)),
+    name: (a, b) => describePet(a.pet).localeCompare(describePet(b.pet)),
+    recent: (a, b) => b.pet.obtainedAt - a.pet.obtainedAt
+  };
+  const compare = selectors[sort] || selectors.power;
+  matching.sort((a, b) => Number(b.pet.favorite) - Number(a.pet.favorite) || compare(a, b));
+  if (prefs.inventory.showDuplicates) return matching;
+  const seen = new Set();
+  return matching.filter(({ pet }) => {
+    const key = pet.speciesId + ':' + pet.variant;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function matchingCollection(matches, discovered, variantDiscoveries) {
+  const matching = journalSpecies.filter(entry => matches(entry) &&
+    (!filterVariant || variantDiscoveries.has(entry.species.id + ':' + filterVariant)) &&
+    (!filterDiscovery || discovered.has(entry.species.id) === (filterDiscovery === 'known')));
+  const selectors = {
+    rarity: (a, b) => b.rarity.points - a.rarity.points,
+    power: (a, b) => b.species.power - a.species.power,
+    name: (a, b) => a.species.name.localeCompare(b.species.name)
+  };
+  if (selectors[collectionOrder]) matching.sort(selectors[collectionOrder]);
+  return matching;
 }
 
 function renderFusion(area) {
@@ -1811,7 +1966,7 @@ let altarNearby = false;
 
 async function startWorld() {
   try {
-    const { mountWorld } = await import('./world.js?v=20261123-4');
+    const { mountWorld } = await import('./world.js?v=20261124-1');
     if (signal.aborted) return;
     world = mountWorld(terrain, {
       onGather: nodeId => void act({ type: 'gather', nodeId }),
@@ -1827,7 +1982,12 @@ async function startWorld() {
         else if (id === 'rebirth') openJournal('Rebirth Cave');
         else if (id === 'leaderboard') openJournal('Leaderboards');
         else {
-          if (eggsById.has(id)) activeEgg = id;
+          const egg = eggsById.get(id);
+          if (egg) {
+            activeEgg = id;
+            if (eggView === 'bestiary' && egg.biomeId) eggHabitat = egg.biomeId;
+            else eggView = 'classic';
+          }
           openScreen('Hatch');
         }
       },

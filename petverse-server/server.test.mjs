@@ -9,7 +9,8 @@ import { WebSocket } from 'ws';
 import { biomeAt, expeditionDestination, EXPEDITION_BIOMES, mayEnterExpeditionBiome } from '../assets/petverse/biomes.js';
 import { FARM_AREAS } from '../assets/petverse/farming.js';
 import { GENERATOR_SITE } from '../assets/petverse/generator.js';
-import { EGGS, REBIRTH_ALTAR, SPAWN, rebirthPlan } from '../assets/petverse/model.js';
+import { collectionMetrics, EGGS, PETS, REBIRTH_ALTAR, SPAWN, VARIANTS, rebirthPlan, restoreProgress } from '../assets/petverse/model.js';
+import { createOnlineClient } from '../assets/petverse/online.js';
 import { createPetverseServer } from './server.mjs';
 import { createInviteLimiter } from './rooms.mjs';
 import { openStore } from './store.mjs';
@@ -93,6 +94,138 @@ async function joinPair(origin) {
 
 const farmEvent = predicate => message => message.type === 'farm' && message.farm.events.some(predicate);
 const stateEvent = name => message => message.type === 'player-state' && message.event.type === name;
+
+test('loads a completed bestiary, streams compact progress, and hatches and trades new species', async context => {
+  const directory = await mkdtemp(join(tmpdir(), 'petverse-bestiary-'));
+  const dbPath = join(directory, 'profiles.sqlite');
+  const seed = openStore(dbPath, 10);
+  const first = seed.create();
+  const second = seed.create();
+  const egg = EGGS.find(item => item.bestiary && item.level === 1 && !item.biomeId);
+  assert.ok(egg);
+  const desiredSpecies = egg.pool[0].speciesId;
+  const owned = PETS.concat(PETS.slice(0, 30));
+  const inventory = owned.map(({ id: speciesId }, index) => ({
+    id: 'pet-' + (index + 1), speciesId, variant: 'normal', obtainedAt: 1780000000000, favorite: false, locked: false
+  }));
+  const progress = restoreProgress({
+    ...first.progress, xp: 504, rebirths: 2, wallet: { ...first.progress.wallet, sunbeams: 500 },
+    upgrades: { ...first.progress.upgrades, capacity: 3, habitatAnnex: 8, autoCollect: 1 },
+    settings: { ...first.progress.settings, autoCollectGold: true },
+    equipped: [inventory.find(pet => pet.speciesId === desiredSpecies).id],
+    inventory, discovered: PETS.map(pet => pet.id),
+    variantDiscoveries: PETS.flatMap(pet => VARIANTS.map(variant => pet.id + ':' + variant.id))
+  });
+  assert.equal(progress.discovered.length, 500);
+  assert.equal(progress.variantDiscoveries.length, 500 * VARIANTS.length);
+  assert.equal(progress.inventory.length, 530);
+  seed.record(first, progress, 'bestiary-fixture', { type: 'test-fixture' });
+  seed.record(second, { ...second.progress,
+    inventory: [...second.progress.inventory, { ...second.progress.inventory[0], id: 'pet-2' }], nextPetId: 3
+  }, 'trade-fixture', { type: 'test-fixture' });
+  seed.close();
+
+  let server = createPetverseServer({ clientOrigins: [clientOrigin], dbPath });
+  const origin = await server.listen();
+  const oldWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const oldWebSocket = Object.getOwnPropertyDescriptor(globalThis, 'WebSocket');
+  const wire = [];
+  const observed = [];
+  const sockets = [];
+  const storage = new Map([['gamefor-ffun-petverse-accounts-v1', JSON.stringify([[endpoint(origin), first.token]])]]);
+  class LoopbackWebSocket extends WebSocket {
+    constructor(address) {
+      super(address, { origin: clientOrigin });
+      sockets.push(this);
+      this.on('message', bytes => wire.push(JSON.parse(bytes.toString())));
+    }
+  }
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true, value: { location: { hostname: '127.0.0.1' },
+      localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) } }
+  });
+  Object.defineProperty(globalThis, 'WebSocket', { configurable: true, value: LoopbackWebSocket });
+  const player = createOnlineClient({ onProgress: (progress, event) => observed.push({ progress, event }) });
+  context.after(async () => {
+    player.destroy();
+    await server.close();
+    if (oldWindow) Object.defineProperty(globalThis, 'window', oldWindow);
+    else delete globalThis.window;
+    if (oldWebSocket) Object.defineProperty(globalThis, 'WebSocket', oldWebSocket);
+    else delete globalThis.WebSocket;
+    await rm(directory, { recursive: true, force: true });
+  });
+  const welcome = await player.connect(endpoint(origin), { mode: 'create' });
+  const guest = await connect(origin, { mode: 'join', code: welcome.room.code, token: second.token });
+  const guestWelcome = await guest.receive(type('welcome'));
+  assert.equal(welcome.progress.inventory.length, 530);
+  assert.equal(welcome.progress.variantDiscoveries.length, 4500);
+  const welcomeBytes = Buffer.byteLength(JSON.stringify(wire.find(type('welcome'))));
+  assert.ok(welcomeBytes > 100_000 && welcomeBytes < 400_000, 'the complete restore fits the browser frame cap');
+
+  async function waitForProgress(eventType) {
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const update = observed.find(entry => entry.event.type === eventType);
+      if (update) return update.progress;
+      await delay(100);
+    }
+    assert.fail('Online client did not receive ' + eventType);
+  }
+
+  const collected = await waitForProgress('collect');
+  assert.ok(collected.wallet.sunbeams > 500);
+  assert.strictEqual(collected.inventory, welcome.progress.inventory);
+  assert.strictEqual(collected.variantDiscoveries, welcome.progress.variantDiscoveries);
+  await walk({ send: position => player.move(position) }, SPAWN, GENERATOR_SITE);
+  const started = await player.command({ type: 'generatorStart' });
+  assert.equal(started.event.type, 'generator-start');
+  const cranking = await waitForProgress('generator-progress');
+  assert.ok(cranking.generator.energy > 0);
+  assert.strictEqual(cranking.inventory, started.progress.inventory);
+  for (const event of ['crystal-break', 'collect', 'generator-progress']) {
+    const update = wire.find(stateEvent(event));
+    assert.ok(update?.progressDelta);
+    assert.equal(Object.hasOwn(update, 'progress'), false);
+    assert.ok(Buffer.byteLength(JSON.stringify(update)) < welcomeBytes / 10);
+  }
+  const stopped = await player.command({ type: 'generatorStop' });
+  const hatch = await player.command({ type: 'hatch', eggId: egg.id, mode: 'manual' });
+  assert.equal(hatch.event.type, 'hatch');
+  assert.equal(hatch.event.spent, egg.cost);
+  assert.equal(hatch.progress.wallet.sunbeams, stopped.progress.wallet.sunbeams - egg.cost);
+  assert.ok(egg.pool.some(item => item.speciesId === hatch.event.pets[0].speciesId));
+  assert.equal(hatch.progress.inventory.length, 531);
+  const score = await player.leaderboard('collectionScore');
+  assert.equal(score.entries.find(entry => entry.id === first.id).score, collectionMetrics(hatch.progress).collectionScore);
+
+  const available = hatch.progress.inventory.find(pet => !hatch.progress.equipped.includes(pet.id) &&
+    egg.pool.some(item => item.speciesId === pet.speciesId));
+  assert.ok(available, 'a new species from the fixture should be tradable');
+  await player.trade('invite', { peerId: guestWelcome.self.id });
+  const { trade: { id: tradeId } } = await guest.receive(message => message.type === 'trade' && message.trade.state === 'invited');
+  await guest.trade('accept-bestiary', 'accept', { tradeId });
+  await player.trade('offer', { tradeId, petIds: [available.id] });
+  await guest.trade('offer-bestiary', 'offer', { tradeId, petIds: ['pet-2'] });
+  const { trade: { revision } } = await guest.receive(message =>
+    message.type === 'trade' && message.trade.mine.length === 1 && message.trade.theirs.length === 1);
+  await player.trade('confirm', { tradeId, revision });
+  await guest.trade('confirm-bestiary', 'confirm', { tradeId, revision });
+  const traded = await guest.receive(stateEvent('trade'));
+  assert.ok(traded.progress.inventory.some(pet => pet.speciesId === available.speciesId));
+  assert.equal((await waitForProgress('trade')).inventory.length, 531);
+
+  const closed = once(sockets[0], 'close');
+  player.disconnect();
+  await closed;
+  await server.close();
+  server = createPetverseServer({ clientOrigins: [clientOrigin], dbPath });
+  await server.listen(Number(new URL(origin).port));
+  const resumed = await player.connect(endpoint(origin), { mode: 'create' });
+  assert.equal(resumed.self.id, welcome.self.id);
+  assert.equal(resumed.progress.inventory.length, 531);
+  assert.equal(resumed.progress.variantDiscoveries.length, 4500);
+  assert.equal(resumed.progress.wallet.sunbeams, hatch.progress.wallet.sunbeams);
+});
 
 test('requires an approved origin and refuses unknown resume tokens', async context => {
   assert.throws(() => createPetverseServer({ clientOrigins: 'https://example.com/with-path' }), /origins/);

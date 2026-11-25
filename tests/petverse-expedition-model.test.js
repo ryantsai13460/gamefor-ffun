@@ -96,7 +96,7 @@ test('stronger regional pets improve the equipped team and require an unlocked d
   assert.ok(new Set(team.map(pet => pet.moveSpeed)).size > 2);
   const best = applyAction(progress, { type: 'equip-best' }).progress;
   assert.deepEqual(best.equipped, ['pet-4', 'pet-3']);
-  assert.ok(progression(progress).capacity >= PETS.length);
+  assert.ok(progression(progress).capacity >= PETS.filter(pet => !pet.bestiary).length);
   const novice = explorer(2, 0);
   const offered = applyAction(novice, { type: 'hatch', eggId: 'sunmeadow' }, { random: () => 0 }).progress;
   const trade = exchangePets(progress, offered, { firstIds: ['pet-2'], secondIds: ['pet-2'] });
@@ -120,5 +120,5 @@ test('the charged generator respects Generation 3 admission and hatches away fro
   assert.equal(result.event.spent, generatorEggCost(EGGS.find(egg => egg.id === biome.eggId)));
   assert.equal(generatorPlan(result.progress).energy, 0);
   assert.deepEqual(generationStatus(result.progress).map(item => [item.id, item.total, item.unlocked]),
-    [[1, 25, true], [2, 10, true], [3, 5, true]]);
+    [[1, 278, true], [2, 148, true], [3, 74, true]]);
 });

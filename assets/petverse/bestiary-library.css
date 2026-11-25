@@ -1,0 +1,53 @@
+.pv-card:is(.pv-pet-card, .pv-collection-card)[data-rarity] {
+  border-inline-start: 3px solid var(--pv-journal-rarity);
+}
+
+.pv-rarity-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--pv-journal-rarity) 50%, var(--pv-line));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--pv-journal-rarity) 16%, var(--pv-card));
+  color: var(--pv-ink);
+  font-size: .73rem;
+  font-weight: 700;
+}
+
+:is(.pv-pet-card, .pv-collection-card) .pv-card-head .pv-controls {
+  margin-block: 3px;
+}
+
+.pv-collection-card .pv-journal-egg {
+  padding-block-start: 5px;
+  border-block-start: 1px solid var(--pv-line);
+  color: var(--pv-muted);
+  font-size: .75rem;
+}
+
+.pv-pet-filters {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pv-pet-filters :is(input, select) {
+  width: 100%;
+}
+
+.pv-pet-pagination {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.pv-pet-pagination .pv-button {
+  padding-inline: 6px;
+}
+
+.pv-pet-page-status {
+  padding-inline: 3px;
+  color: var(--pv-muted);
+  font-size: .75rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}

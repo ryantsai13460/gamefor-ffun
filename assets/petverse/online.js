@@ -80,6 +80,22 @@ function isProgress(value) {
     Array.isArray(value.equipped) && value.upgrades && value.settings && value.stats;
 }
 
+function receiveProgress(session, message, allowDelta = false) {
+  let progress = message.progress;
+  if (!isProgress(progress)) {
+    const delta = message.progressDelta;
+    if (!allowDelta || !session.progress || !delta || typeof delta !== "object" || Array.isArray(delta) ||
+        !Number.isSafeInteger(session.progressVersion) || !Number.isSafeInteger(message.version) ||
+        message.version < session.progressVersion || message.version > session.progressVersion + 1 ||
+        !Object.keys(delta).every(key => Object.hasOwn(session.progress, key))) return null;
+    progress = { ...session.progress, ...delta };
+    if (!isProgress(progress)) return null;
+  }
+  session.progress = progress;
+  session.progressVersion = message.version;
+  return progress;
+}
+
 function readPosition(value) {
   if (!farmPosition(value)) return null;
   return { x: value.x, z: value.z, heading: Number.isFinite(value.heading) ? value.heading : 0 };
@@ -281,13 +297,13 @@ export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, o
       const self = readActor(message.self);
       const room = self && readRoom(message.room, self.id);
       if (message.type !== "welcome" || !self || !room || typeof message.token !== "string" ||
-          !tokenPattern.test(message.token) || !isProgress(message.progress)) return protocolError(session);
+          !tokenPattern.test(message.token) || !receiveProgress(session, message)) return protocolError(session);
       session.connected = true;
       session.selfId = self.id;
       session.roomId = room.id;
       clearTimeout(session.connectTimer);
       storeToken(session.endpoint, message.token);
-      session.resolve({ endpoint: session.endpoint, self, progress: message.progress, peers: readPeers(message.peers),
+      session.resolve({ endpoint: session.endpoint, self, progress: session.progress, peers: readPeers(message.peers),
         room, nodeReadyAt: readResourceCooldowns(message.nodeReadyAt), farm: readFarm(message.farm),
         generator: { active: message.generator?.active === true } });
       return;
@@ -330,8 +346,9 @@ export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, o
       return;
     }
     if (message.type === "player-state") {
-      if (!isProgress(message.progress) || typeof message.event?.type !== "string") return protocolError(session);
-      onProgress?.(message.progress, message.event);
+      const progress = receiveProgress(session, message, true);
+      if (!progress || typeof message.event?.type !== "string") return protocolError(session);
+      onProgress?.(progress, message.event);
       return;
     }
     if (message.type === "error" && !message.requestId) {
@@ -342,7 +359,7 @@ export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, o
     const request = session.pending;
     if (!request || message.requestId !== request.id) return;
     if (message.type !== "error" && message.type !== request.resultType) return protocolError(session);
-    if (message.type === "result" && (!isProgress(message.progress) || typeof message.event?.type !== "string")) {
+    if (message.type === "result" && (!receiveProgress(session, message) || typeof message.event?.type !== "string")) {
       return protocolError(session);
     }
 
@@ -363,8 +380,8 @@ export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, o
           request.reject(clientError("The expedition destination could not be read.", "protocol_error"));
           return protocolError(session);
         }
-        result = { progress: message.progress, event: { type: event.type, areaId: event.areaId, position } };
-      } else result = { progress: message.progress, event };
+        result = { progress: session.progress, event: { type: event.type, areaId: event.areaId, position } };
+      } else result = { progress: session.progress, event };
     }
     if (message.type === "leaderboard-result") {
       result = readLeaderboard(message, request.message.metric);
@@ -383,7 +400,7 @@ export function createOnlineClient({ onProgress, onPeers, onPosition, onTrade, o
     if (mode !== "create" && mode !== "join") {
       throw clientError("Create a private meadow or join with a friend's code.", "invalid_room_mode");
     }
-    const hello = { type: "hello", mode };
+    const hello = { type: "hello", mode, compactProgress: true };
     if (mode === "join") {
       hello.code = normalizeRoomCode(code);
       if (!hello.code) throw clientError("Enter the full PET- invitation code.", "invalid_code");

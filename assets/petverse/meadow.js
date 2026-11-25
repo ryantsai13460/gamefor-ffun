@@ -246,7 +246,7 @@ export function createMeadow(scene, kit, nodes, eggs) {
 
   const embergeode = eggs.find(egg => egg.id === 'embergeode');
   const expeditionEggs = new Set(EXPEDITION_BIOMES.map(biome => biome.eggId));
-  eggs.filter(egg => egg !== embergeode && !expeditionEggs.has(egg.id)).forEach((egg, index) => {
+  eggs.filter(egg => !egg.bestiary && egg !== embergeode && !expeditionEggs.has(egg.id)).forEach((egg, index) => {
     const x = index % 2 === 0 ? -3.08 : 3.08;
     const z = -2.75 - Math.floor(index / 2) * 4.2;
     const plinth = groupAt(x, 0, z);
