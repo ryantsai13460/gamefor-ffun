@@ -4,7 +4,7 @@ import { createFarmingWorld, CRYSTAL_SITES, FARM_AREAS } from '../assets/petvers
 import { advanceGenerator, GENERATOR_SITE, generatorEggCost, generatorPlan, markGeneratorStart } from '../assets/petverse/generator.js';
 import { achievementStatus, applyAction, awardCrystalBreak, collectEligibleDrops, collectionMetrics, createProgress,
   EGGS, fusionOptions, fusionPlan, hatchOdds, magnetStats, petCombatStats, PETS, petPower, progression, restoreProgress, SPAWN,
-  VARIANTS } from '../assets/petverse/model.js';
+  teamSlotStatus, VARIANTS } from '../assets/petverse/model.js';
 
 const starterEgg = EGGS[0];
 const starterField = FARM_AREAS[0];
@@ -83,6 +83,27 @@ test('damage, attack speed, and travel upgrades affect their own stats and Equip
   assert.ok(petCombatStats(quick, progress).moveSpeed > previous.moveSpeed);
   assert.ok(progression(progress).teamDamageRate > 15);
   assert.equal(PETS.find(pet => pet.id === quick.speciesId).power, 7);
+});
+
+test('shows paid team-slot requirements and keeps all pets and settings when the team is unequipped', () => {
+  const starter = funded();
+  assert.deepEqual(teamSlotStatus(starter), [
+    { number: 1, petId: starter.equipped[0] },
+    { number: 2, petId: null },
+    { number: 3, requirement: { rank: 1, level: 3, cost: 52, currency: 'sunbeams' } },
+    { number: 4, requirement: { rank: 2, level: 3, cost: 135, currency: 'sunbeams' } }
+  ]);
+  const expanded = payFor(starter, 'teamSize');
+  assert.deepEqual(teamSlotStatus(expanded)[2], { number: 3, petId: null });
+  const { progress, event } = applyAction(expanded, { type: 'unequip-all' });
+  assert.deepEqual(event, { type: 'unequip-all', count: 1 });
+  assert.deepEqual(progress, { ...expanded, equipped: [] });
+  assert.equal(progression(progress).teamDamageRate, 0);
+  const restored = restoreProgress(progress);
+  assert.deepEqual(restored.equipped, []);
+  assert.deepEqual(restored.inventory, expanded.inventory);
+  assert.strictEqual(applyAction(restored, { type: 'unequip-all' }).progress, restored);
+  assert.equal(applyAction(restored, { type: 'equip-best' }).progress.equipped.length, 1);
 });
 
 test('Gold piles persist and coalesce, while remote collection needs a matching earned assignment and pays once', () => {

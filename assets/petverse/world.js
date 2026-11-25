@@ -1,28 +1,32 @@
 import * as THREE from './vendor/three/three.module.min.js';
 import { biomeAt, canEnterBiome, mayEnterExpeditionBiome } from './biomes.js?v=20261123-4';
 import { BIOME_LIGHT } from './expedition-art.js?v=20261123-4';
-import { EGGS, GATHER_DISTANCE, magnetStats, NODES, PETS, REBIRTH_ALTAR, SPAWN, VARIANTS, WORLD_LIMIT } from './model.js?v=20261124-1';
-import { createMeadow } from './meadow.js?v=20261124-1';
-import { createModelKit, createPet, createTraveler, petScale } from './models.js?v=20261124-1';
-import { createMineView } from './mine-art.js?v=20261123-4';
+import { EGGS, GATHER_DISTANCE, magnetStats, NODES, PETS, REBIRTH_ALTAR, SPAWN, VARIANTS, WORLD_LIMIT } from './model.js?v=20261125-1';
+import { createMeadow } from './meadow.js?v=20261125-1';
+import { animatePetFace, createModelKit, createPet, createTraveler, petScale } from './models.js?v=20261125-1';
+import { createMineView } from './mine-art.js?v=20261125-1';
 import { createGeneratorWorkshop } from './generator-art.js?v=20261123-4';
 import { canFarmArea } from './farming.js?v=20261123-4';
+import { cameraClearance } from './camera-obstacles.js?v=20261125-1';
+import { mountPointerLock } from './pointer-lock.js?v=20261125-1';
+import { PLAYER_SPRINT_SPEED, PLAYER_WALK_SPEED } from './movement-rules.js?v=20261125-1';
+import { createWorldLighting, createRenderQuality } from './render-quality.js?v=20261125-1';
 
 const petById = new Map(PETS.map(spec => [spec.id, spec]));
 const variantById = new Map(VARIANTS.map(variant => [variant.id, variant]));
 const displayOptions = {
   quality: 'medium', shadows: true, particles: 'medium', petGlow: true, shinyEffects: true, rareAnimations: true,
-  showPeerPets: true, showPeerTitanium: true, showPetNames: true, collectionNumbers: true,
-  shake: false, reducedMotion: false, cameraSensitivity: .5
+  showPeerPets: true, showPeerTitanium: true, showPeerGiants: true, giantEffects: true, showPetNames: true,
+  collectionNumbers: true, shake: false, reducedMotion: false, cameraSensitivity: .5, cameraDistance: .5
 };
+const defaultControls = { shiftLockEnabled: true, shiftLockKey: 'ShiftLeft', sprintEnabled: true, sprintKey: 'KeyR' };
 const keys = new Map([
   ['KeyW', 'forward'], ['ArrowUp', 'forward'], ['KeyS', 'back'], ['ArrowDown', 'back'],
   ['KeyA', 'left'], ['ArrowLeft', 'left'], ['KeyD', 'right'], ['ArrowRight', 'right']
 ]);
 const inputNames = new Set(keys.values());
 const cameraStart = { yaw: .28, tilt: .43, distance: 15.3 };
-const playerSpeed = 5.8;
-const qualityScale = { low: .7, medium: 1, high: 1.6 };
+const renderQualities = new Set(['low', 'medium', 'high', 'ultra']);
 const particleCount = { off: 0, low: 9, medium: 21, high: 36 };
 const clamp = (number, min, max) => Math.max(min, Math.min(max, number));
 const angleDelta = (next, current) => Math.atan2(Math.sin(next - current), Math.cos(next - current));
@@ -59,7 +63,7 @@ function disposeScene(scene, kit) {
 }
 
 /** Mount a real WebGL game scene and return controls for the host interface. */
-export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onReady, onProximity, onBiome } = {}) {
+export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onReady, onProximity, onBiome, onLockChange } = {}) {
   const lifetime = new AbortController();
   const { signal } = lifetime;
   const canvas = document.createElement('canvas');
@@ -71,32 +75,24 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
   const camera = new THREE.PerspectiveCamera(47, 1, .10, 195);
   let renderer;
   try {
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'low-power' });
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'default' });
   } catch {
-    queueMicrotask(() => onReady?.({ available: false }));
+    queueMicrotask(() => {
+      onReady?.({ available: false });
+      onLockChange?.({ active: false, available: false, pending: false, reason: '' });
+    });
     return { update() {}, setInput() {}, resetCamera() {}, interact() {}, jump() {}, showBurst() {},
-      getPosition: () => ({ ...SPAWN, heading: 0 }), setPosition() {}, destroy() {} };
+      toggleShiftLock() {}, releaseShiftLock() {}, getPosition: () => ({ ...SPAWN, heading: 0 }), setPosition() {}, destroy() {} };
   }
   host.prepend(canvas);
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.NeutralToneMapping;
-  renderer.shadowMap.type = THREE.PCFShadowMap;
-  renderer.setClearColor('#bdded2');
-  const skylight = new THREE.HemisphereLight(meadowLight.ambient, '#80a89d', 2.5);
-  const sun = new THREE.DirectionalLight(meadowLight.sunlight, 2.15);
-  sun.position.set(-18, 33, 13);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
-  Object.assign(sun.shadow.camera, { left: -25, right: 25, near: .5, far: 82, top: 25, bottom: -25 });
-  sun.shadow.bias = -.0002;
-  sun.shadow.normalBias = .025;
-  scene.add(skylight, sun, sun.target);
+  const { skylight, sun } = createWorldLighting(scene, meadowLight);
 
   const kit = createModelKit();
   const meadow = createMeadow(scene, kit, NODES, EGGS);
   const workshop = createGeneratorWorkshop(scene, kit);
   meadow.interactables.push(workshop.target);
   meadow.obstacles.push(...workshop.obstacles);
+  const renderQuality = createRenderQuality(renderer, scene, camera, { canvas, skylight, sun });
   const mine = createMineView(scene, kit, host, { groundHeight, projectLabel: rootPoint });
   const traveler = createTraveler(kit);
   traveler.position.set(SPAWN.x, 0, SPAWN.z);
@@ -118,6 +114,8 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
   const velocity = new THREE.Vector3();
   const cameraTarget = new THREE.Vector3();
   const cameraFocus = new THREE.Vector3();
+  const cameraAnchor = new THREE.Vector3();
+  const cameraPivot = new THREE.Vector3();
   const projection = new THREE.Vector3();
   const particles = [];
   const pointGeometry = new THREE.BufferGeometry();
@@ -134,6 +132,8 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
   let activeBiome;
 
   let graphics = { ...displayOptions };
+  let controls = { ...defaultControls };
+  let overlayOpen = false;
   const view = { ...cameraStart };
   let progress;
   let magnet = { radius: 3.3, speed: 7.5, maxSimultaneous: 2 };
@@ -149,10 +149,18 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
   let heading = 0;
   let verticalSpeed = 0;
   let airHeight = 0;
+  let jumpAt = 0;
+  let grounded = true;
+  let landing = 0;
+  let stridePhase = 0;
+  let strideStrength = 0;
+  let sprintHeld = false;
+  let shoulder = 0;
   let shakeEnds = 0;
   let frame = 0;
   let prior = 0;
   let notifyAt = 0;
+  let lastMovement = { ...SPAWN, heading: 0 };
   let effect;
   let viewportWidth = 1;
   let viewportHeight = 1;
@@ -166,16 +174,12 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
   function resize() {
     viewportWidth = Math.max(1, Math.floor(host.clientWidth));
     viewportHeight = Math.max(1, Math.floor(host.clientHeight));
-    camera.aspect = viewportWidth / viewportHeight;
-    camera.updateProjectionMatrix();
-    const scale = qualityScale[graphics.quality];
-    renderer.setPixelRatio(graphics.quality === 'low' ? scale : Math.min(scale, window.devicePixelRatio || 1));
-    renderer.setSize(viewportWidth, viewportHeight, false);
-    canvas.dataset.renderQuality = graphics.quality;
+    renderQuality.resize(viewportWidth, viewportHeight);
   }
 
   const observer = new ResizeObserver(resize);
   observer.observe(host);
+  renderQuality.update(graphics);
   resize();
 
   function getPosition() {
@@ -186,12 +190,17 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     if (!Number.isFinite(position?.x) || !Number.isFinite(position?.z)) return;
     const movedFar = Math.hypot(position.x - traveler.position.x, position.z - traveler.position.z) > 3;
     traveler.position.set(clamp(position.x, -WORLD_LIMIT, WORLD_LIMIT), 0, clamp(position.z, -WORLD_LIMIT, WORLD_LIMIT));
+    traveler.position.y = groundHeight(traveler.position.x, traveler.position.z);
     if (Number.isFinite(position.heading)) heading = position.heading;
+    lastMovement = getPosition();
     velocity.set(0, 0, 0);
     verticalSpeed = 0;
     airHeight = 0;
+    grounded = true;
+    landing = 0;
     if (reorient) {
       Object.assign(view, cameraStart);
+      view.distance = configuredCameraDistance();
       if (biomeAt(position) && Number.isFinite(position.heading)) view.yaw = angleDelta(position.heading - Math.PI, 0);
       clearInput();
     }
@@ -209,7 +218,12 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
 
   function jump() {
     if (generator.active) { requestGeneratorStop(); return; }
-    if (airHeight <= .015 && verticalSpeed === 0) verticalSpeed = 7;
+    if (grounded) {
+      verticalSpeed = 7;
+      grounded = false;
+      jumpAt = performance.now() / 1000;
+      landing = 0;
+    }
   }
 
   function requestGeneratorStop() {
@@ -234,8 +248,13 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     return true;
   }
 
+  function configuredCameraDistance() {
+    return 8 + clamp(graphics.cameraDistance, 0, 1) * 14.6;
+  }
+
   function resetCamera() {
     Object.assign(view, cameraStart);
+    view.distance = configuredCameraDistance();
     const biome = biomeAt(traveler.position);
     if (biome) view.yaw = angleDelta(biome.arrival.heading - Math.PI, 0);
     cameraInitialized = false;
@@ -244,11 +263,30 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
   function clearInput() {
     held.clear();
     touch.clear();
+    sprintHeld = false;
   }
+
+  function rotateCamera(dx, dy) {
+    const sensitivity = .5 + clamp(graphics.cameraSensitivity, 0, 1);
+    view.yaw = angleDelta(view.yaw - dx * .009 * sensitivity, 0);
+    view.tilt = clamp(view.tilt + dy * .0055 * sensitivity, .20, 1.12);
+  }
+
+  const shiftLock = mountPointerLock(canvas, {
+    signal, canLock: () => controls.shiftLockEnabled && !overlayOpen && !destroyed,
+    onChange: onLockChange, onRotate: rotateCamera, clearInput
+  });
 
   canvas.addEventListener('keydown', event => {
     if (event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return;
-    if (keys.has(event.code)) {
+    if (controls.shiftLockEnabled && controls.shiftLockKey === event.code) {
+      if (overlayOpen) return;
+      event.preventDefault();
+      if (!event.repeat) shiftLock.toggle();
+    } else if (controls.sprintEnabled && controls.sprintKey === event.code) {
+      event.preventDefault();
+      sprintHeld = true;
+    } else if (keys.has(event.code)) {
       event.preventDefault();
       held.set(event.code, keys.get(event.code));
     } else if (event.code === 'KeyE') {
@@ -263,17 +301,31 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
       }
     }
   }, { signal });
-  canvas.addEventListener('keyup', event => held.delete(event.code), { signal });
-  canvas.addEventListener('blur', () => held.clear(), { signal });
-  window.addEventListener('blur', clearInput, { signal });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) clearInput(); }, { signal });
+  canvas.addEventListener('keyup', event => {
+    held.delete(event.code);
+    if (controls.sprintKey === event.code) sprintHeld = false;
+  }, { signal });
+  canvas.addEventListener('blur', () => { held.clear(); sprintHeld = false; }, { signal });
+  window.addEventListener('blur', () => {
+    clearInput();
+    if (shiftLock.active || shiftLock.pending) shiftLock.release();
+  }, { signal });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) return;
+    clearInput();
+    if (shiftLock.active || shiftLock.pending) shiftLock.release();
+  }, { signal });
   canvas.addEventListener('contextmenu', event => event.preventDefault(), { signal });
   canvas.addEventListener('wheel', event => {
     event.preventDefault();
-    view.distance = clamp(view.distance + Math.sign(event.deltaY) * 1.2, 8, 25);
+    view.distance = clamp(view.distance + Math.sign(event.deltaY) * 1.2, 6, 27);
   }, { passive: false, signal });
 
   canvas.addEventListener('pointerdown', event => {
+    if (shiftLock.active) {
+      if (event.button === 0) interactFromCamera(0, 0);
+      return;
+    }
     if (pointer || event.button !== 0 && event.button !== 2) return;
     event.preventDefault();
     canvas.focus({ preventScroll: true });
@@ -287,24 +339,28 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     pointer.x = event.clientX;
     pointer.y = event.clientY;
     pointer.travel += Math.abs(dx) + Math.abs(dy);
-    const sensitivity = .5 + clamp(graphics.cameraSensitivity, 0, 1);
-    view.yaw -= dx * .009 * sensitivity;
-    view.tilt = clamp(view.tilt + dy * .0055 * sensitivity, .20, 1.12);
+    rotateCamera(dx, dy);
   }, { signal });
   const raycaster = new THREE.Raycaster();
   const hitPoint = new THREE.Vector2();
+
+  function interactFromCamera(x, y) {
+    hitPoint.set(x, y);
+    raycaster.setFromCamera(hitPoint, camera);
+    const options = meadow.interactables.filter(canInteract);
+    const hit = raycaster.intersectObjects(options.map(target => target.group), true)[0];
+    for (let object = hit?.object; object; object = object.parent) {
+      const target = options.find(item => item.group === object);
+      if (target) return interact(target);
+    }
+    return false;
+  }
+
   canvas.addEventListener('pointerup', event => {
     if (pointer?.id !== event.pointerId) return;
     if (pointer.travel < 8 && event.button === 0) {
       const bounds = canvas.getBoundingClientRect();
-      hitPoint.set((event.clientX - bounds.left) / bounds.width * 2 - 1, -(event.clientY - bounds.top) / bounds.height * 2 + 1);
-      raycaster.setFromCamera(hitPoint, camera);
-      const options = meadow.interactables.filter(canInteract);
-      const hit = raycaster.intersectObjects(options.map(target => target.group), true)[0];
-      for (let object = hit?.object; object; object = object.parent) {
-        const target = options.find(item => item.group === object);
-        if (target) { interact(target); break; }
-      }
+      interactFromCamera((event.clientX - bounds.left) / bounds.width * 2 - 1, -(event.clientY - bounds.top) / bounds.height * 2 + 1);
     }
     pointer = undefined;
   }, { signal });
@@ -316,6 +372,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     event.preventDefault();
     cancelAnimationFrame(frame);
     clearInput();
+    if (shiftLock.active || shiftLock.pending) shiftLock.release();
     onReady?.({ available: false });
   }, { signal });
   canvas.addEventListener('webglcontextrestored', () => {
@@ -386,11 +443,13 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
         otherPlayers.set(peer.id, entry);
       }
       entry.label.textContent = name;
-      entry.target.set(clamp(peer.x, -WORLD_LIMIT, WORLD_LIMIT), 0, clamp(peer.z, -WORLD_LIMIT, WORLD_LIMIT));
+      const x = clamp(peer.x, -WORLD_LIMIT, WORLD_LIMIT);
+      const z = clamp(peer.z, -WORLD_LIMIT, WORLD_LIMIT);
+      entry.target.set(x, groundHeight(x, z), z);
       if (Number.isFinite(peer.heading)) entry.direction = peer.heading;
       const spec = peer.pet?.speciesId;
       const variant = peer.pet?.variant;
-      const visible = graphics.showPeerPets && !mine.poses.get(peer.id)?.size && (variant !== 'titanium' || graphics.showPeerTitanium);
+      const visible = peerVariantEnabled(variant) && !mine.poses.get(peer.id)?.size;
       if (entry.companion && (!visible || entry.companion.speciesId !== spec || entry.companion.variant !== variant)) {
         releaseCharacter(entry.companion);
         entry.companion = undefined;
@@ -403,12 +462,16 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     }
   }
 
+  function peerVariantEnabled(variant) {
+    return graphics.showPeerPets && (variant !== 'titanium' || graphics.showPeerTitanium) && (variant !== 'giant' || graphics.showPeerGiants);
+  }
+
   function syncFarmParty() {
     const visible = new Map();
     if (graphics.showPeerPets) for (const [ownerId, pets] of mine.poses) {
       if (ownerId === farmOwnerId) continue;
       for (const pose of pets.values()) {
-        if (pose.variant !== 'titanium' || graphics.showPeerTitanium) visible.set(`${ownerId}:${pose.id}`, pose);
+        if (peerVariantEnabled(pose.variant)) visible.set(`${ownerId}:${pose.id}`, pose);
       }
     }
     for (const [key, entry] of farmParty) {
@@ -429,8 +492,8 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     }
   }
 
-  function update({ progress: nextProgress, peers, graphics: nextGraphics, magnetPreview: preview,
-    farming, farmingEvents, farmOwnerId: owner, generator: nextGenerator } = {}) {
+  function update({ progress: nextProgress, peers, graphics: nextGraphics, controls: nextControls, overlayOpen: nextOverlay,
+    magnetPreview: preview, farming, farmingEvents, farmOwnerId: owner, generator: nextGenerator } = {}) {
     if (nextProgress) {
       progress = nextProgress;
       syncParty();
@@ -443,12 +506,22 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
       }
     }
     if (nextGraphics) {
-      const oldQuality = graphics.quality;
+      const previousDistance = graphics.cameraDistance;
       graphics = { ...displayOptions, ...nextGraphics };
-      if (!Object.hasOwn(qualityScale, graphics.quality)) graphics.quality = displayOptions.quality;
-      renderer.shadowMap.enabled = graphics.quality === 'high' && graphics.shadows;
-      if (graphics.quality !== oldQuality) resize();
+      if (!renderQualities.has(graphics.quality)) graphics.quality = displayOptions.quality;
+      if (graphics.cameraDistance !== previousDistance) view.distance = configuredCameraDistance();
+      renderQuality.update(graphics);
     }
+    if (nextControls) {
+      const previousSprint = controls.sprintKey;
+      controls = { ...defaultControls, ...nextControls };
+      if (!controls.sprintEnabled || controls.sprintKey !== previousSprint) sprintHeld = false;
+    }
+    if (typeof nextOverlay === 'boolean' && nextOverlay !== overlayOpen) {
+      overlayOpen = nextOverlay;
+      clearInput();
+    }
+    if ((overlayOpen || !controls.shiftLockEnabled) && (shiftLock.active || shiftLock.pending)) shiftLock.release();
     if (typeof preview === 'boolean') magnetPreview = preview;
     if (nextGenerator) {
       generator = nextGenerator;
@@ -463,9 +536,10 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     if (Array.isArray(farmingEvents)) {
       const now = performance.now();
       mine.emit(farmingEvents, graphics, farmOwnerId, traveler.position);
-      for (const event of farmingEvents) if (event.type === 'damage') {
+      for (const event of farmingEvents) if (event.type === 'damage' || event.type === 'break') {
         const entry = event.ownerId === farmOwnerId ? party.get(event.petId) : farmParty.get(`${event.ownerId}:${event.petId}`);
-        if (entry) entry.strikeTime = now;
+        if (entry && event.type === 'damage') entry.strikeTime = now;
+        if (entry && event.type === 'break') entry.celebrateTime = now + 180;
       }
     }
   }
@@ -561,7 +635,9 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     const source = kind === 'gather' && node ? node : traveler.position;
     const titanium = variant === 'titanium' || kind === 'titanium' || (kind === 'gather' && lead?.[1].variant === 'titanium');
     const color = new THREE.Color(titanium ? '#a7f6e8' : variantById.get(variant)?.color || '#fadd92');
-    const density = graphics.reducedMotion ? 0 : (particleCount[graphics.particles] || 0) * (titanium ? 2 : 1);
+    const giantBurst = titanium || variant === 'giant';
+    const showBurstEffect = !graphics.reducedMotion && (!giantBurst || graphics.giantEffects);
+    const density = showBurstEffect ? (particleCount[graphics.particles] || 0) * (giantBurst ? 2 : 1) : 0;
     for (let index = 0; index < density; index++) {
       if (particles.length >= pointPositions.count) particles.shift();
       const angle = index / density * Math.PI * 2;
@@ -569,7 +645,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
       particles.push({ x: source.x, y: 1, z: source.z, dx: Math.cos(angle) * radius,
         dy: 2 + Math.random() * (titanium ? 3.6 : 2.4), dz: Math.sin(angle) * radius, life: .55 + Math.random() * .5, color });
     }
-    if (['hatch', 'titanium'].includes(kind) && graphics.shake && !graphics.reducedMotion) shakeEnds = performance.now() + 230;
+    if (['hatch', 'titanium'].includes(kind) && graphics.shake && showBurstEffect) shakeEnds = performance.now() + 230;
     if (['collect', 'gather'].includes(kind) && Number.isFinite(amount) && graphics.collectionNumbers) {
       effect?.label.remove();
       effect = { label: nameTag(host, `+${amount} ${currency === 'gold' ? 'Gold' : 'Sunbeams'}`), x: source.x, z: source.z, elapsed: 0 };
@@ -617,24 +693,28 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     const bridgeX = (x - 16.8) * .984 - (z - 10.5) * .179;
     const bridgeZ = (x - 16.8) * .179 + (z - 10.5) * .984;
     if (Math.abs(bridgeX) < 3.43 && Math.abs(bridgeZ) < 1.49) return .26 + .13 * Math.cos(bridgeX / 2.1);
-    return workshop.floorHeight(x, z);
+    return Math.max(workshop.floorHeight(x, z), meadow.terrainHeight?.(x, z) ?? 0);
   }
 
   function updateTraveler(dt, time) {
     const desired = new Set([...held.values(), ...touch]);
     const x = Number(desired.has('right')) - Number(desired.has('left'));
     const z = Number(desired.has('back')) - Number(desired.has('forward'));
+    const sprinting = grounded && sprintHeld && (x !== 0 || z !== 0) && !generator.active;
     direction.set(x * Math.cos(view.yaw) + z * Math.sin(view.yaw), 0,
-      z * Math.cos(view.yaw) - x * Math.sin(view.yaw)).normalize().multiplyScalar(playerSpeed);
-    velocity.lerp(direction, 1 - Math.exp(-dt * 13));
+      z * Math.cos(view.yaw) - x * Math.sin(view.yaw)).normalize().multiplyScalar(sprinting ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED);
+    const response = !grounded ? 5.8 : direction.lengthSq() ? 13 : 16;
+    velocity.lerp(direction, 1 - Math.exp(-dt * response));
     if (desired.size === 0 && velocity.lengthSq() < .003) velocity.set(0, 0, 0);
     const previousX = traveler.position.x;
     const previousZ = traveler.position.z;
+    landing = Math.max(0, landing - dt);
     if (generator.active) {
       if (desired.size) requestGeneratorStop();
       velocity.set(0, 0, 0);
       verticalSpeed = 0;
       airHeight = 0;
+      grounded = true;
       const { target } = workshop;
       const span = 1 - Math.exp(-dt * 7.1);
       if (Math.hypot(target.x - traveler.position.x, target.z - traveler.position.z) <= .025) {
@@ -647,28 +727,67 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
       const turn = angleDelta(target.heading, heading);
       heading += Math.abs(turn) <= .015 ? turn : turn * span;
     } else {
-      const steps = Math.ceil(dt / .035);
+      const steps = Math.max(1, Math.ceil(dt / .035));
       for (let step = 0; step < steps; step++) {
         const nextX = clamp(traveler.position.x + velocity.x * dt / steps, -WORLD_LIMIT, WORLD_LIMIT);
         const nextZ = clamp(traveler.position.z + velocity.z * dt / steps, -WORLD_LIMIT, WORLD_LIMIT);
         if (walkable(nextX, traveler.position.z)) traveler.position.x = nextX;
         if (walkable(traveler.position.x, nextZ)) traveler.position.z = nextZ;
       }
+      if (shiftLock.active) heading = angleDelta(view.yaw + Math.PI, 0);
+      else if (velocity.lengthSq() > .1) {
+        const turn = angleDelta(Math.atan2(velocity.x, velocity.z), heading);
+        heading = angleDelta(heading + turn * (1 - Math.exp(-dt * 14)), 0);
+      }
+      if (!grounded) {
+        const airtime = Math.max(0, time - jumpAt);
+        airHeight = 7 * airtime - 10.5 * airtime * airtime;
+        verticalSpeed = 7 - 21 * airtime;
+        if (airHeight <= 0 && verticalSpeed < 0) {
+          airHeight = verticalSpeed = 0;
+          grounded = true;
+          landing = .20;
+        }
+      }
     }
-    airHeight = Math.max(0, airHeight + verticalSpeed * dt);
-    verticalSpeed = airHeight > 0 ? verticalSpeed - 21 * dt : 0;
     const floor = groundHeight(traveler.position.x, traveler.position.z);
+    const traveled = Math.hypot(traveler.position.x - previousX, traveler.position.z - previousZ);
+    const moving = traveled > .0001;
+    const motion = generator.active ? 'crank' : !grounded ? (verticalSpeed > 0 ? 'jump' : 'fall') :
+      landing > 0 ? 'land' : moving ? (sprinting ? 'sprint' : 'walk') : 'idle';
+    if (canvas.dataset.playerMotion !== motion) canvas.dataset.playerMotion = motion;
+    stridePhase = (stridePhase + traveled * 2.08) % (Math.PI * 2);
+    strideStrength = THREE.MathUtils.damp(strideStrength,
+      Math.min(1, traveled / (Math.max(.001, dt) * PLAYER_WALK_SPEED)), 12, dt);
+    const animated = !graphics.reducedMotion && !generator.active;
+    const activity = animated && grounded ? strideStrength : 0;
+    const stride = Math.sin(stridePhase) * activity * (sprinting ? .80 : .53);
+    const airbornePose = animated && !grounded ? Math.min(.48, Math.max(.08, verticalSpeed * .057 + .28)) : 0;
+    const landDip = animated ? Math.sin(landing / .20 * Math.PI) * .075 : 0;
+    const idle = animated && grounded && !moving ? Math.sin(time * 2.2) * .013 : 0;
     traveler.position.y = floor + airHeight;
     footprint.position.set(traveler.position.x, .09 + floor, traveler.position.z);
     footprint.visible = !renderer.shadowMap.enabled;
-    if (velocity.lengthSq() > .1) heading += angleDelta(Math.atan2(velocity.x, velocity.z), heading) * (1 - Math.exp(-dt * 14));
     traveler.rotation.y = heading;
-    const moving = traveler.position.x !== previousX || traveler.position.z !== previousZ;
-    const stride = moving && !graphics.reducedMotion && !generator.active ? Math.sin(time * 11) * .57 : 0;
-    traveler.userData.legs.forEach((leg, index) => { leg.rotation.x = index === 0 ? stride : -stride; });
-    if (moving && performance.now() - notifyAt >= 90) {
-      notifyAt = performance.now();
-      onMove?.(getPosition());
+    traveler.rotation.x = landDip + idle + (sprinting ? .08 * activity : 0);
+    traveler.userData.legs.forEach((leg, index) => {
+      leg.rotation.x = index === 0 ? stride + airbornePose : -stride - airbornePose * .62;
+      leg.rotation.z = shiftLock.active ? x * activity * .09 * (index === 0 ? 1 : -1) : 0;
+    });
+    const positionChanged = Math.hypot(traveler.position.x - lastMovement.x, traveler.position.z - lastMovement.z) > .005;
+    if ((positionChanged || Math.abs(angleDelta(heading, lastMovement.heading)) > .008) && time * 1000 - notifyAt >= 90) {
+      notifyAt = time * 1000;
+      lastMovement = getPosition();
+      onMove?.(lastMovement);
+    }
+  }
+
+  function animateTravelerArms() {
+    if (generator.active || graphics.reducedMotion) return;
+    const swing = Math.sin(stridePhase) * strideStrength * .24;
+    for (const { side, sleeve, hand } of traveler.userData.arms) {
+      sleeve.rotation.x += swing * side;
+      hand.position.z -= swing * side * .4;
     }
   }
 
@@ -779,9 +898,12 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     const sinceStrike = time - (entry.strikeTime ?? -1000) / 1000;
     const strike = pose && animating && sinceStrike >= 0 && sinceStrike < .31
       ? Math.sin(Math.PI * sinceStrike / .31) : 0;
-    group.position.y = hop + floor + strike * (huge ? .11 : .27);
+    const sinceBreak = time - (entry.celebrateTime ?? -1000) / 1000;
+    const celebration = animating && (!huge || graphics.giantEffects) && sinceBreak >= 0 && sinceBreak < .5
+      ? Math.sin(Math.PI * sinceBreak / .5) : 0;
+    group.position.y = hop + floor + strike * (huge ? .11 : .27) + celebration * (huge ? .12 : .32);
     group.rotation.x = strike * (huge ? .12 : .24);
-    group.rotation.z = huge ? stride * .023 : 0;
+    group.rotation.z = (huge ? stride * .023 : 0) + celebration * .085;
     shadow.position.set(group.position.x, .09 + floor, group.position.z);
     group.visible = (!pose || gap < 50) && (!huge || !petCrossesCamera(group, entry.scale));
     shadow.visible = group.visible && !renderer.shadowMap.enabled;
@@ -791,27 +913,69 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
       group.rotation.y += angleDelta(facing, group.rotation.y) * (1 - Math.exp(-dt * (huge ? 3 : 6.5)));
     }
     if (group.userData.aura) {
-      group.userData.aura.visible = graphics.petGlow && (variant !== 'shiny' || graphics.shinyEffects);
+      group.userData.aura.visible = graphics.petGlow && (variant !== 'shiny' || graphics.shinyEffects) && (!huge || graphics.giantEffects);
       if (animating && group.userData.aura.visible) group.userData.aura.rotation.z = time * .74;
     }
     group.userData.wings?.forEach((wing, index) => { wing.rotation.z = animating ? Math.sin(time * 7.2) * .24 * (index ? 1 : -1) : 0; });
     if (group.userData.tail) group.userData.tail.rotation.y = animating ? Math.sin(time * cadence) * .22 : 0;
+    animatePetFace(group, time, !animating);
     rootPoint(group.position, label, 2.04 * entry.scale, graphics.showPetNames && group.visible);
+  }
+
+  function updateCamera(dt, now) {
+    const insideCave = meadow.rebirthCave?.contains(traveler.position);
+    const zoom = (insideCave ? Math.min(view.distance, 10.6) : view.distance) * (camera.aspect < 1 ? 1.14 : 1);
+    const tilt = insideCave ? Math.max(.60, view.tilt) : view.tilt;
+    const horizontal = Math.cos(tilt) * zoom;
+    const sin = Math.sin(view.yaw);
+    const cos = Math.cos(view.yaw);
+    const wantedShoulder = shiftLock.active ? (insideCave ? .61 : .93) : 0;
+    shoulder = graphics.reducedMotion ? wantedShoulder : THREE.MathUtils.damp(shoulder, wantedShoulder, 13, dt);
+    const floor = traveler.position.y - airHeight * .72;
+    cameraAnchor.set(traveler.position.x, floor + 1.3, traveler.position.z);
+    cameraPivot.copy(cameraAnchor);
+    if (Math.abs(shoulder) > .001) {
+      cameraPivot.x += cos * shoulder;
+      cameraPivot.z -= sin * shoulder;
+      cameraPivot.lerpVectors(cameraAnchor, cameraPivot,
+        cameraClearance(cameraAnchor, cameraPivot, meadow.obstacles, groundHeight));
+    }
+    cameraTarget.set(cameraPivot.x + horizontal * sin, floor + 1.3 + Math.sin(tilt) * zoom,
+      cameraPivot.z + horizontal * cos);
+    if (now < shakeEnds) cameraTarget.x += Math.sin(now * .21) * (shakeEnds - now) / 240 * .15;
+    cameraFocus.set(cameraPivot.x - sin * 2, floor + 1.47, cameraPivot.z - cos * 2);
+    const clearance = cameraClearance(cameraPivot, cameraTarget, meadow.obstacles, groundHeight);
+    cameraTarget.lerpVectors(cameraPivot, cameraTarget, clearance);
+    if (!cameraInitialized || graphics.reducedMotion || clearance < 1 && camera.position.distanceToSquared(cameraPivot) > cameraTarget.distanceToSquared(cameraPivot)) {
+      camera.position.copy(cameraTarget);
+    } else {
+      camera.position.lerp(cameraTarget, 1 - Math.exp(-dt * 8.2));
+      const smoothingClearance = cameraClearance(cameraPivot, camera.position, meadow.obstacles, groundHeight);
+      if (smoothingClearance < 1) camera.position.lerpVectors(cameraPivot, camera.position, smoothingClearance);
+    }
+    cameraInitialized = true;
+    camera.lookAt(cameraFocus);
+    camera.updateMatrixWorld();
   }
 
   function draw(now) {
     if (destroyed) return;
     frame = requestAnimationFrame(draw);
-    const active = held.size || touch.size || pointer || airHeight > 0 || particles.length || rewards.size || mine.active || generator.active || velocity.lengthSq() > .02;
+    const active = held.size || touch.size || pointer || shiftLock.active || !grounded || particles.length || rewards.size ||
+      mine.active || generator.active || velocity.lengthSq() > .02;
     const minimumInterval = graphics.quality === 'low' ? (active ? 30 : 50) : (active ? 0 : 28);
     if (prior && now - prior < minimumInterval) return;
-    const dt = prior ? clamp((now - prior) / 1000, 0, .14) : .016;
+    const elapsed = prior ? Math.max(0, (now - prior) / 1000) : .016;
+    const dt = Math.min(elapsed, .14);
     prior = now;
     if (document.hidden || viewportWidth <= 1 || viewportHeight <= 1) return;
     const time = now / 1000;
-    updateTraveler(dt, time);
+    // Keep slow displays responsive without allowing a long browser stall to award a large movement step.
+    updateTraveler(Math.min(elapsed, .38), time);
     workshop.update(dt, { ...generator, reducedMotion: graphics.reducedMotion }, traveler);
+    animateTravelerArms();
     meadow.rebirthCave?.update(traveler.position, { reducedMotion: graphics.reducedMotion });
+    meadow.updateScenery?.(time, graphics);
     animateRewards(dt, time);
 
     let proximity;
@@ -834,19 +998,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
       if (model.halo.visible && !graphics.reducedMotion) model.halo.scale.setScalar(1.03 + Math.sin(time * 3.8) * .065);
     }
 
-    const insideCave = meadow.rebirthCave?.contains(traveler.position);
-    const zoom = (insideCave ? Math.min(view.distance, 12.6) : view.distance) * (camera.aspect < 1 ? 1.14 : 1);
-    const tilt = insideCave ? Math.max(.68, view.tilt) : view.tilt;
-    const horizontal = Math.cos(tilt) * zoom;
-    cameraTarget.set(traveler.position.x + horizontal * Math.sin(view.yaw), 1.3 + Math.sin(tilt) * zoom,
-      traveler.position.z + horizontal * Math.cos(view.yaw));
-    if (now < shakeEnds) cameraTarget.x += Math.sin(now * .21) * (shakeEnds - now) / 240 * .15;
-    cameraFocus.set(traveler.position.x - Math.sin(view.yaw) * 2, 1.47, traveler.position.z - Math.cos(view.yaw) * 2);
-    if (!cameraInitialized || graphics.reducedMotion) camera.position.copy(cameraTarget);
-    else camera.position.lerp(cameraTarget, 1 - Math.exp(-dt * 8.2));
-    cameraInitialized = true;
-    camera.lookAt(cameraFocus);
-    camera.updateMatrixWorld();
+    updateCamera(dt, now);
 
     mine.animate(dt, time, traveler.position, graphics);
     placeParty(dt, time, now);
@@ -890,7 +1042,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     }
 
     updateAtmosphere(dt);
-    renderer.render(scene, camera);
+    renderQuality.draw(traveler.position);
     if (!ready) {
       ready = true;
       onReady?.({ available: true });
@@ -898,9 +1050,11 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
   }
 
   frame = requestAnimationFrame(draw);
-  return { update, setInput, getPosition, setPosition, jump, interact, resetCamera, showBurst, destroy() {
+  return { update, setInput, getPosition, setPosition, jump, interact, resetCamera, showBurst,
+    toggleShiftLock: shiftLock.toggle, releaseShiftLock: shiftLock.release, destroy() {
     if (destroyed) return;
     destroyed = true;
+    if (shiftLock.active || shiftLock.pending) shiftLock.release();
     lifetime.abort();
     observer.disconnect();
     cancelAnimationFrame(frame);
@@ -910,6 +1064,7 @@ export function mountWorld(host, { onGather, onCollect, onInteract, onMove, onRe
     mine.destroy();
     disposeScene(scene, kit);
     rewardTrail.dispose();
+    renderQuality.dispose();
     renderer.dispose();
     renderer.forceContextLoss();
     canvas.remove();

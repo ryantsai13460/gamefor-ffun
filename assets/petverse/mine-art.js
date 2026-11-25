@@ -202,6 +202,13 @@ export function createMineView(scene, kit, host, { groundHeight, projectLabel })
         });
       }
       if (breaking || !graphics.collectionNumbers || !Number.isFinite(event.damage) || event.ownerId !== ownerId) continue;
+      const recent = numbers.find(number => number.crystalId === event.crystalId);
+      if (recent) {
+        recent.damage = recent.elapsed < .22 ? recent.damage + event.damage : event.damage;
+        recent.elapsed = 0;
+        recent.label.textContent = `−${recent.damage}`;
+        continue;
+      }
       if (numbers.length >= 14) numbers.shift().label.remove();
       const label = document.createElement('span');
       label.dataset.crystalDamage = event.crystalId;
@@ -209,8 +216,8 @@ export function createMineView(scene, kit, host, { groundHeight, projectLabel })
       label.textContent = `−${event.damage}`;
       label.style.cssText = 'position:absolute;z-index:2;transform:translate(-50%,-100%);pointer-events:none;white-space:nowrap;color:#fff0ae;text-shadow:0 1px 3px #782712,0 0 4px #743a22;font:800 1rem system-ui';
       host.append(label);
-      const x = event.x + (numbers.length % 3 - 1) * .24;
-      numbers.push({ label, position: { x, y: view.group.position.y, z: event.z }, height: view.height, elapsed: 0 });
+      numbers.push({ label, crystalId: event.crystalId, damage: event.damage, elapsed: 0,
+        position: { x: event.x + .48, y: view.group.position.y, z: event.z }, height: view.height + .65 });
     }
   }
 

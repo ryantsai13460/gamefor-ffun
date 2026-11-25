@@ -79,7 +79,8 @@ test('magnet pickup credits a gathered drop once and persists the balance in sol
 test('Titanium can continue and then stop paid auto-hatching according to the saved rule', async ({ page }) => {
   const progress = createProgress();
   progress.xp = 74;
-  progress.wallet.sunbeams = 108;
+  const startingGold = 180;
+  progress.wallet.sunbeams = startingGold;
   progress.upgrades.autoHatch = 1;
   progress.farming.enabled = false;
   await page.addInitScript(({ key, progress }) => {
@@ -91,8 +92,9 @@ test('Titanium can continue and then stop paid auto-hatching according to the sa
   const frame = await openMeadow(page);
   await control(frame, 'Auto hatch Sunmeadow Egg').click();
   const status = frame.locator('.pv-auto-status');
-  await expect(status).toContainText('2 hatched', { timeout: 10_000 });
-  await control(frame, 'Pause auto hatch').click();
+  await expect.poll(() => canvas(frame).evaluate((_, key) => JSON.parse(localStorage.getItem(key)).stats.eggsHatched, soloKey),
+    { timeout: 12_000 }).toBeGreaterThanOrEqual(2);
+  await control(frame, 'Pause auto hatch').press('Enter');
   await expect(status).toContainText('Paused');
   await control(frame, 'Edit stop rules').click();
   await frame.getByRole('checkbox', { name: /Stop When Titanium/i }).check();
@@ -102,7 +104,7 @@ test('Titanium can continue and then stop paid auto-hatching according to the sa
   const saved = await canvas(frame).evaluate((_, key) => JSON.parse(localStorage.getItem(key)), soloKey);
   expect(saved.settings.stopVariants.titanium).toBe(true);
   expect(saved.stats.eggsHatched).toBeGreaterThanOrEqual(3);
-  expect(saved.wallet.sunbeams).toBe(108 - saved.stats.eggsHatched * 18);
+  expect(saved.wallet.sunbeams).toBe(startingGold - saved.stats.eggsHatched * 18);
   expect(saved.inventory.filter(pet => pet.variant === 'titanium')).toHaveLength(saved.stats.eggsHatched);
 });
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BESTIARY_PETS } from '../assets/petverse/bestiary.js';
-import { createModelKit, createPet, petScale } from '../assets/petverse/models.js';
+import { animatePetFace, createModelKit, createPet, petScale } from '../assets/petverse/models.js';
 import { Box3, Vector3 } from '../assets/petverse/vendor/three/three.module.min.js';
 
 function bounds(pet) {
@@ -19,6 +19,7 @@ test('every Bestiary species has its own buildable 3D appearance', () => {
     assert.equal(pet.children.length, 1, spec.id);
     assert.deepEqual(pet.scale.toArray(), [1, 1, 1], spec.id);
     assert.ok(pet.userData.strideScale > 0, spec.id);
+    assert.equal(pet.userData.eyes.length, 2, spec.id);
     const pieces = [];
     pet.traverse(part => {
       if (!part.isMesh) return;
@@ -31,6 +32,22 @@ test('every Bestiary species has its own buildable 3D appearance', () => {
     appearances.add(JSON.stringify([pet.children[0].scale.toArray(), pieces]));
   }
   assert.equal(appearances.size, 460);
+});
+
+test('face and rarity accents animate together and restore their rest pose with reduced motion', () => {
+  const kit = createModelKit();
+  const species = BESTIARY_PETS.find(pet => pet.rarity === 'primordial');
+  const pet = createPet(species, 'shiny', kit);
+  const { eyes, facePhase, shimmer } = pet.userData;
+  assert.equal(eyes.length, 2);
+  assert.ok(shimmer.length >= 3);
+  animatePetFace(pet, 5.01 - facePhase);
+  assert.ok(eyes.every(eye => eye.scale.y < .25));
+  assert.ok(shimmer.some(({ piece, lift }) => Math.abs(piece.position.y - lift) > .01));
+  animatePetFace(pet, 5.01 - facePhase, true);
+  assert.ok(eyes.every(eye => eye.scale.y === 1));
+  assert.ok(shimmer.every(({ piece, lift, spin }) => piece.position.y === lift && piece.rotation.y === spin));
+  kit.dispose();
 });
 
 test('Giant and Titanium still scale all 23 Bestiary anatomies and fit their original body rigs', () => {
